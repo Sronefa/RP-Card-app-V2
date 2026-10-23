@@ -43,7 +43,7 @@ function StringList({
   const items = useEditor((s) => s.record!.card.data[field]);
   const setField = useEditor((s) => s.setField);
 
-  const update = (next: string[], coalesceKey?: string) => setField(field, next, coalesceKey);
+  const update = (next: string[], coalesceKey?: string) => setField(field, next, coalesceKey ?? null);
   const move = (i: number, by: number) => {
     const next = [...items];
     [next[i], next[i + by]] = [next[i + by], next[i]];

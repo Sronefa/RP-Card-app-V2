@@ -19,6 +19,11 @@ body,
   height: 100%;
 }
 
+/* Native controls (select menus, number spinners, scrollbars) in dark colours. */
+:root {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   background: var(--color-surface);
@@ -35,4 +40,9 @@ body {
 }
 .pt-safe {
   padding-top: env(safe-area-inset-top);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-accent);
 }

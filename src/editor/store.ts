@@ -33,10 +33,16 @@ interface EditorState {
 
   open: (id: string) => Promise<void>;
   close: () => Promise<void>;
-  setField: <K extends keyof CardDataV3>(field: K, value: CardDataV3[K], coalesceKey?: string) => void;
+  /**
+   * Sets a card field. Changes with the same coalesceKey in quick succession are one undo step;
+   * it defaults to the field name (typing in a text box). Pass null for a change that is always its own step.
+   */
+  setField: <K extends keyof CardDataV3>(field: K, value: CardDataV3[K], coalesceKey?: string | null) => void;
   replaceData: (data: CardDataV3) => void;
   setKind: (kind: CardKind) => void;
   setImage: (image: Uint8Array | undefined) => void;
+  /** Adds asset files to the package. Files are not part of undo; unused ones are left out on export. */
+  addFiles: (files: Record<string, Uint8Array>) => void;
   undo: () => void;
   redo: () => void;
   flush: () => Promise<void>;
@@ -93,7 +99,7 @@ export const useEditor = create<EditorState>((set, get) => {
     setField(field, value, coalesceKey = String(field)) {
       const { record } = get();
       if (!record) return;
-      apply({ ...record.card.data, [field]: value }, coalesceKey);
+      apply({ ...record.card.data, [field]: value }, coalesceKey ?? undefined);
     },
 
     replaceData(data) {
@@ -111,6 +117,13 @@ export const useEditor = create<EditorState>((set, get) => {
       const { record } = get();
       if (!record) return;
       set({ record: { ...record, image } });
+      scheduleSave();
+    },
+
+    addFiles(files) {
+      const { record } = get();
+      if (!record) return;
+      set({ record: { ...record, files: { ...record.files, ...files } } });
       scheduleSave();
     },
 
@@ -151,7 +164,11 @@ export const useEditor = create<EditorState>((set, get) => {
         }
         // Keep edits made while saving; only mark saved if nothing changed meanwhile.
         const current = get().record;
-        const unchanged = current?.card === record.card && current.image === record.image && current.kind === record.kind;
+        const unchanged =
+          current?.card === record.card &&
+          current.image === record.image &&
+          current.kind === record.kind &&
+          current.files === record.files;
         set({
           lastVersionAt: versionAt,
           saveState: unchanged ? "saved" : "unsaved",
