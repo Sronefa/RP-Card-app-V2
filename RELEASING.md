@@ -3,7 +3,7 @@
 ## One-time setup: the Android signing key
 
 Android only installs an update over an existing app when both are signed with the same key. CI builds use a
-temporary key until you add a permanent one, so set this up once before the first release and keep the key safe:
+temporary key until you add a permanent one, so set this up once (ideally before the first release) and keep the key safe:
 if it is lost, installed copies can't be updated and users must uninstall first.
 
 1. Create the key. `keytool` comes with Java (Android Studio has it in `jbr\bin`). In PowerShell:
@@ -40,5 +40,6 @@ if it is lost, installed copies can't be updated and users must uninstall first.
 3. The Build workflow runs for the release. When it finishes (about 15 minutes), the Windows installers
    (`.exe`, `.msi`) and the APK are attached to the release.
 
-The workflow refuses to attach anything if the tag doesn't match the version, or if the signing key secrets are
-missing.
+The workflow refuses to attach anything if the tag doesn't match the version. Without the signing key secrets, the
+APK is signed with a temporary key: it installs, but the next build can't update it, so uninstall it first. Uninstalling deletes the
+cards stored in the app, so export them first. Once the permanent key is set up, updates install over each other.

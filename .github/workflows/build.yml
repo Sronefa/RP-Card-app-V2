@@ -93,10 +93,6 @@ jobs:
           UNSIGNED=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-unsigned.apk' | head -1)
           if [ -n "${KEYSTORE_BASE64:-}" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > release.jks
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            # A release APK signed with a throwaway key couldn't be updated later, so don't publish one.
-            echo "::error::Releases need the signing key secrets. See RELEASING.md."
-            exit 1
           else
             # No release key configured yet: sign with a throwaway key so the APK installs.
             echo "::warning::ANDROID_KEYSTORE_BASE64 not set, signing with a temporary key"
