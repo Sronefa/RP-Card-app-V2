@@ -29,7 +29,9 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null);
 
   // Each section starts at the top instead of keeping the previous section's scroll position.
-  useEffect(() => mainRef.current?.scrollTo?.({ top: 0 }), [section]);
+  useEffect(() => {
+    mainRef.current?.scrollTo?.({ top: 0 });
+  }, [section]);
 
   // On large screens the co-writer is always docked, so the main area falls back to the editor.
   const MainView = section === "cowriter" ? EditorView : VIEWS[section];

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { IDBFactory } from "fake-indexeddb";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getCard, resetDbForTests } from "../db/db";
 import { useEditor } from "../editor/store";
 import App from "./App";
@@ -23,6 +23,20 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getAllByRole("button", { name: "Lorebook" })[0]);
     expect(useUi.getState().section).toBe("lorebook");
+  });
+
+  it("survives scrollTo returning a promise, as in newer WebView2", () => {
+    // Chromium's newer scroll methods return a promise. Returning that from an effect crashed React.
+    const scrollTo = vi.fn(() => Promise.resolve());
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", { value: scrollTo, configurable: true });
+    try {
+      render(<App />);
+      fireEvent.click(screen.getAllByRole("button", { name: "Editor" })[0]);
+      expect(screen.getByText("No card open")).toBeInTheDocument();
+      expect(scrollTo).toHaveBeenCalled();
+    } finally {
+      delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+    }
   });
 
   it("creates a project and a character, edits it, undoes and saves", async () => {
