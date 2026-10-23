@@ -83,6 +83,8 @@ The APK is signed with a temporary key until a release key is added as repositor
 (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`). With a temporary key,
 uninstall the previous build before installing a new one.
 
+Publishing a GitHub Release attaches the installers and the APK to it. See [RELEASING.md](RELEASING.md).
+
 ## Roadmap
 
 1. Foundation: app shell and CI builds (done)
