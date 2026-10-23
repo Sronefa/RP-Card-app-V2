@@ -52,6 +52,14 @@ describe("editor store", () => {
     expect(useEditor.getState().past).toHaveLength(2);
   });
 
+  it("never merges changes made with a null coalesce key", async () => {
+    await openNewCard();
+    useEditor.getState().setField("alternate_greetings", ["a"], null);
+    useEditor.getState().setField("alternate_greetings", [], null);
+    useEditor.getState().undo();
+    expect(useEditor.getState().record?.card.data.alternate_greetings).toEqual(["a"]);
+  });
+
   it("saves on flush and snapshots a version when the last one is old", async () => {
     const card = await openNewCard();
     useEditor.setState({ lastVersionAt: Date.now() - AUTO_VERSION_MS - 1 });

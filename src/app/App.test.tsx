@@ -9,7 +9,7 @@ import { useUi } from "./store";
 beforeEach(async () => {
   await resetDbForTests();
   globalThis.indexedDB = new IDBFactory();
-  useUi.setState({ section: "library", projectId: undefined, libraryTab: "projects" });
+  useUi.setState({ section: "library", projectId: undefined, libraryTab: "projects", editorGroup: "basics" });
   useEditor.setState({ record: undefined, past: [], future: [], saveState: "saved" });
 });
 

@@ -1,5 +1,6 @@
 /** Small shared UI pieces. */
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -72,7 +73,8 @@ export function Dialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  // Portalled to <body> so a parent with a backdrop filter or transform can't trap the fixed overlay.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center" onClick={onClose}>
       <div
         role="dialog"
@@ -84,7 +86,8 @@ export function Dialog({
         <h2 className="mb-3 text-lg font-semibold">{title}</h2>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

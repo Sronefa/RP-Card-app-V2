@@ -66,8 +66,8 @@ uninstall the previous build before installing a new one.
 
 1. Foundation: app shell and CI builds (done)
 2. Card engine: V3 model, PNG/CHARX/JSON import and export, V2 fallback (done)
-3. Projects, persona library and card editor with autosave, undo and version history
-4. Lorebook, assets and card checker
+3. Projects, persona library and card editor with autosave, undo and version history (done)
+4. Lorebook, assets and card checker (done)
 5. Co-writer core: Claude and OpenAI-compatible endpoints (NanoGPT, OpenRouter, local), tool-call edits
 6. Interview, Deep pipeline and lorebook brainstorm
 7. Polish and release

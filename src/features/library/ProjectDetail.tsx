@@ -22,7 +22,7 @@ import { pickFiles, readFileBytes } from "../../lib/files";
 import { CardTile } from "./CardTile";
 
 export function ProjectDetail({ projectId }: { projectId: string }) {
-  const { setProjectId, setSection } = useUi();
+  const { setProjectId, setSection, setEditorGroup } = useUi();
   const openCard = useEditor((s) => s.open);
   const closeEditor = useEditor((s) => s.close);
   const openCardId = useEditor((s) => s.record?.id);
@@ -55,6 +55,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
   async function open(record: CardRecord) {
     try {
+      // A different card starts on Basics; reopening the same card keeps the current group.
+      if (useEditor.getState().record?.id !== record.id) setEditorGroup("basics");
       await openCard(record.id);
       setSection("editor");
     } catch (e) {
