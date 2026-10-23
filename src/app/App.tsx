@@ -6,6 +6,7 @@ import { LibraryView } from "../features/library/LibraryView";
 import { LorebookView } from "../features/lorebook/LorebookView";
 import { Icon } from "../components/Icon";
 import { Toaster } from "../components/toast";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { SECTIONS, type SectionId } from "./sections";
 import { useUi } from "./store";
 
@@ -58,18 +59,20 @@ export default function App() {
       </nav>
 
       <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto">
-        {section === "cowriter" ? (
-          <>
-            <div className="lg:hidden">
-              <CowriterPanel />
-            </div>
-            <div className="hidden lg:block">
-              <MainView />
-            </div>
-          </>
-        ) : (
-          <MainView />
-        )}
+        <ErrorBoundary key={section} onReset={() => setSection("library")}>
+          {section === "cowriter" ? (
+            <>
+              <div className="lg:hidden">
+                <CowriterPanel />
+              </div>
+              <div className="hidden lg:block">
+                <MainView />
+              </div>
+            </>
+          ) : (
+            <MainView />
+          )}
+        </ErrorBoundary>
       </main>
 
       <aside
