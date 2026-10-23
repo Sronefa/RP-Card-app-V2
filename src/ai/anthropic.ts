@@ -78,12 +78,16 @@ async function streamOnce(client: Anthropic, request: CompletionRequest, maxToke
       // The system prompt doesn't change during a chat, so it is cached.
       system: [{ type: "text", text: request.system, cache_control: { type: "ephemeral" } }],
       messages: toAnthropic(request.messages),
-      tools: request.tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        input_schema: t.parameters,
-        eager_input_streaming: true,
-      })),
+      ...(request.tools.length
+        ? {
+            tools: request.tools.map((t) => ({
+              name: t.name,
+              description: t.description,
+              input_schema: t.parameters,
+              eager_input_streaming: true,
+            })),
+          }
+        : {}),
       ...(fallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
     },
     { signal: request.signal },
@@ -125,18 +129,30 @@ function echoContent(content: Block[]): Block[] {
 }
 
 function toAnthropic(messages: ChatMessage[]): Anthropic.Beta.BetaMessageParam[] {
-  return messages.map((m): Anthropic.Beta.BetaMessageParam => {
-    if (m.role === "user") return { role: "user", content: m.text };
-    if (m.role === "tool")
-      return {
-        role: "user",
-        content: m.results.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.content, is_error: r.isError })),
-      };
-    if (m.raw?.kind === "anthropic") return { role: "assistant", content: m.raw.content as BlockParam[] };
-    // Turn written by another provider earlier in the chat.
-    const content: BlockParam[] = [];
-    if (m.text) content.push({ type: "text", text: m.text });
-    for (const call of m.toolCalls) content.push({ type: "tool_use", id: call.id, name: call.name, input: call.input });
-    return { role: "assistant", content: content.length ? content : [{ type: "text", text: "…" }] };
-  });
+  const out: Anthropic.Beta.BetaMessageParam[] = [];
+  for (const param of messages.map(toParam)) {
+    // A user message can follow tool results (e.g. interview answers then a new request); one turn holds both.
+    const last = out.at(-1);
+    if (last?.role === "user" && param.role === "user") last.content = [...blocks(last.content), ...blocks(param.content)];
+    else out.push(param);
+  }
+  return out;
+}
+
+const blocks = (content: Anthropic.Beta.BetaMessageParam["content"]): BlockParam[] =>
+  typeof content === "string" ? [{ type: "text", text: content }] : ((content ?? []) as BlockParam[]);
+
+function toParam(m: ChatMessage): Anthropic.Beta.BetaMessageParam {
+  if (m.role === "user") return { role: "user", content: m.text };
+  if (m.role === "tool")
+    return {
+      role: "user",
+      content: m.results.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.content, is_error: r.isError })),
+    };
+  if (m.raw?.kind === "anthropic") return { role: "assistant", content: m.raw.content as BlockParam[] };
+  // Turn written by another provider earlier in the chat.
+  const content: BlockParam[] = [];
+  if (m.text) content.push({ type: "text", text: m.text });
+  for (const call of m.toolCalls) content.push({ type: "tool_use", id: call.id, name: call.name, input: call.input });
+  return { role: "assistant", content: content.length ? content : [{ type: "text", text: "…" }] };
 }

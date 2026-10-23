@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { importCard, importLorebook, toLorebookV3File, toWorldInfo, type Lorebook, type LorebookEntry } from "../../card";
+import {
+  importCard,
+  importLorebook,
+  toLorebookV3File,
+  toWorldInfo,
+  type Lorebook,
+  type LorebookEntry,
+} from "../../card";
 import { utf8Encode } from "../../card/bytes";
 import { useUi } from "../../app/store";
 import { toast } from "../../components/toast";
@@ -11,6 +18,7 @@ import { estimateTokens } from "../../lib/tokens";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
 import { EntryEditor } from "./EntryEditor";
+import { LoreBrainstorm } from "./LoreBrainstorm";
 
 export function LorebookView() {
   const record = useEditor((s) => s.record);
@@ -19,6 +27,7 @@ export function LorebookView() {
   const [open, setOpen] = useState<number | undefined>(focusEntry);
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<"settings" | "export">();
+  const [tab, setTab] = useState<"entries" | "brainstorm">("entries");
   const list = useRef<HTMLUListElement>(null);
 
   // Jump to the entry the card checker pointed at.
@@ -26,6 +35,7 @@ export function LorebookView() {
     if (focusEntry === undefined) return;
     setOpen(focusEntry);
     setQuery("");
+    setTab("entries");
     setFocusEntry(undefined);
     requestAnimationFrame(() => list.current?.children[focusEntry]?.scrollIntoView?.({ block: "start" }));
   }, [focusEntry, setFocusEntry]);
@@ -82,70 +92,90 @@ export function LorebookView() {
         <CardBar detail={`${book.entries.length} entries · ~${constantTokens} always-on tokens`} />
       </div>
 
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
-        <p className="text-sm text-ink-muted">
-          Entries are added to the prompt only when one of their keys appears in the chat, so details that aren't always
-          needed cost no tokens. Constant entries are always sent.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={add}>
-            Add entry
-          </Button>
-          <Button onClick={() => void importFiles()}>Import</Button>
-          <Button disabled={book.entries.length === 0} onClick={() => setDialog("export")}>
-            Export
-          </Button>
-          <Button onClick={() => setDialog("settings")}>Book settings</Button>
-        </div>
-        {book.entries.length > 3 && (
-          <TextInput
-            type="search"
-            aria-label="Search entries"
-            placeholder="Search entries"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        )}
-        {book.entries.length === 0 && (
-          <p className="rounded-xl border border-dashed border-border p-6 text-center text-ink-muted">
-            No entries yet. Add one, or import a lorebook or SillyTavern World Info file.
-          </p>
-        )}
-        <ul ref={list} className="flex flex-col gap-2">
-          {book.entries.map((entry, i) => (
-            <li key={i} hidden={!matches(entry)} className="scroll-mt-32">
-              <EntryEditor
-                entry={entry}
-                index={i}
-                count={book.entries.length}
-                open={open === i}
-                onToggle={() => setOpen(open === i ? undefined : i)}
-                onChange={(next, coalesceKey) =>
-                  setEntries(
-                    book.entries.map((e, j) => (j === i ? next : e)),
-                    coalesceKey && `lore.${i}.${coalesceKey}`,
-                  )
-                }
-                onMove={(by) => {
-                  const next = [...book.entries];
-                  [next[i], next[i + by]] = [next[i + by], next[i]];
-                  setEntries(next);
-                  if (open === i) setOpen(i + by);
-                }}
-                onDuplicate={() => {
-                  const copy = { ...structuredClone(entry), id: newEntry(book).id };
-                  setEntries([...book.entries.slice(0, i + 1), copy, ...book.entries.slice(i + 1)]);
-                  setOpen(i + 1);
-                }}
-                onDelete={() => {
-                  setEntries(book.entries.filter((_, j) => j !== i));
-                  setOpen(undefined);
-                  toast("Entry deleted. Undo with ↶ if that was a mistake.");
-                }}
-              />
-            </li>
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4">
+        <div role="tablist" aria-label="Lorebook" className="flex rounded-lg border border-border p-0.5">
+          {(["entries", "brainstorm"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={`min-h-9 flex-1 rounded-md px-2 text-sm ${tab === t ? "bg-accent/15 text-accent" : "text-ink-muted"}`}
+            >
+              {t === "entries" ? "Entries" : "Brainstorm"}
+            </button>
           ))}
-        </ul>
+        </div>
+        {tab === "brainstorm" ? (
+          <LoreBrainstorm />
+        ) : (
+          <>
+            <p className="text-sm text-ink-muted">
+              Entries are added to the prompt only when one of their keys appears in the chat, so details that aren't
+              always needed cost no tokens. Constant entries are always sent.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" onClick={add}>
+                Add entry
+              </Button>
+              <Button onClick={() => void importFiles()}>Import</Button>
+              <Button disabled={book.entries.length === 0} onClick={() => setDialog("export")}>
+                Export
+              </Button>
+              <Button onClick={() => setDialog("settings")}>Book settings</Button>
+            </div>
+            {book.entries.length > 3 && (
+              <TextInput
+                type="search"
+                aria-label="Search entries"
+                placeholder="Search entries"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            )}
+            {book.entries.length === 0 && (
+              <p className="rounded-xl border border-dashed border-border p-6 text-center text-ink-muted">
+                No entries yet. Add one, or import a lorebook or SillyTavern World Info file.
+              </p>
+            )}
+            <ul ref={list} className="flex flex-col gap-2">
+              {book.entries.map((entry, i) => (
+                <li key={i} hidden={!matches(entry)} className="scroll-mt-32">
+                  <EntryEditor
+                    entry={entry}
+                    index={i}
+                    count={book.entries.length}
+                    open={open === i}
+                    onToggle={() => setOpen(open === i ? undefined : i)}
+                    onChange={(next, coalesceKey) =>
+                      setEntries(
+                        book.entries.map((e, j) => (j === i ? next : e)),
+                        coalesceKey && `lore.${i}.${coalesceKey}`,
+                      )
+                    }
+                    onMove={(by) => {
+                      const next = [...book.entries];
+                      [next[i], next[i + by]] = [next[i + by], next[i]];
+                      setEntries(next);
+                      if (open === i) setOpen(i + by);
+                    }}
+                    onDuplicate={() => {
+                      const copy = { ...structuredClone(entry), id: newEntry(book).id };
+                      setEntries([...book.entries.slice(0, i + 1), copy, ...book.entries.slice(i + 1)]);
+                      setOpen(i + 1);
+                    }}
+                    onDelete={() => {
+                      setEntries(book.entries.filter((_, j) => j !== i));
+                      setOpen(undefined);
+                      toast("Entry deleted. Undo with ↶ if that was a mistake.");
+                    }}
+                  />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
 
       <Dialog open={dialog === "settings"} title="Book settings" onClose={() => setDialog(undefined)}>
@@ -167,13 +197,22 @@ export function LorebookView() {
   );
 }
 
-function BookSettings({ book, onChange }: { book: Lorebook; onChange: (book: Lorebook, coalesceKey?: string) => void }) {
+function BookSettings({
+  book,
+  onChange,
+}: {
+  book: Lorebook;
+  onChange: (book: Lorebook, coalesceKey?: string) => void;
+}) {
   const num = (v: string) => (v.trim() === "" ? undefined : Math.max(0, Math.round(Number(v)) || 0));
   return (
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1 text-sm">
         Name
-        <TextInput value={book.name ?? ""} onChange={(e) => onChange({ ...book, name: e.target.value || undefined }, "book.name")} />
+        <TextInput
+          value={book.name ?? ""}
+          onChange={(e) => onChange({ ...book, name: e.target.value || undefined }, "book.name")}
+        />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Description
@@ -184,7 +223,9 @@ function BookSettings({ book, onChange }: { book: Lorebook; onChange: (book: Lor
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Scan depth
-        <span className="text-xs text-ink-muted">How many recent messages are searched for keys. Empty uses the app's setting.</span>
+        <span className="text-xs text-ink-muted">
+          How many recent messages are searched for keys. Empty uses the app's setting.
+        </span>
         <TextInput
           type="number"
           min={0}
@@ -195,7 +236,9 @@ function BookSettings({ book, onChange }: { book: Lorebook; onChange: (book: Lor
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Token budget
-        <span className="text-xs text-ink-muted">Most tokens the lorebook may add to one prompt. Empty uses the app's setting.</span>
+        <span className="text-xs text-ink-muted">
+          Most tokens the lorebook may add to one prompt. Empty uses the app's setting.
+        </span>
         <TextInput
           type="number"
           min={0}

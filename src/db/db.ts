@@ -6,7 +6,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { newCard } from "../card";
 import type { CardPackage, CharacterCardV3 } from "../card";
 import { newId } from "../lib/id";
-import type { ChatRecord, CowriterSettings } from "../ai/records";
+import type { ChatRecord, CowriterSettings, InterviewRecord } from "../ai/records";
 
 export type CardKind = "character" | "world";
 
@@ -55,8 +55,10 @@ interface Schema extends DBSchema {
   personas: { key: string; value: PersonaRecord };
   /** App settings by key, such as the co-writer's providers and prompt library. */
   settings: { key: string; value: { key: string; value: unknown } };
-  /** Co-writer conversation per card. */
+  /** Co-writer conversations, keyed by card id (or `lore:<card id>` for the lorebook brainstorm). */
   chats: { key: string; value: ChatRecord };
+  /** The interview and story bible per card. */
+  interviews: { key: string; value: InterviewRecord };
 }
 
 /** Versions kept per card; older ones are pruned. */
@@ -66,7 +68,7 @@ const DB_NAME = "cardforge";
 let dbPromise: Promise<IDBPDatabase<Schema>> | undefined;
 
 function db() {
-  dbPromise ??= openDB<Schema>(DB_NAME, 2, {
+  dbPromise ??= openDB<Schema>(DB_NAME, 3, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
         d.createObjectStore("projects", { keyPath: "id" });
@@ -78,6 +80,7 @@ function db() {
         d.createObjectStore("settings", { keyPath: "key" });
         d.createObjectStore("chats", { keyPath: "cardId" });
       }
+      if (oldVersion < 3) d.createObjectStore("interviews", { keyPath: "cardId" });
     },
   });
   return dbPromise;
@@ -159,11 +162,13 @@ export async function saveCard(record: CardRecord): Promise<CardRecord> {
 export async function deleteCard(id: string) {
   const d = await db();
   const versions = await d.getAllKeysFromIndex("versions", "cardId", id);
-  const tx = d.transaction(["cards", "versions", "chats"], "readwrite");
+  const tx = d.transaction(["cards", "versions", "chats", "interviews"], "readwrite");
   await Promise.all([
     ...versions.map((v) => tx.objectStore("versions").delete(v)),
     tx.objectStore("cards").delete(id),
     tx.objectStore("chats").delete(id),
+    tx.objectStore("chats").delete(loreChatKey(id)),
+    tx.objectStore("interviews").delete(id),
     tx.done,
   ]);
 }
@@ -231,16 +236,31 @@ export async function putSetting(key: string, value: unknown) {
   await (await db()).put("settings", { key, value });
 }
 
-// Co-writer chats
+// Co-writer chats and interviews
 
-export async function getChat(cardId: string): Promise<ChatRecord | undefined> {
-  return (await db()).get("chats", cardId);
+/** Key of a card's lorebook brainstorm chat. */
+export const loreChatKey = (cardId: string) => `lore:${cardId}`;
+
+export async function getChat(key: string): Promise<ChatRecord | undefined> {
+  return (await db()).get("chats", key);
 }
 
 export async function saveChat(chat: ChatRecord) {
   await (await db()).put("chats", chat);
 }
 
-export async function deleteChat(cardId: string) {
-  await (await db()).delete("chats", cardId);
+export async function deleteChat(key: string) {
+  await (await db()).delete("chats", key);
+}
+
+export async function getInterview(cardId: string): Promise<InterviewRecord | undefined> {
+  return (await db()).get("interviews", cardId);
+}
+
+export async function saveInterview(interview: InterviewRecord) {
+  await (await db()).put("interviews", interview);
+}
+
+export async function deleteInterview(cardId: string) {
+  await (await db()).delete("interviews", cardId);
 }

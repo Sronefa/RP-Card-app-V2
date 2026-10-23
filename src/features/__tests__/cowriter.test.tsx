@@ -128,6 +128,8 @@ describe("co-writer", () => {
     await say("Undid it");
     expect((script.requests[3].messages.at(-1) as { text: string }).text).toContain("<card");
 
+    // Decided edits keep their description even though the card has moved on.
+    expect(screen.getByText(/Edit 1: Change description/)).toBeInTheDocument();
     const stored = await getChat(cardId);
     expect(stored?.proposals.map((p) => p.status)).toEqual(["accepted", "rejected"]);
   });

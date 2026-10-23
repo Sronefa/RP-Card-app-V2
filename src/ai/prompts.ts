@@ -6,7 +6,7 @@ import type { CardDataV3 } from "../card";
 import type { CardKind, CardRecord, PersonaRecord } from "../db/db";
 import { entryTitle } from "../editor/lorebook";
 import { estimateTokens } from "../lib/tokens";
-import type { CowriterSettings } from "./records";
+import { YOU_DECIDE, type ContentMode, type CowriterSettings, type InterviewDepth, type InterviewRound } from "./records";
 import { EDITABLE_FIELDS } from "./tools";
 import type { ModeId } from "./types";
 
@@ -33,12 +33,27 @@ Characters in sexual content are always adults. Never sexualize minors.`;
 
 const TOOLS_NOTE = `Change the card only through your tools. Each call becomes a proposal the user accepts or rejects, so keep each call focused: patch_field for small changes, set_field for new or rewritten fields. Never paste card text into your reply instead of calling a tool. After proposing, say in a sentence or two what you changed and why. Keep replies short; the edits speak for themselves.`;
 
-const MODES: Partial<Record<ModeId, string>> = {
+const MODES: Record<ModeId, string> = {
   refine: `Right now you're refining the card with the user. Do what they ask, and when an instruction is vague ("make her meaner"), make a clear choice and say what you chose.`,
+
+  lore: `Right now you're brainstorming lorebook entries with the user. Pitch entries one or two at a time with add_lore_entry, each with a "why". Check every pitch against the card, the story bible and the existing entries: no duplicates, no contradictions, and point out any conflict you notice. When the user asks for more like an entry, pitch new entries of the same kind. To tweak an entry the user hasn't accepted yet, pitch a corrected version; for accepted entries use update_lore_entry.`,
+
+  interview: `Right now you're interviewing the user to build the card. Ask questions with ask_questions, a few per round, grouped by theme. Every question gets 3 or 4 suggested answers that are concrete, distinct and usable as they are, so the user can build the whole card by tapping. Suggestions follow the content mode, tone and genre. Build on earlier answers; never ask about something already decided. When an answer is "(You decide.)", decide it yourself and note what you chose. After each round of answers, record what is now decided with note_facts, then ask the next round. Call finish_interview when you know enough. Keep your own text to a sentence or two; the questions do the talking.`,
+
+  gap: `Right now you're the gap analyst. You read everything the interview gathered and write a short memo with write_memo: what a good card still needs, which answers are too vague to write from, which facts contradict each other, and what the story could use (a rival, a secret, a reason to stay, a hook for the first scene). Be specific and brief. Mark the memo clean only when nothing important is left open.`,
+
+  draft: `Right now you're drafting the card from the interview. Write only what you're asked for in this step, using the story bible and the interview as the source of truth: never contradict them, and fill small gaps with choices that fit. Use your tools for every word; don't write card text in your reply.`,
+
+  suggest: `Right now you're brainstorming the answer to one interview question with the user. Pitch 4 or 5 varied ideas with suggest_answers, from the expected to the surprising. Riff on the ideas the user likes and combine them when asked. When the user settles on something, write it up with final_answer. Follow the content mode: Dark pushes darker answers; Unhinged actively pushes explicit NSFW answers.`,
+
+  critic: `Right now you're the critic. Read the card as the roleplay model that will play it, and list the concrete problems: vague or generic writing, contradictions between fields, greetings that speak or act for {{user}}, negative instructions, wasted permanent tokens, weak hooks, a voice that doesn't come through, lore that duplicates the card. Number the problems, name the field for each, and say what would fix it. At most ten, most important first. Don't rewrite the card yourself. If it is in good shape, say so in a sentence.`,
 };
 
+/** Modes that edit the card through tool calls. */
+const EDITING_MODES: ModeId[] = ["refine", "lore", "draft"];
+
 export function systemPrompt(mode: ModeId): string {
-  return [BASE, MODES[mode] ?? MODES.refine, TOOLS_NOTE].join("\n\n");
+  return [BASE, MODES[mode], EDITING_MODES.includes(mode) && TOOLS_NOTE].filter(Boolean).join("\n\n");
 }
 
 const CONTENT_MODES = {
@@ -108,6 +123,10 @@ export function worldContext(world: CardRecord): string {
     .join("\n");
 }
 
+export function bibleContext(bible: string): string {
+  return `The story bible, the source of truth for this card. Don't contradict it.\n\n${bible.trim()}`;
+}
+
 export function personasContext(personas: PersonaRecord[]): string {
   return personas.map((p) => `${p.name}: ${p.description || "(no description)"}`).join("\n");
 }
@@ -132,4 +151,168 @@ export function composeUserMessage(
   if (decisions.length) blocks.push(`<decisions>\n${decisions.join("\n")}\n</decisions>`);
   blocks.push(request);
   return { text: blocks.join("\n\n"), sent: next };
+}
+
+// Interview
+
+const THEMES: Record<CardKind, string[]> = {
+  character: [
+    "Core concept",
+    "Look",
+    "Personality and voice",
+    "History, wants and wounds",
+    "Relationship and stance toward {{user}}",
+    "Behaviour under pressure",
+    "Secrets and layers",
+    "Opening scene",
+  ],
+  world: [
+    "Premise and tone",
+    "Rules and their costs (magic, technology, law)",
+    "Factions and conflict",
+    "Places",
+    "Notable people",
+    "Daily life and texture",
+    "The narrator's voice",
+    "Entry points for {{user}}",
+  ],
+};
+
+const MODE_THEME: Record<ContentMode, string | undefined> = {
+  normal: undefined,
+  dark: "Dark themes: violence, cruelty, horror, what goes wrong",
+  unhinged: "Sex: bodies, kinks, sexual behaviour and dynamics (adults only, ages stated)",
+};
+
+const DEPTH_PLAN: Record<InterviewDepth, string> = {
+  quick:
+    "Depth: Quick. Ask a single round of 5 to 8 questions covering the most important themes. The card is drafted right after this round, so make every question count.",
+  standard:
+    "Depth: Standard. About three rounds of 3 to 5 questions, theme by theme. Call finish_interview when you have enough for a strong card.",
+  deep: "Depth: Deep. Cover every theme thoroughly, 3 to 5 questions per round, as many rounds as it takes, digging into specifics. Call finish_interview when every theme is settled.",
+};
+
+/** The request that starts an interview. */
+export function interviewKickoff(kind: CardKind, settings: CowriterSettings, premise: string): string {
+  const themes = [...THEMES[kind]];
+  const extra = MODE_THEME[settings.contentMode];
+  if (extra) themes.splice(themes.length - 1, 0, extra);
+  return [
+    `Interview me to build a ${kind === "world" ? "world card" : "character card"}.`,
+    premise.trim() ? `My idea: ${premise.trim()}` : "I have no idea yet: help me find one with your first questions.",
+    `Themes to cover:\n${themes.map((t) => `- ${t}`).join("\n")}`,
+    DEPTH_PLAN[settings.depth],
+  ].join("\n\n");
+}
+
+/** The user's answers to one round, as the interviewer receives them. */
+export function answersText(round: InterviewRound): string {
+  return round.questions
+    .map((q) => `Q: ${q.question}\nA: ${round.answers[q.id]?.trim() || YOU_DECIDE}`)
+    .join("\n\n");
+}
+
+/** Every answered question so far. */
+export function transcript(rounds: InterviewRound[]): string {
+  return rounds
+    .filter((r) => r.submitted)
+    .map(answersText)
+    .join("\n\n");
+}
+
+export const factsText = (facts: string[]) => facts.map((f) => `- ${f}`).join("\n");
+
+export function gapRequest(kind: CardKind, settings: CowriterSettings, rounds: InterviewRound[], facts: string[]): string {
+  return [
+    `<settings>\n${settingsContext(settings, [])}\n</settings>`,
+    `<interview>\n${transcript(rounds)}\n</interview>`,
+    facts.length ? `<decided_facts>\n${factsText(facts)}\n</decided_facts>` : "",
+    `This is the interview for a ${kind === "world" ? "world card" : "character card"}. Write the gap analysis memo with write_memo.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function digDeeperRequest(memo: string): string {
+  return `A gap analysis of the interview so far found this:\n\n${memo}\n\nAsk one round of targeted follow-up questions (with suggested answers) that settle these points. Record anything you can already decide with note_facts.`;
+}
+
+export const BIBLE_REQUEST = `The interview is over. Write the story bible with write_story_bible: every decided fact, grouped into sections, specific and consistent. Where an answer was left to you, decide it now. This becomes the source of truth for writing the card.`;
+
+/** Steps of drafting a card. Each step is its own call, so every part gets full attention. */
+export const DRAFT_GROUPS: { id: string; label: string; brief: Record<CardKind, string> }[] = [
+  {
+    id: "core",
+    label: "description, personality and scenario",
+    brief: {
+      character:
+        "Write name, description, personality and scenario with set_field. The description comes first and matters most: identity, look, personality shown through behaviour, voice, wants and wounds. Personality is a short summary. The scenario is the starting situation with {{user}}.",
+      world:
+        "Write name, description, personality and scenario with set_field. Name is the world's name. The description sets the premise, the rules and their costs, the tone and the narrator's role: it narrates, plays every NPC, and never acts for {{user}}. Personality is the narrator's voice and style. The scenario is the starting situation. Keep the details of places, factions and people for the lorebook.",
+    },
+  },
+  {
+    id: "greetings",
+    label: "greetings",
+    brief: {
+      character:
+        "Write first_mes with set_field, then two alternate greetings with add_greeting, each a different opening situation. Never speak or act for {{user}}; end on a hook; match the reply length you want back.",
+      world:
+        "Write first_mes with set_field, then two alternate greetings with add_greeting: different entry points into the world (arriving as a stranger, mid-crisis, somewhere ordinary). Never speak or act for {{user}}; end on a hook.",
+    },
+  },
+  {
+    id: "examples",
+    label: "example dialogues",
+    brief: {
+      character:
+        "Write two or three example dialogues with add_example_dialogue. They show voice, speech tics and formatting, not plot.",
+      world:
+        "Write two example dialogues with add_example_dialogue that show the narrator's voice and how NPCs speak, not plot.",
+    },
+  },
+  {
+    id: "lore",
+    label: "lorebook",
+    brief: {
+      character:
+        "Add 3 to 6 lorebook entries with add_lore_entry for things that matter only sometimes: people, places, history, secrets. Don't repeat what the description says.",
+      world:
+        "Add 6 to 12 lorebook entries with add_lore_entry: places, factions, notable people, rules, history. Each self-contained, with good keys.",
+    },
+  },
+];
+
+/** The request for one drafting step, given the source facts and the card as drafted so far. */
+export function draftRequest(groupId: string, kind: CardKind, source: string, card: string): string {
+  const group = DRAFT_GROUPS.find((g) => g.id === groupId)!;
+  return [`<source>\n${source}\n</source>`, `<card_so_far>\n${card}\n</card_so_far>`, `This step: ${group.brief[kind]}`].join(
+    "\n\n",
+  );
+}
+
+/** What the draft is written from: the story bible, or the interview when there is none. */
+export function draftSource(bible: string | undefined, rounds: InterviewRound[], facts: string[]): string {
+  if (bible?.trim()) return `Story bible:\n${bible.trim()}`;
+  return [
+    `Interview:\n${transcript(rounds)}`,
+    facts.length ? `Decided facts:\n${factsText(facts)}` : "",
+    `Where an answer is "${YOU_DECIDE}", decide it yourself.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export const CRITIC_REQUEST = "Review this card.";
+
+/** The opening message of a brainstorm on one interview question. */
+export function brainstormKickoff(question: string, suggestions: string[], known: string): string {
+  return [
+    known && `<what_we_know>\n${known}\n</what_we_know>`,
+    `The question: ${question}`,
+    suggestions.length ? `Suggestions already offered:\n${suggestions.map((s) => `- ${s}`).join("\n")}` : "",
+    "Pitch fresh ideas for the answer.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
