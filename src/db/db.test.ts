@@ -45,7 +45,11 @@ describe("db", () => {
     const project = await createProject("p");
     const card = await createCard(project.id, "character");
     for (let i = 0; i < MAX_VERSIONS + 3; i++) await addVersion(card.id, card.card, `v${i}`);
-    expect(await listVersions(card.id)).toHaveLength(MAX_VERSIONS);
+    const versions = await listVersions(card.id);
+    expect(versions).toHaveLength(MAX_VERSIONS);
+    // Newest first and the newest are kept, even when several are made in the same millisecond.
+    expect(versions[0].label).toBe(`v${MAX_VERSIONS + 2}`);
+    expect(versions.at(-1)?.label).toBe("v3");
     await deleteCard(card.id);
     expect(await listVersions(card.id)).toHaveLength(0);
   });

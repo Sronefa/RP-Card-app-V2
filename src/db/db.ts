@@ -163,11 +163,13 @@ export async function listVersions(cardId: string): Promise<VersionRecord[]> {
 }
 
 export async function addVersion(cardId: string, card: CharacterCardV3, label: string): Promise<VersionRecord> {
-  const version: VersionRecord = { id: newId(), cardId, createdAt: Date.now(), label, card: structuredClone(card) };
   const d = await db();
+  const existing = await listVersions(cardId);
+  // Keep times strictly increasing so versions made in the same millisecond still sort in order.
+  const createdAt = Math.max(Date.now(), (existing[0]?.createdAt ?? 0) + 1);
+  const version: VersionRecord = { id: newId(), cardId, createdAt, label, card: structuredClone(card) };
   await d.put("versions", version);
-  const all = await listVersions(cardId);
-  for (const old of all.slice(MAX_VERSIONS)) await d.delete("versions", old.id);
+  for (const old of existing.slice(MAX_VERSIONS - 1)) await d.delete("versions", old.id);
   return version;
 }
 
