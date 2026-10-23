@@ -35,6 +35,19 @@ npx tauri icon public/icon.svg   # copy the app icon into the Android project
 npx tauri android dev            # run on a device or emulator
 ```
 
+## Card engine
+
+`src/card/` reads and writes cards without any UI or native code:
+
+- Import: PNG (`ccv3` and `chara` chunks, embedded `chara-ext-asset_` assets), CHARX, CHARX appended to a JPEG,
+  and JSON in V1, V2 or V3 (old TavernAI/Pygmalion field names included). Everything becomes a V3 card.
+- Export: PNG with the V3 card plus a V2 copy for older frontends, CHARX, and JSON.
+- Lorebooks: V3 `lorebook_v3` files and SillyTavern World Info, keeping ST-only settings in entry extensions.
+- Personas: a small CardForge JSON file, since SillyTavern has no persona file format.
+
+Test fixtures in `src/card/__tests__/fixtures` are made by `make_fixtures.py` with Pillow, independently of
+CardForge's own PNG code.
+
 ## Builds
 
 GitHub Actions builds every push and pull request:

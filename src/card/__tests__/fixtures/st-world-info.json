@@ -1,0 +1,79 @@
+{
+  "entries": {
+    "0": {
+      "uid": 0,
+      "key": [
+        "dragon",
+        "wyrm"
+      ],
+      "keysecondary": [
+        "fire"
+      ],
+      "comment": "Dragons",
+      "content": "Dragons rule the northern peaks.",
+      "constant": false,
+      "vectorized": false,
+      "selective": true,
+      "selectiveLogic": 3,
+      "addMemo": true,
+      "order": 100,
+      "position": 4,
+      "disable": false,
+      "excludeRecursion": false,
+      "preventRecursion": true,
+      "delayUntilRecursion": false,
+      "probability": 80,
+      "useProbability": true,
+      "depth": 2,
+      "group": "beasts",
+      "groupOverride": false,
+      "groupWeight": 100,
+      "scanDepth": null,
+      "caseSensitive": null,
+      "matchWholeWords": null,
+      "useGroupScoring": null,
+      "automationId": "",
+      "role": 0,
+      "sticky": 2,
+      "cooldown": null,
+      "delay": null,
+      "displayIndex": 1
+    },
+    "1": {
+      "uid": 1,
+      "key": [
+        "/king(dom)?/i"
+      ],
+      "keysecondary": [],
+      "comment": "Kingdom",
+      "content": "The kingdom of Vael.",
+      "constant": true,
+      "vectorized": false,
+      "selective": false,
+      "selectiveLogic": 0,
+      "addMemo": true,
+      "order": 50,
+      "position": 1,
+      "disable": true,
+      "excludeRecursion": false,
+      "preventRecursion": false,
+      "delayUntilRecursion": false,
+      "probability": 100,
+      "useProbability": true,
+      "depth": 4,
+      "group": "",
+      "groupOverride": false,
+      "groupWeight": 100,
+      "scanDepth": null,
+      "caseSensitive": true,
+      "matchWholeWords": null,
+      "useGroupScoring": null,
+      "automationId": "",
+      "role": null,
+      "sticky": 0,
+      "cooldown": 0,
+      "delay": 0,
+      "displayIndex": 0
+    }
+  }
+}
