@@ -19,14 +19,19 @@ export function ProposalCard({
   proposal,
   data,
   onDecide,
+  onMore,
 }: {
   proposal: Proposal;
   data: CardDataV3 | undefined;
   onDecide: (accept: boolean) => void;
+  /** Asks for more pitches like this one. */
+  onMore?: () => void;
 }) {
   let edit: Edit | undefined;
   let problem: string | undefined;
-  if (data) {
+  const pending = proposal.status === "pending";
+  // Decided edits keep the description they had; re-planning them against the changed card would mislead.
+  if (data && pending) {
     try {
       edit = planEdit(data, proposal.call);
     } catch (e) {
@@ -34,13 +39,13 @@ export function ProposalCard({
       problem = e.message;
     }
   }
-  const pending = proposal.status === "pending";
   const isPitch = proposal.call.name === "pitch";
   const title = isPitch
     ? String(proposal.call.input.title ?? "")
     : edit
       ? describeEdit(edit)
-      : proposal.call.name.replace(/_/g, " ");
+      : (proposal.summary ?? proposal.call.name.replace(/_/g, " "));
+  const why = typeof proposal.call.input.why === "string" ? proposal.call.input.why : "";
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-3 text-sm">
@@ -54,11 +59,22 @@ export function ProposalCard({
           </span>
         )}
       </div>
+      {why && pending && <p className="text-xs text-ink-muted italic">{why}</p>}
       {proposal.error && <p className="text-xs text-red-300">{proposal.error}</p>}
       {pending && problem && <p className="text-xs text-amber-300">This edit no longer fits the card: {problem}</p>}
       {pending && edit && <EditPreview edit={edit} />}
+      {!pending && onMore && (
+        <Button variant="ghost" className="self-end" onClick={onMore}>
+          More like this
+        </Button>
+      )}
       {pending && (
         <div className="flex justify-end gap-2">
+          {onMore && (
+            <Button variant="ghost" className="mr-auto" onClick={onMore}>
+              More like this
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => onDecide(false)}>
             {isPitch || problem ? "Dismiss" : "Reject"}
           </Button>

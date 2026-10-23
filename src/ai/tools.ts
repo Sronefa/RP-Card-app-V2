@@ -69,6 +69,7 @@ export const CARD_TOOLS: ToolDef[] = [
     parameters: obj(
       {
         title: str("Short title"),
+        why: str("One sentence for the user: why this entry matters to the story"),
         keys: keysParam,
         content: str("The entry, written as fact, 50 to 200 tokens"),
         constant: { type: "boolean", description: "Always sent, even without a key. Only for true always-on facts." },
@@ -103,6 +104,14 @@ export const CARD_TOOLS: ToolDef[] = [
     parameters: obj({ title: str("A few words"), idea: str("The idea in one to three sentences") }, ["title", "idea"]),
   },
 ];
+
+const tool = (name: string) => CARD_TOOLS.find((t) => t.name === name)!;
+
+/** Tools for drafting a card from scratch: whole fields and new items only. */
+export const DRAFT_TOOLS = ["set_field", "add_greeting", "add_example_dialogue", "add_lore_entry"].map(tool);
+
+/** Tools for the lorebook brainstorm. */
+export const LORE_TOOLS = ["add_lore_entry", "update_lore_entry", "delete_lore_entry", "pitch"].map(tool);
 
 /** A tool call checked against the card and turned into a change. */
 export type Edit =

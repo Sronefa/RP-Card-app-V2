@@ -59,8 +59,14 @@ CardForge's own PNG code.
 - The co-writer edits the card only through tool calls (`set_field`, `patch_field`, greetings, example dialogues,
   lorebook entries, `pitch`). Each call becomes a proposal shown as a diff; accepting it is one undo step.
   Models without tool calling write the same edits as a JSON block instead; this is detected automatically.
-- The system prompt never changes during a chat. Project settings, the card, the project's world and personas are
-  sent in the user's message, only when they changed since the co-writer last saw them.
+- The system prompt never changes during a chat. Project settings, the story bible, the card, the project's world and
+  personas are sent in the user's message, only when they changed since the co-writer last saw them.
+- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic) has its own
+  system prompt and can run on its own model; tasks without one use the default model.
+- The interview (`src/cowriter/interview.ts`) asks rounds of questions with suggested answers, then, depending on the
+  project's depth, runs gap analysis and follow-up rounds, writes a story bible, and drafts the card in four calls
+  (core fields, greetings, example dialogues, lorebook). The draft lands in the chat as proposals. The critic reads
+  the finished card and the chat proposes fixes.
 
 ## Builds
 
@@ -82,5 +88,5 @@ uninstall the previous build before installing a new one.
 3. Projects, persona library and card editor with autosave, undo and version history (done)
 4. Lorebook, assets and card checker (done)
 5. Co-writer core: Claude and OpenAI-compatible endpoints (NanoGPT, OpenRouter, local), tool-call edits (done)
-6. Interview, Deep pipeline and lorebook brainstorm
+6. Interview, Deep pipeline and lorebook brainstorm (done)
 7. Polish and release

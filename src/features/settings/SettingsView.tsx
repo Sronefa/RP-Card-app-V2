@@ -1,9 +1,19 @@
 import { useEffect, useState } from "react";
 import { createProvider, modelKey, PROVIDER_TEMPLATES, useAiSettings, type PromptPreset } from "../../ai/settings";
-import type { ModelChoice, ProviderConfig } from "../../ai/types";
+import type { ModeId, ModelChoice, ProviderConfig } from "../../ai/types";
 import { toast } from "../../components/toast";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { newId } from "../../lib/id";
+
+const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
+  { mode: "refine", label: "Chat", help: "Edits the card with you in the co-writer chat." },
+  { mode: "interview", label: "Interview", help: "Asks the questions and writes the story bible." },
+  { mode: "suggest", label: "Answer brainstorm", help: "Pitches answers to one interview question." },
+  { mode: "gap", label: "Gap analysis", help: "Checks the interview for gaps. A cheaper model works well." },
+  { mode: "draft", label: "Drafting", help: "Writes the card from the story bible. Use your best prose model." },
+  { mode: "lore", label: "Lorebook brainstorm", help: "Pitches lorebook entries." },
+  { mode: "critic", label: "Critic", help: "Reads the card as the roleplay model would and flags weak spots." },
+];
 
 export function SettingsView() {
   const { settings, loaded, load, update, addProvider } = useAiSettings();
@@ -95,7 +105,7 @@ export function SettingsView() {
 
       <section className="flex flex-col gap-3">
         <h2 className="font-medium">Model</h2>
-        <p className="text-sm text-ink-muted">The model the co-writer uses.</p>
+        <p className="text-sm text-ink-muted">The model the co-writer uses for every task.</p>
         {settings.providers.length === 0 ? (
           <p className="text-sm text-ink-muted">Add a provider first.</p>
         ) : (
@@ -125,6 +135,35 @@ export function SettingsView() {
           </label>
         )}
       </section>
+
+      {settings.providers.length > 0 && (
+        <details className="flex flex-col gap-3">
+          <summary className="cursor-pointer font-medium">Model for each task (optional)</summary>
+          <p className="mt-2 mb-3 text-sm text-ink-muted">
+            Every task uses the model above unless you pick another one here, for example a cheap model for checks and a
+            strong one for writing.
+          </p>
+          <div className="flex flex-col gap-3">
+            {MODE_LABELS.map(({ mode, label, help }) => (
+              <ModeModelRow
+                key={mode}
+                label={label}
+                help={help}
+                providers={settings.providers}
+                models={models}
+                value={settings.modeModels[mode]}
+                onLoad={(p) => void loadModels(p)}
+                onChange={(choice) => {
+                  const modeModels = { ...settings.modeModels };
+                  if (choice) modeModels[mode] = choice;
+                  else delete modeModels[mode];
+                  void update({ modeModels });
+                }}
+              />
+            ))}
+          </div>
+        </details>
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="font-medium">Prompt library</h2>
@@ -230,6 +269,65 @@ function ModelPicker({
           {list?.map((m) => <option key={m} value={m} />)}
         </datalist>
       </label>
+    </div>
+  );
+}
+
+function ModeModelRow({
+  label,
+  help,
+  providers,
+  models,
+  value,
+  onLoad,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  providers: ProviderConfig[];
+  models: Record<string, string[]>;
+  value?: ModelChoice;
+  onLoad: (p: ProviderConfig) => void;
+  onChange: (choice: ModelChoice | undefined) => void;
+}) {
+  const provider = value && providers.find((p) => p.id === value.providerId);
+  const listId = provider && `models-${provider.id}-${label.replace(/\s+/g, "-")}`;
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-3">
+      <div className="flex flex-col">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="text-xs text-ink-muted">{help}</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <select
+          aria-label={`${label} provider`}
+          className="min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm"
+          value={provider?.id ?? ""}
+          onChange={(e) => onChange(e.target.value ? { providerId: e.target.value, model: "" } : undefined)}
+        >
+          <option value="">Default model</option>
+          {providers.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        {provider && (
+          <>
+            <TextInput
+              aria-label={`${label} model`}
+              list={listId}
+              value={value!.model}
+              placeholder="Model name"
+              onFocus={() => !models[provider.id] && provider.apiKey && onLoad(provider)}
+              onChange={(e) => onChange({ providerId: provider.id, model: e.target.value.trim() })}
+            />
+            <datalist id={listId}>
+              {models[provider.id]?.map((m) => <option key={m} value={m} />)}
+            </datalist>
+          </>
+        )}
+      </div>
     </div>
   );
 }

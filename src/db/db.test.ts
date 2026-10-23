@@ -12,9 +12,12 @@ import {
   deleteProject,
   getCard,
   getChat,
+  getInterview,
   getSetting,
+  loreChatKey,
   putSetting,
   saveChat,
+  saveInterview,
   listCards,
   listProjects,
   listVersions,
@@ -22,6 +25,7 @@ import {
   saveCard,
   saveProject,
 } from "./db";
+import { newInterview } from "../ai/records";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -92,11 +96,15 @@ describe("db", () => {
     expect(await getSetting("x")).toEqual({ a: 1 });
   });
 
-  it("deletes a card's co-writer chat with the card", async () => {
+  it("deletes a card's co-writer chats and interview with the card", async () => {
     const project = await createProject("p");
     const card = await createCard(project.id, "character");
     await saveChat({ cardId: card.id, messages: [], proposals: [], sentContext: {}, unreported: [], updatedAt: 0 });
+    await saveChat({ cardId: loreChatKey(card.id), messages: [], proposals: [], sentContext: {}, unreported: [], updatedAt: 0 });
+    await saveInterview(newInterview(card.id, "deep"));
     await deleteCard(card.id);
     expect(await getChat(card.id)).toBeUndefined();
+    expect(await getChat(loreChatKey(card.id))).toBeUndefined();
+    expect(await getInterview(card.id)).toBeUndefined();
   });
 });

@@ -23,6 +23,7 @@ export function TextField({ info }: { info: FieldInfo }) {
             className="rounded-md px-1.5 py-1 text-accent hover:bg-accent/10"
             onClick={() => {
               useCowriter.getState().setDraft(`${info.label}: `);
+              useUi.getState().setCowriterTab("chat");
               useUi.getState().setSection("cowriter");
             }}
           >

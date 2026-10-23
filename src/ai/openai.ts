@@ -60,7 +60,7 @@ export function openaiProvider(config: ProviderConfig): Provider {
         model: request.model,
         stream: true,
         messages: toWire(request),
-        ...(request.useTools
+        ...(request.useTools && request.tools.length
           ? {
               tools: request.tools.map((t) => ({
                 type: "function",
@@ -90,7 +90,7 @@ export function openaiProvider(config: ProviderConfig): Provider {
 }
 
 function toWire(request: CompletionRequest): WireMessage[] {
-  const system = request.useTools ? request.system : `${request.system}\n\n${jsonEditInstructions(request.tools)}`;
+  const system = request.useTools || !request.tools.length ? request.system : `${request.system}\n\n${jsonEditInstructions(request.tools)}`;
   const out: WireMessage[] = [{ role: "system", content: system }];
   for (const m of request.messages) out.push(...wireMessage(m, request.useTools));
   return out;

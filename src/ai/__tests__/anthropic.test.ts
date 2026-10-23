@@ -83,12 +83,27 @@ describe("Claude provider", () => {
         { role: "user", text: "go" },
         { role: "assistant", text: "", toolCalls: [{ id: "toolu_1", name: "pitch", input: {} }], raw: { kind: "anthropic", content: raw } },
         { role: "tool", results: [{ id: "toolu_1", content: "shown", isError: false }] },
+        { role: "user", text: "next" },
       ],
     });
     const body = JSON.parse(fetchMock.fn.mock.calls[0][1].body);
     expect(body.fallbacks).toBeUndefined();
     expect(body.messages[1]).toEqual({ role: "assistant", content: raw });
-    expect(body.messages[2]).toEqual({ role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "shown", is_error: false }] });
+    // Tool results and the user's next message share one turn.
+    expect(body.messages).toHaveLength(3);
+    expect(body.messages[2]).toEqual({
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: "toolu_1", content: "shown", is_error: false },
+        { type: "text", text: "next" },
+      ],
+    });
+  });
+
+  it("leaves out the tool list for calls without tools", async () => {
+    fetchMock.fn.mockResolvedValue(claudeStream("claude-haiku-5-5", [{ type: "text", text: "" }], [{ index: 0, delta: { type: "text_delta", text: "ok" } }], "end_turn"));
+    await provider.complete({ model: "claude-haiku-5-5", system: "s", useTools: true, tools: [], messages: [{ role: "user", text: "review" }] });
+    expect(JSON.parse(fetchMock.fn.mock.calls[0][1].body).tools).toBeUndefined();
   });
 
   it("uses only the content after a mid-output fallback", async () => {

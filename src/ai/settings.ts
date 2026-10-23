@@ -79,7 +79,9 @@ export function createProvider(config: ProviderConfig): Provider {
 
 /** The provider and model a mode runs on, or undefined when none is set up. */
 export function resolveModel(settings: AiSettings, mode: ModeId) {
-  const choice = settings.modeModels[mode] ?? settings.defaultModel;
+  const own = settings.modeModels[mode];
+  // A mode without a finished choice of its own uses the default model.
+  const choice = own?.model && settings.providers.some((p) => p.id === own.providerId) ? own : settings.defaultModel;
   const config = choice && settings.providers.find((p) => p.id === choice.providerId);
   if (!choice || !config || !choice.model) return undefined;
   return { choice, config, useTools: !settings.noToolModels.includes(modelKey(choice)) };

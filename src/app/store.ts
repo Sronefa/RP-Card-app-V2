@@ -3,6 +3,7 @@ import type { GroupId } from "../features/editor/fields";
 import type { SectionId } from "./sections";
 
 export type LibraryTab = "projects" | "personas";
+export type CowriterTab = "chat" | "interview";
 
 interface UiState {
   section: SectionId;
@@ -18,6 +19,9 @@ interface UiState {
   /** Lorebook entry to open and scroll to, set when jumping from the card checker. */
   focusEntry?: number;
   setFocusEntry: (index: number | undefined) => void;
+  /** Tab shown in the co-writer section. */
+  cowriterTab: CowriterTab;
+  setCowriterTab: (tab: CowriterTab) => void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -29,4 +33,6 @@ export const useUi = create<UiState>((set) => ({
   editorGroup: "basics",
   setEditorGroup: (editorGroup) => set({ editorGroup }),
   setFocusEntry: (focusEntry) => set({ focusEntry }),
+  cowriterTab: "chat",
+  setCowriterTab: (cowriterTab) => set({ cowriterTab }),
 }));
