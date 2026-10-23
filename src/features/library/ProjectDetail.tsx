@@ -34,6 +34,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const [addingPersona, setAddingPersona] = useState(false);
 
   const reload = useCallback(async () => {
+    // Save the open card first, so the list shows its latest name and image.
+    await useEditor.getState().flush();
     const p = await getProject(projectId);
     if (!p) return setProjectId(undefined);
     setProject(p);
@@ -52,8 +54,13 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const linked = personas.filter((p) => project.personaIds.includes(p.id));
 
   async function open(record: CardRecord) {
-    await openCard(record.id);
-    setSection("editor");
+    try {
+      await openCard(record.id);
+      setSection("editor");
+    } catch (e) {
+      toast(`Couldn't open the card: ${(e as Error).message}`, "error");
+      await reload();
+    }
   }
 
   async function create(kind: CardKind) {

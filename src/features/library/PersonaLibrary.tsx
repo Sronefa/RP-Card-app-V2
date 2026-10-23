@@ -35,7 +35,9 @@ export function PersonaLibrary() {
   }
 
   async function save(persona: PersonaRecord) {
-    setEditing(await savePersona(persona));
+    const saved = await savePersona(persona);
+    // Don't reopen the dialog if it was closed while saving.
+    setEditing((current) => (current?.id === saved.id ? saved : current));
     reload();
   }
 
@@ -118,7 +120,8 @@ function PersonaForm({
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState(persona);
-  const changed = draft !== persona;
+  const changed =
+    draft.name !== persona.name || draft.description !== persona.description || draft.avatar !== persona.avatar;
 
   async function pickAvatar() {
     const [file] = await pickFiles("image/*");

@@ -60,4 +60,20 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText(/Saved$/)).toBeInTheDocument());
     expect((await getCard(id))?.card.data.name).toBe("Seraphina");
   });
+
+  it("keeps Ctrl+Z inside dialogs for the text box, not the card", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("New project name"), { target: { value: "P" } });
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New character" }));
+    const name = await screen.findByRole("textbox", { name: "Name" });
+    fireEvent.change(name, { target: { value: "Changed" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    fireEvent.keyDown(screen.getByLabelText("Version name"), { key: "z", ctrlKey: true });
+    expect(useEditor.getState().record?.card.data.name).toBe("Changed");
+
+    fireEvent.keyDown(name, { key: "z", ctrlKey: true });
+    expect(useEditor.getState().record?.card.data.name).toBe("New character");
+  });
 });

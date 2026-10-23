@@ -1,7 +1,7 @@
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCard, createProject, getCard, listVersions, resetDbForTests } from "../db/db";
-import { AUTO_VERSION_MS, COALESCE_MS, useEditor } from "./store";
+import { AUTO_VERSION_MS, COALESCE_MS, installSaveOnExit, useEditor } from "./store";
 
 async function openNewCard() {
   const project = await createProject("p");
@@ -71,5 +71,13 @@ describe("editor store", () => {
     expect(useEditor.getState().record?.card.data.name).toBe("New character");
     useEditor.getState().undo();
     expect(useEditor.getState().record?.card.data.name).toBe("Changed");
+  });
+
+  it("saves pending edits when the window is closed", async () => {
+    const card = await openNewCard();
+    installSaveOnExit();
+    useEditor.getState().setField("name", "Before close");
+    window.dispatchEvent(new Event("pagehide"));
+    await vi.waitFor(async () => expect((await getCard(card.id))?.card.data.name).toBe("Before close"));
   });
 });

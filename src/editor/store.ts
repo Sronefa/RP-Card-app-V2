@@ -180,3 +180,14 @@ export const useEditor = create<EditorState>((set, get) => {
     },
   };
 });
+
+/**
+ * Saves pending edits right away when the app is hidden or closed
+ * (switching apps on Android, minimizing or closing the window on Windows).
+ */
+export function installSaveOnExit() {
+  const save = () => void useEditor.getState().flush();
+  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && save());
+  window.addEventListener("pagehide", save);
+  window.addEventListener("beforeunload", save);
+}

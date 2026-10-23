@@ -18,23 +18,12 @@ const SAVE_LABEL: Record<SaveState, string> = {
 
 export function EditorView() {
   const record = useEditor((s) => s.record);
-  const { saveState, past, future, undo, redo, flush } = useEditor();
+  const { saveState, past, future, undo, redo } = useEditor();
   const setSection = useUi((s) => s.setSection);
   const [group, setGroup] = useState<GroupId>("basics");
   const [history, setHistory] = useState(false);
 
   useKeyboardUndo(!!record);
-
-  // Save right away when the app is hidden (switching apps on Android, minimizing on Windows).
-  useEffect(() => {
-    const onHide = () => document.visibilityState === "hidden" && void flush();
-    document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("beforeunload", onHide);
-    return () => {
-      document.removeEventListener("visibilitychange", onHide);
-      window.removeEventListener("beforeunload", onHide);
-    };
-  }, [flush]);
 
   if (!record) {
     return (
@@ -103,6 +92,8 @@ function useKeyboardUndo(enabled: boolean) {
     if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
+      // Inside dialogs (version name, persona form...) keep the text box's own undo.
+      if (e.target instanceof Element && e.target.closest("[role=dialog]")) return;
       const key = e.key.toLowerCase();
       if (key === "z" && !e.shiftKey) {
         e.preventDefault();
