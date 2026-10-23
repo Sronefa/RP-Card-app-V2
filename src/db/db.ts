@@ -6,6 +6,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { newCard } from "../card";
 import type { CardPackage, CharacterCardV3 } from "../card";
 import { newId } from "../lib/id";
+import type { ChatRecord, CowriterSettings } from "../ai/records";
 
 export type CardKind = "character" | "world";
 
@@ -14,6 +15,8 @@ export interface ProjectRecord {
   name: string;
   /** Personas from the shared library used in this project. */
   personaIds: string[];
+  /** Co-writer settings for this project; defaults apply when missing. */
+  cowriter?: CowriterSettings;
   createdAt: number;
   updatedAt: number;
 }
@@ -50,6 +53,10 @@ interface Schema extends DBSchema {
   cards: { key: string; value: CardRecord; indexes: { projectId: string } };
   versions: { key: string; value: VersionRecord; indexes: { cardId: string } };
   personas: { key: string; value: PersonaRecord };
+  /** App settings by key, such as the co-writer's providers and prompt library. */
+  settings: { key: string; value: { key: string; value: unknown } };
+  /** Co-writer conversation per card. */
+  chats: { key: string; value: ChatRecord };
 }
 
 /** Versions kept per card; older ones are pruned. */
@@ -59,12 +66,18 @@ const DB_NAME = "cardforge";
 let dbPromise: Promise<IDBPDatabase<Schema>> | undefined;
 
 function db() {
-  dbPromise ??= openDB<Schema>(DB_NAME, 1, {
-    upgrade(d) {
-      d.createObjectStore("projects", { keyPath: "id" });
-      d.createObjectStore("cards", { keyPath: "id" }).createIndex("projectId", "projectId");
-      d.createObjectStore("versions", { keyPath: "id" }).createIndex("cardId", "cardId");
-      d.createObjectStore("personas", { keyPath: "id" });
+  dbPromise ??= openDB<Schema>(DB_NAME, 2, {
+    upgrade(d, oldVersion) {
+      if (oldVersion < 1) {
+        d.createObjectStore("projects", { keyPath: "id" });
+        d.createObjectStore("cards", { keyPath: "id" }).createIndex("projectId", "projectId");
+        d.createObjectStore("versions", { keyPath: "id" }).createIndex("cardId", "cardId");
+        d.createObjectStore("personas", { keyPath: "id" });
+      }
+      if (oldVersion < 2) {
+        d.createObjectStore("settings", { keyPath: "key" });
+        d.createObjectStore("chats", { keyPath: "cardId" });
+      }
     },
   });
   return dbPromise;
@@ -146,8 +159,13 @@ export async function saveCard(record: CardRecord): Promise<CardRecord> {
 export async function deleteCard(id: string) {
   const d = await db();
   const versions = await d.getAllKeysFromIndex("versions", "cardId", id);
-  const tx = d.transaction(["cards", "versions"], "readwrite");
-  await Promise.all([...versions.map((v) => tx.objectStore("versions").delete(v)), tx.objectStore("cards").delete(id), tx.done]);
+  const tx = d.transaction(["cards", "versions", "chats"], "readwrite");
+  await Promise.all([
+    ...versions.map((v) => tx.objectStore("versions").delete(v)),
+    tx.objectStore("cards").delete(id),
+    tx.objectStore("chats").delete(id),
+    tx.done,
+  ]);
 }
 
 async function touchProject(projectId: string) {
@@ -201,4 +219,28 @@ export async function deletePersona(id: string) {
     }
   }
   await d.delete("personas", id);
+}
+
+// Settings
+
+export async function getSetting<T>(key: string): Promise<T | undefined> {
+  return (await (await db()).get("settings", key))?.value as T | undefined;
+}
+
+export async function putSetting(key: string, value: unknown) {
+  await (await db()).put("settings", { key, value });
+}
+
+// Co-writer chats
+
+export async function getChat(cardId: string): Promise<ChatRecord | undefined> {
+  return (await db()).get("chats", cardId);
+}
+
+export async function saveChat(chat: ChatRecord) {
+  await (await db()).put("chats", chat);
+}
+
+export async function deleteChat(cardId: string) {
+  await (await db()).delete("chats", cardId);
 }

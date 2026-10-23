@@ -1,4 +1,5 @@
 import { IDBFactory } from "fake-indexeddb";
+import { openDB } from "idb";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   MAX_VERSIONS,
@@ -10,6 +11,10 @@ import {
   deletePersona,
   deleteProject,
   getCard,
+  getChat,
+  getSetting,
+  putSetting,
+  saveChat,
   listCards,
   listProjects,
   listVersions,
@@ -68,5 +73,30 @@ describe("db", () => {
     await saveProject({ ...project, personaIds: [persona.id] });
     await deletePersona(persona.id);
     expect((await listProjects())[0].personaIds).toEqual([]);
+  });
+
+  it("upgrades a version 1 database without losing data", async () => {
+    const old = await openDB("cardforge", 1, {
+      upgrade(d) {
+        d.createObjectStore("projects", { keyPath: "id" });
+        d.createObjectStore("cards", { keyPath: "id" }).createIndex("projectId", "projectId");
+        d.createObjectStore("versions", { keyPath: "id" }).createIndex("cardId", "cardId");
+        d.createObjectStore("personas", { keyPath: "id" });
+      },
+    });
+    await old.put("projects", { id: "p1", name: "Old", personaIds: [], createdAt: 1, updatedAt: 1 });
+    old.close();
+
+    expect((await listProjects()).map((p) => p.name)).toEqual(["Old"]);
+    await putSetting("x", { a: 1 });
+    expect(await getSetting("x")).toEqual({ a: 1 });
+  });
+
+  it("deletes a card's co-writer chat with the card", async () => {
+    const project = await createProject("p");
+    const card = await createCard(project.id, "character");
+    await saveChat({ cardId: card.id, messages: [], proposals: [], sentContext: {}, unreported: [], updatedAt: 0 });
+    await deleteCard(card.id);
+    expect(await getChat(card.id)).toBeUndefined();
   });
 });

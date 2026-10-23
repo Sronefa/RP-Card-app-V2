@@ -19,6 +19,7 @@ import {
 import { useEditor } from "../../editor/store";
 import { CARD_FILE_ACCEPT, exportRecord, importCard, kindOf, type ExportFormat } from "../../lib/cardFiles";
 import { pickFiles, readFileBytes } from "../../lib/files";
+import { ProjectStyleDialog } from "../cowriter/ProjectStyleDialog";
 import { CardTile } from "./CardTile";
 
 export function ProjectDetail({ projectId }: { projectId: string }) {
@@ -32,6 +33,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const [actionsFor, setActionsFor] = useState<CardRecord>();
   const [confirmDelete, setConfirmDelete] = useState<"project" | CardRecord>();
   const [addingPersona, setAddingPersona] = useState(false);
+  const [styling, setStyling] = useState(false);
 
   const reload = useCallback(async () => {
     // Save the open card first, so the list shows its latest name and image.
@@ -125,7 +127,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   }
 
   async function updatePersonas(personaIds: string[]) {
-    setProject(await saveProject({ ...project!, personaIds }));
+    // Re-read first: the co-writer settings may have been saved since this screen loaded.
+    const fresh = (await getProject(projectId)) ?? project!;
+    setProject(await saveProject({ ...fresh, personaIds }));
   }
 
   const section = (title: string, list: CardRecord[], actions: React.ReactNode, empty: string) => (
@@ -156,7 +160,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           className="text-lg font-semibold"
           onBlur={(e) => {
             const name = e.target.value.trim();
-            if (name && name !== project.name) void saveProject({ ...project, name }).then(setProject);
+            if (name && name !== project.name)
+              void getProject(projectId).then((fresh) => saveProject({ ...(fresh ?? project), name }).then(setProject));
           }}
         />
       </div>
@@ -203,11 +208,20 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </div>
       </section>
 
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Co-writer</h2>
+        <p className="text-sm text-ink-muted">Content mode, tone, genre and how proactive the co-writer is in this project.</p>
+        <Button className="self-start" onClick={() => setStyling(true)}>
+          Co-writer settings
+        </Button>
+      </section>
+
       <div>
         <Button variant="danger" onClick={() => setConfirmDelete("project")}>
           Delete project
         </Button>
       </div>
+      <ProjectStyleDialog projectId={projectId} open={styling} onClose={() => setStyling(false)} />
 
       <Dialog open={!!actionsFor} title={actionsFor?.card.data.name || "Card"} onClose={() => setActionsFor(undefined)}>
         {actionsFor && (
