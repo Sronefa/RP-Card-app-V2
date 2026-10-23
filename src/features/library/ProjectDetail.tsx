@@ -1,0 +1,274 @@
+import { useCallback, useEffect, useState } from "react";
+import { useUi } from "../../app/store";
+import { toast } from "../../components/toast";
+import { Button, Dialog, TextInput } from "../../components/ui";
+import {
+  createCard,
+  deleteCard,
+  deleteProject,
+  getProject,
+  listCards,
+  listPersonas,
+  saveCard,
+  saveProject,
+  type CardKind,
+  type CardRecord,
+  type PersonaRecord,
+  type ProjectRecord,
+} from "../../db/db";
+import { useEditor } from "../../editor/store";
+import { CARD_FILE_ACCEPT, exportRecord, importCard, kindOf, type ExportFormat } from "../../lib/cardFiles";
+import { pickFiles, readFileBytes } from "../../lib/files";
+import { CardTile } from "./CardTile";
+
+export function ProjectDetail({ projectId }: { projectId: string }) {
+  const { setProjectId, setSection } = useUi();
+  const openCard = useEditor((s) => s.open);
+  const closeEditor = useEditor((s) => s.close);
+  const openCardId = useEditor((s) => s.record?.id);
+  const [project, setProject] = useState<ProjectRecord>();
+  const [cards, setCards] = useState<CardRecord[]>([]);
+  const [personas, setPersonas] = useState<PersonaRecord[]>([]);
+  const [actionsFor, setActionsFor] = useState<CardRecord>();
+  const [confirmDelete, setConfirmDelete] = useState<"project" | CardRecord>();
+  const [addingPersona, setAddingPersona] = useState(false);
+
+  const reload = useCallback(async () => {
+    const p = await getProject(projectId);
+    if (!p) return setProjectId(undefined);
+    setProject(p);
+    setCards(await listCards(projectId));
+    setPersonas(await listPersonas());
+  }, [projectId, setProjectId]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  if (!project) return null;
+
+  const worlds = cards.filter((c) => c.kind === "world");
+  const characters = cards.filter((c) => c.kind === "character");
+  const linked = personas.filter((p) => project.personaIds.includes(p.id));
+
+  async function open(record: CardRecord) {
+    await openCard(record.id);
+    setSection("editor");
+  }
+
+  async function create(kind: CardKind) {
+    await open(await createCard(projectId, kind));
+  }
+
+  async function importFiles() {
+    for (const file of await pickFiles(CARD_FILE_ACCEPT, true)) {
+      try {
+        const result = importCard(await readFileBytes(file));
+        const { card, files, image } = result;
+        await createCard(projectId, kindOf(result), { card, files, image });
+        toast(
+          result.warnings.length
+            ? `Imported ${card.data.name || file.name}: ${result.warnings.join("; ")}`
+            : `Imported ${card.data.name || file.name}`,
+        );
+      } catch (e) {
+        toast(`Couldn't import ${file.name}: ${(e as Error).message}`, "error");
+      }
+    }
+    await reload();
+  }
+
+  async function exportAs(record: CardRecord, format: ExportFormat) {
+    setActionsFor(undefined);
+    // Save pending edits first, so the export has them.
+    if (record.id === openCardId) await useEditor.getState().flush();
+    try {
+      const warnings = await exportRecord(record.id === openCardId ? useEditor.getState().record! : record, format);
+      if (warnings) toast(warnings.length ? `Exported with notes: ${warnings.join("; ")}` : "Exported");
+    } catch (e) {
+      toast(`Export failed: ${(e as Error).message}`, "error");
+    }
+  }
+
+  async function setKind(record: CardRecord, kind: CardKind) {
+    setActionsFor(undefined);
+    if (record.id === openCardId) {
+      useEditor.getState().setKind(kind);
+      await useEditor.getState().flush();
+    } else {
+      await saveCard({ ...record, kind });
+    }
+    await reload();
+  }
+
+  async function confirmDeletion() {
+    const target = confirmDelete;
+    setConfirmDelete(undefined);
+    if (target === "project") {
+      if (cards.some((c) => c.id === openCardId)) await closeEditor();
+      await deleteProject(projectId);
+      setProjectId(undefined);
+    } else if (target) {
+      if (target.id === openCardId) await closeEditor();
+      await deleteCard(target.id);
+      await reload();
+    }
+  }
+
+  async function updatePersonas(personaIds: string[]) {
+    setProject(await saveProject({ ...project!, personaIds }));
+  }
+
+  const section = (title: string, list: CardRecord[], actions: React.ReactNode, empty: string) => (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-semibold">{title}</h2>
+        <div className="flex gap-2">{actions}</div>
+      </div>
+      {list.length === 0 && <p className="text-sm text-ink-muted">{empty}</p>}
+      <div className="grid gap-2 sm:grid-cols-2">
+        {list.map((c) => (
+          <CardTile key={c.id} record={c} onOpen={() => void open(c)} onMore={() => setActionsFor(c)} />
+        ))}
+      </div>
+    </section>
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" onClick={() => setProjectId(undefined)} aria-label="Back to projects">
+          ←
+        </Button>
+        <TextInput
+          key={project.id}
+          defaultValue={project.name}
+          aria-label="Project name"
+          className="text-lg font-semibold"
+          onBlur={(e) => {
+            const name = e.target.value.trim();
+            if (name && name !== project.name) void saveProject({ ...project, name }).then(setProject);
+          }}
+        />
+      </div>
+
+      {section(
+        "World",
+        worlds,
+        worlds.length === 0 && <Button onClick={() => void create("world")}>New world</Button>,
+        "The world card narrates the setting and carries the shared lorebook.",
+      )}
+
+      {section(
+        "Characters",
+        characters,
+        <>
+          <Button onClick={() => void importFiles()}>Import</Button>
+          <Button variant="primary" onClick={() => void create("character")}>
+            New character
+          </Button>
+        </>,
+        "No characters yet. Create one or import a PNG, CHARX or JSON card.",
+      )}
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Personas</h2>
+          <Button onClick={() => setAddingPersona(true)}>Add persona</Button>
+        </div>
+        {linked.length === 0 && <p className="text-sm text-ink-muted">Pick personas from your library to use with this project.</p>}
+        <div className="flex flex-wrap gap-2">
+          {linked.map((p) => (
+            <span key={p.id} className="flex items-center gap-1 rounded-full border border-border bg-surface-raised py-1 pr-1 pl-3 text-sm">
+              {p.name}
+              <button
+                type="button"
+                aria-label={`Remove ${p.name} from project`}
+                className="flex size-7 items-center justify-center rounded-full text-ink-muted hover:text-ink"
+                onClick={() => void updatePersonas(project.personaIds.filter((id) => id !== p.id))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <div>
+        <Button variant="danger" onClick={() => setConfirmDelete("project")}>
+          Delete project
+        </Button>
+      </div>
+
+      <Dialog open={!!actionsFor} title={actionsFor?.card.data.name || "Card"} onClose={() => setActionsFor(undefined)}>
+        {actionsFor && (
+          <div className="flex flex-col gap-2">
+            <Button variant="primary" onClick={() => void open(actionsFor).then(() => setActionsFor(undefined))}>
+              Open in editor
+            </Button>
+            <div className="grid grid-cols-3 gap-2">
+              <Button onClick={() => void exportAs(actionsFor, "png")}>Export PNG</Button>
+              <Button onClick={() => void exportAs(actionsFor, "charx")}>CHARX</Button>
+              <Button onClick={() => void exportAs(actionsFor, "json")}>JSON</Button>
+            </div>
+            <Button onClick={() => void setKind(actionsFor, actionsFor.kind === "world" ? "character" : "world")}>
+              Make it a {actionsFor.kind === "world" ? "character" : "world"} card
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setConfirmDelete(actionsFor);
+                setActionsFor(undefined);
+              }}
+            >
+              Delete card
+            </Button>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={!!confirmDelete}
+        title={confirmDelete === "project" ? `Delete ${project.name}?` : `Delete ${(confirmDelete as CardRecord | undefined)?.card.data.name}?`}
+        onClose={() => setConfirmDelete(undefined)}
+      >
+        <p className="mb-4 text-ink-muted">
+          {confirmDelete === "project"
+            ? "This deletes the project and all of its cards and their history. Personas stay in your library."
+            : "This deletes the card and its version history."}
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => setConfirmDelete(undefined)}>Cancel</Button>
+          <Button variant="danger" onClick={() => void confirmDeletion()}>
+            Delete
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={addingPersona} title="Add a persona" onClose={() => setAddingPersona(false)}>
+        {personas.length === 0 ? (
+          <p className="text-ink-muted">Your persona library is empty. Create personas in the Personas tab.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {personas.map((p) => {
+              const on = project.personaIds.includes(p.id);
+              return (
+                <li key={p.id}>
+                  <Button
+                    className="w-full justify-between"
+                    onClick={() =>
+                      void updatePersonas(on ? project.personaIds.filter((id) => id !== p.id) : [...project.personaIds, p.id])
+                    }
+                  >
+                    {p.name}
+                    <span className="text-ink-muted">{on ? "Added ✓" : "Add"}</span>
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Dialog>
+    </div>
+  );
+}
