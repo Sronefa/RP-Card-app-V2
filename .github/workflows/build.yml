@@ -52,8 +52,6 @@ jobs:
     name: Android APK
     needs: check
     runs-on: ubuntu-latest
-    env:
-      NDK_VERSION: 27.2.12479018
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -64,12 +62,12 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      # The runner image ships the Android SDK at $ANDROID_HOME; only the NDK is added.
-      - name: Install NDK
+      # The runner image ships the Android SDK and NDK; use them instead of downloading.
+      - name: Locate NDK
         run: |
-          SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
-          "$SDKMANAGER" --install "ndk;${NDK_VERSION}" > /dev/null
-          echo "NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          test -d "$ANDROID_NDK_LATEST_HOME"
+          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          echo "Using NDK at $ANDROID_NDK_LATEST_HOME"
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi
