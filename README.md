@@ -10,6 +10,7 @@ CardForge reads and writes Character Card V3 (PNG, CHARX, JSON) and runs on Wind
 - [Tauri 2](https://tauri.app) shell for the Windows app and the Android APK
 - React 19 + TypeScript + Vite
 - Tailwind CSS 4, Zustand
+- IndexedDB (via `idb`) for projects, cards, version history and the persona library
 - Vitest + Testing Library
 
 ## Development
@@ -63,9 +64,10 @@ uninstall the previous build before installing a new one.
 
 ## Roadmap
 
-1. Foundation: app shell and CI builds
-2. Card engine: V3 model, PNG/CHARX/JSON import and export, V2 fallback
-3. Editor and library
-4. Lorebook and assets
-5. AI co-writer: Claude and OpenAI-compatible endpoints (NanoGPT, OpenRouter, local)
-6. Test chat and release polish
+1. Foundation: app shell and CI builds (done)
+2. Card engine: V3 model, PNG/CHARX/JSON import and export, V2 fallback (done)
+3. Projects, persona library and card editor with autosave, undo and version history
+4. Lorebook, assets and card checker
+5. Co-writer core: Claude and OpenAI-compatible endpoints (NanoGPT, OpenRouter, local), tool-call edits
+6. Interview, Deep pipeline and lorebook brainstorm
+7. Polish and release

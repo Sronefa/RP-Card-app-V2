@@ -1,9 +1,12 @@
+import { useEffect, useRef } from "react";
 import { AssetsView } from "../features/assets/AssetsView";
 import { CowriterPanel } from "../features/cowriter/CowriterPanel";
 import { EditorView } from "../features/editor/EditorView";
 import { LibraryView } from "../features/library/LibraryView";
 import { LorebookView } from "../features/lorebook/LorebookView";
 import { Icon } from "../components/Icon";
+import { Toaster } from "../components/toast";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { SECTIONS, type SectionId } from "./sections";
 import { useUi } from "./store";
 
@@ -23,6 +26,12 @@ const VIEWS: Record<Exclude<SectionId, "cowriter">, () => React.JSX.Element> = {
 export default function App() {
   const section = useUi((s) => s.section);
   const setSection = useUi((s) => s.setSection);
+  const mainRef = useRef<HTMLElement>(null);
+
+  // Each section starts at the top instead of keeping the previous section's scroll position.
+  useEffect(() => {
+    mainRef.current?.scrollTo?.({ top: 0 });
+  }, [section]);
 
   // On large screens the co-writer is always docked, so the main area falls back to the editor.
   const MainView = section === "cowriter" ? EditorView : VIEWS[section];
@@ -51,19 +60,21 @@ export default function App() {
         ))}
       </nav>
 
-      <main className="min-h-0 flex-1 overflow-y-auto">
-        {section === "cowriter" ? (
-          <>
-            <div className="lg:hidden">
-              <CowriterPanel />
-            </div>
-            <div className="hidden lg:block">
-              <MainView />
-            </div>
-          </>
-        ) : (
-          <MainView />
-        )}
+      <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto">
+        <ErrorBoundary key={section} onReset={() => setSection("library")}>
+          {section === "cowriter" ? (
+            <>
+              <div className="lg:hidden">
+                <CowriterPanel />
+              </div>
+              <div className="hidden lg:block">
+                <MainView />
+              </div>
+            </>
+          ) : (
+            <MainView />
+          )}
+        </ErrorBoundary>
       </main>
 
       <aside
@@ -87,6 +98,7 @@ export default function App() {
           />
         ))}
       </nav>
+      <Toaster />
     </div>
   );
 }
