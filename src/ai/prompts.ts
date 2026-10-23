@@ -316,3 +316,17 @@ export function brainstormKickoff(question: string, suggestions: string[], known
     .filter(Boolean)
     .join("\n\n");
 }
+
+// Personas
+
+export function personaKickoff(premise: string): string {
+  return [
+    "Interview me to build a persona: the character I play in SillyTavern, not a character card. A persona is short and sent with every message, so only what other characters would notice or need to know matters.",
+    premise.trim() ? `My idea: ${premise.trim()}` : "I have no idea yet: help me find one.",
+    "Ask a single round of 4 to 6 questions with ask_questions: name, look, personality and manner, background, and what makes them interesting to meet. Don't ask about the story or the scenario.",
+  ].join("\n\n");
+}
+
+export function personaWriteRequest(answers: string): string {
+  return `<interview>\n${answers}\n</interview>\n\nWrite the persona with write_persona. The description is 100 to 300 tokens of natural third-person prose that refers to the persona as {{user}}: look first, then personality and manner, then a line of background. Only what other characters would notice or need to know. Where an answer is "${YOU_DECIDE}", decide it yourself.`;
+}

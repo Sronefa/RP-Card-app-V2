@@ -7,11 +7,13 @@ import { pickFiles, readFileBytes, safeFileName, saveFile, toPng } from "../../l
 import { useObjectUrl } from "../../lib/useObjectUrl";
 import { utf8Encode } from "../../card/bytes";
 import { estimateTokens } from "../../lib/tokens";
+import { PersonaInterview } from "./PersonaInterview";
 
 export function PersonaLibrary() {
   const [personas, setPersonas] = useState<PersonaRecord[]>();
   const [editing, setEditing] = useState<PersonaRecord>();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [interviewing, setInterviewing] = useState(false);
 
   const reload = () => void listPersonas().then(setPersonas);
   useEffect(reload, []);
@@ -44,10 +46,11 @@ export function PersonaLibrary() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-muted">Personas are the characters you play. They are shared by all your projects.</p>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={() => void create()}>
           New persona
         </Button>
+        <Button onClick={() => setInterviewing(true)}>✦ Build with the co-writer</Button>
         <Button onClick={() => void importFiles()}>Import</Button>
       </div>
       {personas?.length === 0 && <EmptyState title="No personas yet" />}
@@ -79,6 +82,16 @@ export function PersonaLibrary() {
           />
         )}
       </Dialog>
+      {interviewing && (
+        <PersonaInterview
+          onClose={() => setInterviewing(false)}
+          onCreated={(p) => {
+            setInterviewing(false);
+            reload();
+            setEditing(p);
+          }}
+        />
+      )}
       <Dialog open={confirmDelete} title={`Delete ${editing?.name}?`} onClose={() => setConfirmDelete(false)}>
         <p className="mb-4 text-ink-muted">It will be removed from every project that uses it.</p>
         <div className="flex justify-end gap-2">

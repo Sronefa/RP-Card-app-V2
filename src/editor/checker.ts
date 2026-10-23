@@ -20,6 +20,8 @@ export interface Issue {
   level: IssueLevel;
   message: string;
   target: IssueTarget;
+  /** Only the user can fix it; the co-writer can't (images, tags, asset files). */
+  manual?: boolean;
 }
 
 /** Above this many permanent tokens a card crowds out chat history on small contexts. */
@@ -45,15 +47,16 @@ const TEXT_FIELDS: { field: "description" | "personality" | "scenario" | "first_
 export function checkCard(record: CardRecord): Issue[] {
   const d = record.card.data;
   const issues: Issue[] = [];
-  const add = (level: IssueLevel, message: string, target: IssueTarget) => issues.push({ level, message, target });
+  const add = (level: IssueLevel, message: string, target: IssueTarget, manual = target.section === "assets") =>
+    issues.push({ level, message, target, ...(manual ? { manual } : {}) });
   const isWorld = record.kind === "world";
 
   // Basics
   if (!d.name.trim()) add("error", "The card has no name.", editor("basics"));
   if (!d.description.trim()) add("error", "The description is empty.", editor("description"));
   if (!d.first_mes.trim()) add("warning", "There is no first message, so the chat starts empty.", editor("greetings"));
-  if (!record.image && !embeddedIcon(record)) add("tip", "The card has no image.", editor("basics"));
-  if (d.tags.length === 0) add("tip", "Add a few tags so the card is easier to find.", editor("basics"));
+  if (!record.image && !embeddedIcon(record)) add("tip", "The card has no image.", editor("basics"), true);
+  if (d.tags.length === 0) add("tip", "Add a few tags so the card is easier to find.", editor("basics"), true);
   if (isWorld && !d.scenario.trim() && !d.first_mes.trim())
     add("warning", "A world card needs a scenario or a first message to show where the story starts.", editor("scenario"));
 

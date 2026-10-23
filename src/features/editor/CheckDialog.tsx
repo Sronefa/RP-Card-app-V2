@@ -1,5 +1,6 @@
 import { useUi } from "../../app/store";
 import { Button, Dialog } from "../../components/ui";
+import { askCowriter } from "../../cowriter/ask";
 import type { Issue, IssueLevel } from "../../editor/checker";
 
 const LEVEL: Record<IssueLevel, { label: string; className: string }> = {
@@ -26,17 +27,26 @@ export function CheckDialog({ open, issues, onClose }: { open: boolean; issues: 
       ) : (
         <ul className="flex flex-col gap-2">
           {issues.map((issue, i) => (
-            <li key={i}>
-              <button
-                type="button"
-                onClick={() => go(issue)}
-                className="flex w-full flex-col gap-1 rounded-lg border border-border p-2 text-left text-sm hover:border-ink-muted"
-              >
+            <li key={i} className="flex items-stretch gap-1 rounded-lg border border-border hover:border-ink-muted">
+              <button type="button" onClick={() => go(issue)} className="flex flex-1 flex-col gap-1 p-2 text-left text-sm">
                 <span className={`w-fit rounded-full px-2 text-xs ${LEVEL[issue.level].className}`}>
                   {LEVEL[issue.level].label}
                 </span>
                 {issue.message}
               </button>
+              {!issue.manual && (
+                <button
+                  type="button"
+                  aria-label={`Fix with the co-writer: ${issue.message}`}
+                  className="shrink-0 rounded-r-lg px-3 text-sm text-accent hover:bg-accent/10"
+                  onClick={() => {
+                    onClose();
+                    void askCowriter({ send: `The card checker found this: "${issue.message}" Fix it.` });
+                  }}
+                >
+                  ✦ Fix
+                </button>
+              )}
             </li>
           ))}
         </ul>
