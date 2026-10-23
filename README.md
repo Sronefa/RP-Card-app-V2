@@ -49,6 +49,19 @@ npx tauri android dev            # run on a device or emulator
 Test fixtures in `src/card/__tests__/fixtures` are made by `make_fixtures.py` with Pillow, independently of
 CardForge's own PNG code.
 
+## Co-writer
+
+`src/ai/` talks to the models, `src/cowriter/` runs the conversation:
+
+- Providers: Claude through the Anthropic SDK, and any OpenAI-compatible endpoint (NanoGPT, OpenRouter, DeepSeek,
+  local servers). In the app, requests go through Tauri's HTTP plugin, so endpoints don't need CORS.
+  API keys are stored on the device only.
+- The co-writer edits the card only through tool calls (`set_field`, `patch_field`, greetings, example dialogues,
+  lorebook entries, `pitch`). Each call becomes a proposal shown as a diff; accepting it is one undo step.
+  Models without tool calling write the same edits as a JSON block instead; this is detected automatically.
+- The system prompt never changes during a chat. Project settings, the card, the project's world and personas are
+  sent in the user's message, only when they changed since the co-writer last saw them.
+
 ## Builds
 
 GitHub Actions builds every push and pull request:
@@ -68,6 +81,6 @@ uninstall the previous build before installing a new one.
 2. Card engine: V3 model, PNG/CHARX/JSON import and export, V2 fallback (done)
 3. Projects, persona library and card editor with autosave, undo and version history (done)
 4. Lorebook, assets and card checker (done)
-5. Co-writer core: Claude and OpenAI-compatible endpoints (NanoGPT, OpenRouter, local), tool-call edits
+5. Co-writer core: Claude and OpenAI-compatible endpoints (NanoGPT, OpenRouter, local), tool-call edits (done)
 6. Interview, Deep pipeline and lorebook brainstorm
 7. Polish and release

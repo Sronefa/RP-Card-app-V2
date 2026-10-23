@@ -1,4 +1,6 @@
+import { useUi } from "../../app/store";
 import { AutoTextarea } from "../../components/ui";
+import { useCowriter } from "../../cowriter/store";
 import { useEditor } from "../../editor/store";
 import { estimateTokens } from "../../lib/tokens";
 import type { FieldInfo } from "./fields";
@@ -14,7 +16,19 @@ export function TextField({ info }: { info: FieldInfo }) {
         <label htmlFor={id} className="font-medium">
           {info.label}
         </label>
-        <span className="text-xs text-ink-muted">~{estimateTokens(value ?? "")} tokens</span>
+        <span className="flex items-center gap-2 text-xs text-ink-muted">
+          ~{estimateTokens(value ?? "")} tokens
+          <button
+            type="button"
+            className="rounded-md px-1.5 py-1 text-accent hover:bg-accent/10"
+            onClick={() => {
+              useCowriter.getState().setDraft(`${info.label}: `);
+              useUi.getState().setSection("cowriter");
+            }}
+          >
+            ✦ Ask co-writer
+          </button>
+        </span>
       </div>
       <p className="text-xs text-ink-muted">{typeof info.help === "function" ? info.help(kind) : info.help}</p>
       <AutoTextarea

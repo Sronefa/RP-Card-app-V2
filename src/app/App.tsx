@@ -4,17 +4,19 @@ import { CowriterPanel } from "../features/cowriter/CowriterPanel";
 import { EditorView } from "../features/editor/EditorView";
 import { LibraryView } from "../features/library/LibraryView";
 import { LorebookView } from "../features/lorebook/LorebookView";
+import { SettingsView } from "../features/settings/SettingsView";
 import { Icon } from "../components/Icon";
 import { Toaster } from "../components/toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { SECTIONS, type SectionId } from "./sections";
+import { SECTIONS, SETTINGS_ICON, type SectionId } from "./sections";
 import { useUi } from "./store";
 
-const VIEWS: Record<Exclude<SectionId, "cowriter">, () => React.JSX.Element> = {
+const VIEWS: Record<Exclude<SectionId, "cowriter">, () => React.JSX.Element | null> = {
   library: LibraryView,
   editor: EditorView,
   lorebook: LorebookView,
   assets: AssetsView,
+  settings: SettingsView,
 };
 
 /**
@@ -40,7 +42,16 @@ export default function App() {
     <div className="flex h-full flex-col md:flex-row">
       <header className="pt-safe flex items-center gap-2 border-b border-border bg-surface-raised px-4 md:hidden">
         <img src="/icon.svg" alt="" className="size-6" />
-        <span className="py-3 font-semibold">CardForge</span>
+        <span className="flex-1 py-3 font-semibold">CardForge</span>
+        <button
+          type="button"
+          aria-label="Settings"
+          aria-current={section === "settings" ? "page" : undefined}
+          onClick={() => setSection("settings")}
+          className={`-mr-2 rounded-lg p-2 ${section === "settings" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+        >
+          <Icon path={SETTINGS_ICON} />
+        </button>
       </header>
 
       <nav
@@ -58,6 +69,13 @@ export default function App() {
             className={s.id === "cowriter" ? "lg:hidden" : undefined}
           />
         ))}
+        <NavButton
+          label="Settings"
+          icon={SETTINGS_ICON}
+          active={section === "settings"}
+          onClick={() => setSection("settings")}
+          className="mt-auto"
+        />
       </nav>
 
       <main ref={mainRef} className="min-h-0 flex-1 overflow-y-auto">
