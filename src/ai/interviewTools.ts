@@ -166,3 +166,19 @@ export function memoText(memo: GapMemo): string {
     .filter(Boolean)
     .join("\n\n");
 }
+
+export const WRITE_PERSONA: ToolDef = {
+  name: "write_persona",
+  description: "Hand in the finished persona.",
+  parameters: obj(
+    {
+      name: str("The persona's name"),
+      description: str("The persona description, 100 to 300 tokens"),
+    },
+    ["name", "description"],
+  ),
+};
+
+export function readPersona(call: ToolCall): { name: string; description: string } {
+  return { name: text(call.input.name), description: text(call.input.description) };
+}

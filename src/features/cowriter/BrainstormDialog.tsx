@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BRAINSTORM_TOOLS, readIdeas } from "../../ai/interviewTools";
 import { brainstormKickoff, settingsContext, systemPrompt } from "../../ai/prompts";
-import type { Question } from "../../ai/records";
+import { DEFAULT_COWRITER, type Question } from "../../ai/records";
 import type { ChatMessage } from "../../ai/types";
 import { AutoTextarea, Button, Dialog } from "../../components/ui";
 import { complete, isAbort, projectSettings } from "../../cowriter/engine";
@@ -18,7 +18,8 @@ export function BrainstormDialog({
   onClose,
 }: {
   question: Question;
-  projectId: string;
+  /** The project whose settings apply; personas have none. */
+  projectId?: string;
   /** What the interview has settled so far. */
   known: string;
   onUse: (answer: string) => void;
@@ -63,7 +64,8 @@ export function BrainstormDialog({
 
   useEffect(() => {
     let cancelled = false;
-    void projectSettings(projectId).then(({ settings, presets }) => {
+    const loaded = projectId ? projectSettings(projectId) : Promise.resolve({ settings: DEFAULT_COWRITER, presets: [] });
+    void loaded.then(({ settings, presets }) => {
       if (cancelled) return;
       const context = [settingsContext(settings, presets), known].filter(Boolean).join("\n\n");
       void send(brainstormKickoff(question.question, question.suggestions, context), []);

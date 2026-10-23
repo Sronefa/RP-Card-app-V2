@@ -67,6 +67,8 @@ CardForge's own PNG code.
   project's depth, runs gap analysis and follow-up rounds, writes a story bible, and drafts the card in four calls
   (core fields, greetings, example dialogues, lorebook). The draft lands in the chat as proposals. The critic reads
   the finished card and the chat proposes fixes.
+- Personas can be built with a short interview from the persona library. Card checker findings and each text field
+  have one-tap requests to the co-writer.
 
 ## Builds
 
@@ -80,6 +82,8 @@ Download them from the run's **Artifacts** section.
 The APK is signed with a temporary key until a release key is added as repository secrets
 (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`). With a temporary key,
 uninstall the previous build before installing a new one.
+
+Publishing a GitHub Release attaches the installers and the APK to it. See [RELEASING.md](RELEASING.md).
 
 ## Roadmap
 

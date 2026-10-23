@@ -66,9 +66,14 @@ export function Dialog({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      // With dialogs stacked, Escape closes only the top one.
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      if (e.key === "Escape" && dialogs[dialogs.length - 1] === ref.current) onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
@@ -77,6 +82,7 @@ export function Dialog({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center" onClick={onClose}>
       <div
+        ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={title}
