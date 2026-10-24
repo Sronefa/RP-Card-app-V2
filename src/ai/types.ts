@@ -13,7 +13,14 @@ export interface ProviderConfig {
   /** OpenAI-compatible base URL, ending before /chat/completions (e.g. https://nano-gpt.com/api/v1). */
   baseUrl?: string;
   apiKey: string;
+  /** Models the user keeps at hand for this provider, to switch between quickly. */
+  models?: string[];
+  /** Seconds to wait for a reply before giving up. */
+  timeoutSec?: number;
 }
+
+/** How long a model call may take when the provider doesn't say otherwise. */
+export const DEFAULT_TIMEOUT_SEC = 600;
 
 export interface ModelChoice {
   providerId: string;
@@ -21,7 +28,7 @@ export interface ModelChoice {
 }
 
 /** Co-writer modes. Each has its own system prompt and can use its own model. */
-export type ModeId = "refine" | "interview" | "gap" | "draft" | "suggest" | "lore" | "critic";
+export type ModeId = "refine" | "interview" | "gap" | "draft" | "suggest" | "lore" | "critic" | "image";
 
 export interface ToolCall {
   id: string;

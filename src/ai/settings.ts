@@ -14,6 +14,52 @@ export interface PromptPreset {
   text: string;
 }
 
+/** A reusable look for image prompts. */
+export interface ImageStyle {
+  id: string;
+  name: string;
+  /** Booru-style tag list (Stable Diffusion, NovelAI) or plain sentences (Flux, DALL-E, Midjourney). */
+  format: "tags" | "prose";
+  /** The art style, e.g. "anime, cel shading, vibrant colours". */
+  style: string;
+  /** Put at the start of every prompt, e.g. quality tags. */
+  prefix: string;
+  /** Always in the negative prompt. */
+  negative: string;
+  /** Anything else the prompt should follow. */
+  notes: string;
+}
+
+export const DEFAULT_IMAGE_STYLES: ImageStyle[] = [
+  {
+    id: "anime",
+    name: "Anime",
+    format: "tags",
+    style: "anime style, cel shading, clean lineart, vibrant colours",
+    prefix: "masterpiece, best quality, very aesthetic",
+    negative: "lowres, bad anatomy, bad hands, extra fingers, missing fingers, text, watermark, signature, blurry",
+    notes: "",
+  },
+  {
+    id: "realistic",
+    name: "Realistic photo",
+    format: "prose",
+    style: "photorealistic, natural light, shallow depth of field, 85mm lens",
+    prefix: "",
+    negative: "cartoon, illustration, 3d render, deformed hands, text, watermark",
+    notes: "",
+  },
+  {
+    id: "painterly",
+    name: "Painterly fantasy",
+    format: "prose",
+    style: "digital painting, painterly brushwork, dramatic lighting, rich colour, fantasy concept art",
+    prefix: "",
+    negative: "photo, text, watermark, blurry",
+    notes: "",
+  },
+];
+
 export interface AiSettings {
   providers: ProviderConfig[];
   /** Model used by every mode without its own choice. */
@@ -22,11 +68,18 @@ export interface AiSettings {
   /** `providerId/model` of models that can't call tools; they write edits as JSON instead. */
   noToolModels: string[];
   presets: PromptPreset[];
+  imageStyles: ImageStyle[];
 }
 
 const KEY = "ai";
 
-export const EMPTY_SETTINGS: AiSettings = { providers: [], modeModels: {}, noToolModels: [], presets: [] };
+export const EMPTY_SETTINGS: AiSettings = {
+  providers: [],
+  modeModels: {},
+  noToolModels: [],
+  presets: [],
+  imageStyles: DEFAULT_IMAGE_STYLES,
+};
 
 /** Ready-made providers the user can add with just an API key. */
 export const PROVIDER_TEMPLATES: Omit<ProviderConfig, "id" | "apiKey">[] = [

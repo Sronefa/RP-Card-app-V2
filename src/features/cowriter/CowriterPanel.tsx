@@ -6,6 +6,7 @@ import { useCowriter } from "../../cowriter/store";
 import { useEditor } from "../../editor/store";
 import { ChatView } from "./ChatView";
 import { InterviewPanel } from "./InterviewPanel";
+import { ModelSwitcher } from "./ModelSwitcher";
 import { ProjectStyleDialog } from "./ProjectStyleDialog";
 
 const STARTERS = [
@@ -55,7 +56,7 @@ export function CowriterPanel() {
   const messageCount = chat?.messages.length ?? 0;
   return (
     <Shell
-      detail={`${resolved.config.name} · ${resolved.choice.model}`}
+      detail={<ModelSwitcher />}
       actions={
         <>
           <Button variant="ghost" onClick={() => setStyling(true)}>
@@ -112,7 +113,7 @@ function Shell({
   actions,
   children,
 }: {
-  detail?: string;
+  detail?: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -121,7 +122,7 @@ function Shell({
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold">Co-writer</h2>
-          {detail && <p className="truncate text-xs text-ink-muted">{detail}</p>}
+          {detail}
         </div>
         {actions}
       </div>

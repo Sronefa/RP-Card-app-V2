@@ -79,6 +79,7 @@ beforeEach(async () => {
       defaultModel: { providerId: "p", model: "big-model" },
       modeModels: { gap: { providerId: "q", model: "small-model" }, critic: { providerId: "q", model: "" } },
       noToolModels: [],
+      imageStyles: [],
       presets: [],
     },
   });

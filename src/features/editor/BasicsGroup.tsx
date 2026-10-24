@@ -3,6 +3,7 @@ import { toast } from "../../components/toast";
 import { Button, TextInput } from "../../components/ui";
 import { useEditor } from "../../editor/store";
 import { pickFiles, toPng } from "../../lib/files";
+import { ImagePromptDialog } from "../images/ImagePromptDialog";
 import { CardAvatar } from "../library/CardTile";
 
 export function BasicsGroup() {
@@ -11,6 +12,7 @@ export function BasicsGroup() {
   const d = record.card.data;
   // Tags are edited as text so typing a trailing comma doesn't get eaten.
   const [tagText, setTagText] = useState(d.tags.join(", "));
+  const [prompting, setPrompting] = useState(false);
   useEffect(() => {
     // Follow undo/redo and other outside changes.
     if (parseTags(tagText).join("\n") !== d.tags.join("\n")) setTagText(d.tags.join(", "));
@@ -40,9 +42,13 @@ export function BasicsGroup() {
         <CardAvatar record={record} className="size-24" />
         <div className="flex flex-col gap-2">
           <Button onClick={() => void pickAvatar()}>{record.image ? "Change image" : "Add image"}</Button>
+          <Button variant="ghost" className="text-accent" onClick={() => setPrompting(true)}>
+            ✦ Image prompt
+          </Button>
           <p className="text-xs text-ink-muted">Becomes the PNG you export.</p>
         </div>
       </div>
+      {prompting && <ImagePromptDialog onClose={() => setPrompting(false)} />}
 
       <div className="flex flex-col gap-1.5">
         <span className="font-medium">Card type</span>

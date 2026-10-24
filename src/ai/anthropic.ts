@@ -3,7 +3,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { getFetch } from "./http";
-import type { ChatMessage, CompletionRequest, CompletionResult, Provider, ProviderConfig, StopReason, ToolCall } from "./types";
+import { DEFAULT_TIMEOUT_SEC, type ChatMessage, type CompletionRequest, type CompletionResult, type Provider, type ProviderConfig, type StopReason, type ToolCall } from "./types";
 
 type Block = Anthropic.Beta.BetaContentBlock;
 type BlockParam = Anthropic.Beta.BetaContentBlockParam;
@@ -33,6 +33,7 @@ export function anthropicProvider(config: ProviderConfig): Provider {
       // The key belongs to the user and stays on their device; the app talks to the API directly.
       dangerouslyAllowBrowser: true,
       fetch: await getFetch(),
+      timeout: (config.timeoutSec ?? DEFAULT_TIMEOUT_SEC) * 1000,
       ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     });
     return client;

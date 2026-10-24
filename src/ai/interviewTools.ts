@@ -182,3 +182,13 @@ export const WRITE_PERSONA: ToolDef = {
 export function readPersona(call: ToolCall): { name: string; description: string } {
   return { name: text(call.input.name), description: text(call.input.description) };
 }
+
+export const WRITE_IMAGE_PROMPT: ToolDef = {
+  name: "write_image_prompt",
+  description: "Hand in the image prompt.",
+  parameters: obj({ positive: str("The prompt"), negative: str("The negative prompt") }, ["positive", "negative"]),
+};
+
+export function readImagePrompt(call: ToolCall): { positive: string; negative: string } {
+  return { positive: text(call.input.positive), negative: text(call.input.negative) };
+}
