@@ -1,11 +1,21 @@
+import { useState } from "react";
 import { AutoTextarea, Button } from "../../components/ui";
 import { useEditor } from "../../editor/store";
 import { estimateTokens } from "../../lib/tokens";
+import { GreetingPlanner } from "../greetings/GreetingPlanner";
 import { TextField } from "./TextField";
 
 export function GreetingsGroup() {
+  const [planning, setPlanning] = useState(false);
   return (
     <>
+      <div className="flex items-center justify-between gap-2 rounded-xl border border-border p-3 text-sm">
+        <span className="text-ink-muted">See which moods, places and relationship stages your openings cover.</span>
+        <Button className="shrink-0" onClick={() => setPlanning(true)}>
+          ✦ Plan greetings
+        </Button>
+      </div>
+      {planning && <GreetingPlanner onClose={() => setPlanning(false)} />}
       <TextField
         info={{
           field: "first_mes",

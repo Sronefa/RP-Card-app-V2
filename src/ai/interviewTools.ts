@@ -192,3 +192,42 @@ export const WRITE_IMAGE_PROMPT: ToolDef = {
 export function readImagePrompt(call: ToolCall): { positive: string; negative: string } {
   return { positive: text(call.input.positive), negative: text(call.input.negative) };
 }
+
+export const SORT_GREETINGS: ToolDef = {
+  name: "sort_greetings",
+  description: "Hand in the mood, place and relationship stage of every greeting.",
+  parameters: obj(
+    {
+      greetings: {
+        type: "array",
+        items: obj(
+          {
+            index: { type: "integer", description: "The greeting's index" },
+            mood: str("One of the moods"),
+            place: str("One of the places, or a short place name"),
+            stage: str("One of the relationship stages"),
+          },
+          ["index", "mood", "place", "stage"],
+        ),
+      },
+    },
+    ["greetings"],
+  ),
+};
+
+export interface GreetingTag {
+  mood: string;
+  place: string;
+  stage: string;
+}
+
+export function readGreetingTags(call: ToolCall): Map<number, GreetingTag> {
+  const out = new Map<number, GreetingTag>();
+  const items = Array.isArray(call.input.greetings) ? call.input.greetings : [];
+  for (const item of items as Record<string, unknown>[]) {
+    const index = Number(item?.index);
+    if (!Number.isInteger(index)) continue;
+    out.set(index, { mood: text(item.mood), place: text(item.place), stage: text(item.stage) });
+  }
+  return out;
+}
