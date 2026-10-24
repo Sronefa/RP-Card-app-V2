@@ -6,6 +6,7 @@ import type { CardDataV3 } from "../card";
 import type { CardKind, CardRecord, PersonaRecord } from "../db/db";
 import { ARC_OPTIONS, arcHidden, type ArcSettingKey, type ArcSettings } from "../editor/arc";
 import { entryTitle } from "../editor/lorebook";
+import { LOGIC_NAMES } from "../editor/mechanics";
 import { estimateTokens } from "../lib/tokens";
 import { YOU_DECIDE, type ContentMode, type CowriterSettings, type InterviewDepth, type InterviewRound } from "./records";
 import { EDITABLE_FIELDS } from "./tools";
@@ -54,6 +55,15 @@ const MODES: Record<ModeId, string> = {
   world: `Right now you're filling in the world's pages: NPCs, places, money, items and shops, each kept as a lorebook entry. Pitch what the user asks for with the pitch tool, filling every field. Fit the card, the story bible and what already exists: no duplicates, no contradictions, and reuse names the card already mentions before inventing new ones. Keep each field short and concrete; NPC voices must sound different from each other and from {{char}}. Follow the content mode and tone. Characters in sexual content are adults.`,
 
   arc: `Right now you're plotting a story arc for the card: a run of beats the narrator will steer toward, one after another, as the chat goes on. Follow the arc settings exactly; they are the user's rules for difficulty, death, failure, twists and the antagonist. Each beat is a situation that pressures {{user}} and leaves room for their choices, never a script of what {{user}} does. Beats escalate, pay off what earlier beats set up, and plant fair clues for every twist. Fit the card, the story bible and the lorebook: reuse the NPCs, places and factions that exist before inventing new ones. When you build an antagonist, make them a person with reasons, not a cartoon: a goal they believe in, real resources, limits, and a weakness {{user}} can find. Follow the content mode and tone. Characters in sexual content are adults, with ages stated.`,
+
+  mechanics: `Right now you're the Game Wizard: you turn a mechanic the user describes in plain words into a rules module baked into the card as a lorebook entry, so it works in SillyTavern with no extension. There are no dice; the narrator decides outcomes from the rules and the story. Write modules that follow these attention practices:
+- Rules go in-chat at a depth, not at the top of the prompt. Core rules sit at depth 3 or 4; a module for something happening right now (a fight, a ritual) sits at depth 1 or 2. Never use depth 0, which is for the user's message.
+- Keep each module 50 to 200 tokens with one XML tag of its own (lower case, underscores). Use the same names the status block and other modules use for shared values.
+- State rules positively and concretely: what the narrator does, with numbers where values change. Give a one-line example of correct output instead of a list of "never".
+- Few modules are always on. Anything situational is keyed on the words that bring it up, sticky for as long as it stays relevant, and put in an inclusion group with the other modes (exploration, combat, social) so only one is in the prompt at a time.
+- A higher priority puts the module later within its depth, where it gets the most attention; give the most important rule the highest.
+- Values that change (HP, mana, gold, corruption) are tracked: list them so they appear in the status block, and refer to them by the same label in the rules.
+Fit the card, the story bible and the existing modules: never contradict them. Follow the content mode and tone. Characters in sexual content are adults.`,
 
   critic: `Right now you're the critic. Read the card as the roleplay model that will play it, and list the concrete problems: vague or generic writing, contradictions between fields, greetings that speak or act for {{user}}, negative instructions, wasted permanent tokens, weak hooks, a voice that doesn't come through, lore that duplicates the card. Number the problems, name the field for each, and say what would fix it. At most ten, most important first. Don't rewrite the card yourself. If it is in good shape, say so in a sentence.`,
 };
@@ -492,4 +502,52 @@ export function antagonistWriteRequest(settings: ArcSettings, answers: string): 
     answers ? `<interview>\n${answers}\n</interview>` : "The user leaves the antagonist entirely to you and won't read it before playing, so surprise them.",
     `Write the antagonist with write_antagonist, filling every field. They are an adult; state their age. Where an answer is "${YOU_DECIDE}", decide it yourself.`,
   ].join("\n\n");
+}
+
+// Mechanics
+
+/** Opens the Game Wizard's questions about a mechanic. */
+export function mechanicKickoff(description: string, existing: string): string {
+  return [
+    existing && `<existing_modules>\n${existing}\n</existing_modules>`,
+    `The mechanic I want: ${description.trim()}`,
+    "Ask a single round of 3 to 5 questions with ask_questions about what you need to write it well: how values start and change, what happens at the limits, when it matters in the story, and how it ties into what already exists. Skip anything the description or the card already answers.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Asks for the module itself. */
+export function moduleWriteRequest(opts: {
+  description: string;
+  answers: string;
+  existing: string;
+  images: string[];
+  conflicts?: string;
+}): string {
+  return [
+    opts.existing && `<existing_modules>\n${opts.existing}\n</existing_modules>`,
+    `The mechanic: ${opts.description.trim()}`,
+    opts.answers && `<interview>\n${opts.answers}\n</interview>`,
+    opts.images.length > 0 &&
+      `Images in the card the module can show (by name): ${opts.images.join(", ")}. Use them only where they clearly fit; otherwise leave images empty.`,
+    opts.conflicts && `Your last version contradicted the existing modules:\n${opts.conflicts}\nWrite it again so it fits them.`,
+    `Write the module with write_module, choosing its trigger setup yourself. Logic is how the secondary keys combine with the keys: ${LOGIC_NAMES.join(", ")}. Where an answer is "${YOU_DECIDE}", decide it yourself.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Asks whether a module contradicts the others, or whether the modules contradict each other. */
+export function conflictCheckRequest(existing: string, candidate?: string): string {
+  return [
+    existing ? `<existing_modules>\n${existing}\n</existing_modules>` : "There are no other modules yet.",
+    candidate && `<new_module>\n${candidate}\n</new_module>`,
+    candidate
+      ? "Check the new module against the existing modules, the status tracker and the card."
+      : "Check these modules against each other, the status tracker and the card.",
+    "Report every rule that contradicts another (different numbers for the same value, rules that can't both hold, two tags or labels for the same thing) with report_conflicts. Only real contradictions, not style. An empty list means they fit.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }

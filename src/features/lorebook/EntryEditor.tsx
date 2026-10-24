@@ -5,7 +5,7 @@ import { estimateTokens } from "../../lib/tokens";
 import { KeysInput } from "./KeysInput";
 
 /** SillyTavern's rule for combining primary and secondary keys (extensions.selectiveLogic). */
-const SELECTIVE_LOGIC = [
+export const SELECTIVE_LOGIC = [
   { value: 0, label: "and any secondary key" },
   { value: 3, label: "and all secondary keys" },
   { value: 2, label: "and none of the secondary keys" },

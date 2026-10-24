@@ -22,14 +22,17 @@ import {
   type TrackerConfig,
   type TrackerField,
 } from "../../editor/trackers";
+import { readMechanics } from "../../editor/mechanics";
 import { isKind, worldMeta } from "../../editor/world";
 import { newId } from "../../lib/id";
 import { estimateTokens } from "../../lib/tokens";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
+import { MechanicsPage } from "../mechanics/MechanicsPage";
 
 const KIND_LABELS: Record<FieldKind, string> = { bar: "Bar", number: "Number", text: "Text", list: "List" };
-type Tab = "tracker" | "regex";
+const TABS = { tracker: "Status tracker", regex: "Regex scripts", mechanics: "Mechanics" } as const;
+type Tab = keyof typeof TABS;
 
 /** Status trackers, relationship stages and the card's regex scripts. Nothing is added until the user adds it. */
 export function TrackersView() {
@@ -43,9 +46,9 @@ export function TrackersView() {
         <CardBar detail={`${scripts.length} regex script${scripts.length === 1 ? "" : "s"}`} />
       </div>
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4">
-        <h1 className="sr-only">Trackers and regex</h1>
-        <div role="tablist" aria-label="Trackers and regex" className="flex rounded-lg border border-border p-0.5">
-          {(["tracker", "regex"] as const).map((t) => (
+        <h1 className="sr-only">Trackers, regex and mechanics</h1>
+        <div role="tablist" aria-label="Trackers, regex and mechanics" className="flex rounded-lg border border-border p-0.5">
+          {(Object.keys(TABS) as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -54,11 +57,11 @@ export function TrackersView() {
               onClick={() => setTab(t)}
               className={`min-h-9 flex-1 rounded-md px-2 text-sm ${tab === t ? "bg-accent/15 text-accent" : "text-ink-muted"}`}
             >
-              {t === "tracker" ? "Status tracker" : "Regex scripts"}
+              {TABS[t]}
             </button>
           ))}
         </div>
-        {tab === "tracker" ? <TrackerPage /> : <RegexPage />}
+        {tab === "tracker" ? <TrackerPage /> : tab === "regex" ? <RegexPage /> : <MechanicsPage />}
       </div>
     </div>
   );
@@ -160,6 +163,8 @@ function TrackerPage() {
 }
 
 function Fields({ config, onChange }: { config: TrackerConfig; onChange: (c: TrackerConfig, key?: string) => void }) {
+  const modules = readMechanics(useEditor.getState().record!.card.data);
+  const mechanicName = (id?: string) => modules.find((m) => m.id === id)?.name ?? "a";
   const set = (id: string, patch: Partial<TrackerField>, key: string) =>
     onChange({ ...config, fields: config.fields.map((f) => (f.id === id ? { ...f, ...patch } : f)) }, `tracker.${id}.${key}`);
   return (
@@ -168,6 +173,21 @@ function Fields({ config, onChange }: { config: TrackerConfig; onChange: (c: Tra
       <ul className="flex flex-col gap-2">
         {config.fields.map((f) => {
           const stage = f.addon === "relationship" && f.label === "Stage";
+          if (f.addon === "mechanic")
+            return (
+              <li key={f.id} className="flex flex-col gap-1 rounded-xl border border-border bg-surface-raised p-3 text-sm">
+                <span>
+                  <span className="font-medium">{f.label}</span>{" "}
+                  <span className="text-ink-muted">
+                    ({KIND_LABELS[f.kind].toLowerCase()}, starts at {f.kind === "bar" ? `${f.start}/${f.max ?? 100}` : f.start || "nothing"})
+                  </span>
+                </span>
+                {f.rule && <span className="text-ink-muted">{f.rule}</span>}
+                <span className="text-xs text-ink-muted">
+                  Tracked for the {mechanicName(f.module)} mechanic. Change it on the Mechanics tab.
+                </span>
+              </li>
+            );
           return (
             <li key={f.id} className="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-3">
               <div className="flex flex-wrap items-end gap-2">

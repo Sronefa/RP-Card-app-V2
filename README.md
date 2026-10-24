@@ -61,7 +61,7 @@ CardForge's own PNG code.
   Models without tool calling write the same edits as a JSON block instead; this is detected automatically.
 - The system prompt never changes during a chat. Project settings, the story bible, the card, the project's world and
   personas are sent in the user's message, only when they changed since the co-writer last saw them.
-- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic, image prompts, greeting planner, world pages, story arcs) has its own
+- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic, image prompts, greeting planner, world pages, story arcs, Game Wizard) has its own
   system prompt and can run on its own model; tasks without one use the default model.
 - The interview (`src/cowriter/interview.ts`) asks rounds of questions with suggested answers, then, depending on the
   project's depth, runs gap analysis and follow-up rounds, writes a story bible, and drafts the card in four calls
@@ -94,6 +94,15 @@ CardForge's own PNG code.
   carries the settings. The antagonist is built with a short interview or left to the co-writer, and becomes its own
   entry. Secret mode hides the arc everywhere in CardForge (the entry list, the slop check, the co-writer is told not to
   hint at it) until you reveal it behind a confirm; the exported card always has it.
+- Mechanics (`src/editor/mechanics.ts`, Trackers → Mechanics): game rules baked into the card with no extension and no
+  dice. The Game Wizard turns a plain-words description into a module after a few questions: one lorebook entry with
+  its own XML tag inside a `<mechanics>` wrapper, with the trigger setup chosen for it (keys, secondary keys and logic,
+  depth, always on or keyed, sticky, cooldown, inclusion group, recursion, priority). It follows attention best
+  practices by default (rules in-chat at depth 1 to 4 with depth 0 left free, 50 to 200 tokens, positive rules with an
+  example, few always-on modules) and flags modules that don't. Each new module is checked against the others for
+  contradictions, and can be rewritten to fit. Values a module tracks become status tracker fields. Modules can be
+  saved to a library shared by all projects. A module can show the card's images using the path SillyTavern gives
+  CHARX assets (`/user/images/<card name>/<file>`); cards with images export as CHARX by default, with a warning on PNG.
 - Each provider keeps a list of saved models; the co-writer's model picker switches between them without opening
   Settings. Each provider also has its own timeout (10 minutes by default).
 - The image prompt writer (`src/features/images/`) turns the card, other cards in the project, or a lorebook entry
@@ -133,4 +142,4 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 11. World pages: NPC roster, locations, economy (done)
 12. Status trackers and regex, relationship stages (done)
 13. Story arcs with the antagonist builder and secret mode (done)
-14. Mechanics tab and Game Wizard
+14. Mechanics tab and Game Wizard (done)

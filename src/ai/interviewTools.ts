@@ -4,6 +4,7 @@
  */
 import { newId } from "../lib/id";
 import { ANTAGONIST_FIELDS, type Antagonist, type Beat } from "../editor/arc";
+import { cleanModule, LOGIC_NAMES, type MechanicModule, type TrackedValue } from "../editor/mechanics";
 import { KINDS, type WorldKind } from "../editor/world";
 import type { GapMemo, Question } from "./records";
 import type { ToolCall, ToolDef } from "./types";
@@ -315,4 +316,138 @@ export const WRITE_ANTAGONIST: ToolDef = {
 
 export function readAntagonist(call: ToolCall): Antagonist {
   return Object.fromEntries(ANTAGONIST_FIELDS.map((f) => [f.key, text(call.input[f.key])])) as unknown as Antagonist;
+}
+
+const int = (description: string) => ({ type: "integer", description });
+const bool = (description: string) => ({ type: "boolean", description });
+
+export const WRITE_MODULE: ToolDef = {
+  name: "write_module",
+  description: "Hand in the mechanics module.",
+  parameters: obj(
+    {
+      name: str("A short name, e.g. Mana"),
+      tag: str("The XML tag: lower case with underscores, e.g. mana"),
+      summary: str("What the module does, in one line"),
+      rules: str("The rules, positive and concrete, 50 to 200 tokens, without the tag"),
+      example: str("A one-line example of correct narrator output following the rules"),
+      activation: { type: "string", enum: ["always", "keyed"], description: "always: in every prompt. keyed: only when its keys come up" },
+      keys: list("Words in the chat that bring the module up; empty when always on"),
+      secondary_keys: list("Optional words that refine the keys"),
+      logic: { type: "string", enum: LOGIC_NAMES, description: "How secondary keys combine with the keys" },
+      depth: int("Depth in the chat: 3 or 4 for core rules, 1 or 2 for something happening right now; never 0"),
+      sticky: int("Messages the module stays after its keys come up, 0 for none"),
+      cooldown: int("Messages before it can come up again after it ends, 0 for none"),
+      group: str("Inclusion group shared with the other modes (e.g. mode), or empty"),
+      exclude_recursion: bool("True if other lorebook entries must not bring it up"),
+      prevent_recursion: bool("True if its text must not bring up other entries"),
+      priority: int("1 to 5; higher sits later in its depth and gets more attention"),
+      tracked: {
+        type: "array",
+        description: "Values to track in the status block; empty if none",
+        items: obj(
+          {
+            label: str("The value's label, e.g. Mana"),
+            kind: { type: "string", enum: ["bar", "number", "text", "list"], description: "bar has a maximum" },
+            start: str("The starting value"),
+            max: int("The maximum, for a bar; 0 otherwise"),
+            rule: str("When and how it changes, one line"),
+          },
+          ["label", "kind", "start", "max", "rule"],
+        ),
+      },
+      images: {
+        type: "array",
+        description: "Images from the card to show, by name; usually empty",
+        items: obj({ name: str("The image's name"), when: str("When to show it") }, ["name", "when"]),
+      },
+    },
+    [
+      "name",
+      "tag",
+      "summary",
+      "rules",
+      "example",
+      "activation",
+      "keys",
+      "secondary_keys",
+      "logic",
+      "depth",
+      "sticky",
+      "cooldown",
+      "group",
+      "exclude_recursion",
+      "prevent_recursion",
+      "priority",
+      "tracked",
+      "images",
+    ],
+  ),
+};
+
+/** The module from write_module. Images are matched to the card's assets by name. */
+export function readModule(call: ToolCall, assets: { uri: string; name: string }[]): MechanicModule {
+  const i = call.input;
+  const arr = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
+  return cleanModule({
+    name: text(i.name),
+    tag: text(i.tag),
+    summary: text(i.summary),
+    rules: text(i.rules),
+    example: text(i.example),
+    activation: i.activation === "always" ? "always" : "keyed",
+    keys: strings(i.keys),
+    secondaryKeys: strings(i.secondary_keys),
+    logic: Math.max(0, LOGIC_NAMES.indexOf(text(i.logic))),
+    depth: Number(i.depth),
+    sticky: Number(i.sticky),
+    cooldown: Number(i.cooldown),
+    group: text(i.group),
+    excludeRecursion: i.exclude_recursion === true,
+    preventRecursion: i.prevent_recursion === true,
+    priority: Number(i.priority),
+    tracked: arr(i.tracked).map((t) => ({
+      label: text(t.label),
+      kind: text(t.kind) as TrackedValue["kind"],
+      start: text(t.start),
+      max: Number(t.max) || undefined,
+      rule: text(t.rule),
+    })),
+    images: arr(i.images).flatMap((img) => {
+      const asset = assets.find((a) => a.name.toLowerCase() === text(img.name).toLowerCase());
+      return asset ? [{ uri: asset.uri, when: text(img.when) }] : [];
+    }),
+  });
+}
+
+export const REPORT_CONFLICTS: ToolDef = {
+  name: "report_conflicts",
+  description: "Report contradictions between the rules. An empty list means they fit together.",
+  parameters: obj(
+    {
+      conflicts: {
+        type: "array",
+        items: obj(
+          {
+            modules: list("The names of the modules involved"),
+            problem: str("What contradicts what, in one sentence"),
+            fix: str("How to fix it, in one sentence"),
+          },
+          ["modules", "problem", "fix"],
+        ),
+      },
+    },
+    ["conflicts"],
+  ),
+};
+
+export interface Conflict {
+  modules: string[];
+  problem: string;
+  fix: string;
+}
+
+export function readConflicts(call: ToolCall): Conflict[] {
+  const items = Array.isArray(call.input.conflicts) ? (call.input.conflicts as Record<string, unknown>[]) : [];
+  return items.map((c) => ({ modules: strings(c?.modules), problem: text(c?.problem), fix: text(c?.fix) })).filter((c) => c.problem);
 }

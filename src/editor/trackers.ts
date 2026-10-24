@@ -22,8 +22,10 @@ export interface TrackerField {
   max?: number;
   /** When and how the value changes. */
   rule: string;
-  /** The add-on the field belongs to. */
-  addon: AddonId;
+  /** The add-on the field belongs to, or "mechanic" for a value a mechanics module tracks. */
+  addon: AddonId | "mechanic";
+  /** For a mechanic's value: the module's id. */
+  module?: string;
 }
 
 export interface Stage {
