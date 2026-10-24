@@ -38,7 +38,8 @@ interface EditorState {
    * it defaults to the field name (typing in a text box). Pass null for a change that is always its own step.
    */
   setField: <K extends keyof CardDataV3>(field: K, value: CardDataV3[K], coalesceKey?: string | null) => void;
-  replaceData: (data: CardDataV3) => void;
+  /** Replaces the card data; changes with the same coalesceKey in quick succession are one undo step. */
+  replaceData: (data: CardDataV3, coalesceKey?: string) => void;
   setKind: (kind: CardKind) => void;
   setImage: (image: Uint8Array | undefined) => void;
   /** Adds asset files to the package. Files are not part of undo; unused ones are left out on export. */
@@ -102,8 +103,8 @@ export const useEditor = create<EditorState>((set, get) => {
       apply({ ...record.card.data, [field]: value }, coalesceKey ?? undefined);
     },
 
-    replaceData(data) {
-      apply(data);
+    replaceData(data, coalesceKey) {
+      apply(data, coalesceKey);
     },
 
     setKind(kind) {

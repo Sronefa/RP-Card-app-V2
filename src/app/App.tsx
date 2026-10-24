@@ -5,6 +5,7 @@ import { EditorView } from "../features/editor/EditorView";
 import { LibraryView } from "../features/library/LibraryView";
 import { LorebookView } from "../features/lorebook/LorebookView";
 import { SettingsView } from "../features/settings/SettingsView";
+import { TrackersView } from "../features/trackers/TrackersView";
 import { Icon } from "../components/Icon";
 import { Toaster } from "../components/toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -15,6 +16,7 @@ const VIEWS: Record<Exclude<SectionId, "cowriter">, () => React.JSX.Element | nu
   library: LibraryView,
   editor: EditorView,
   lorebook: LorebookView,
+  trackers: TrackersView,
   assets: AssetsView,
   settings: SettingsView,
 };
@@ -104,7 +106,7 @@ export default function App() {
 
       <nav
         aria-label="Sections"
-        className="pb-safe grid grid-cols-5 border-t border-border bg-surface-raised md:hidden"
+        className="pb-safe grid grid-cols-6 border-t border-border bg-surface-raised md:hidden"
       >
         {SECTIONS.map((s) => (
           <NavButton

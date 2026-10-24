@@ -81,6 +81,12 @@ CardForge's own PNG code.
   senses, the currency, items with prices, and shops. Each one is an ordinary lorebook entry whose text and keys are
   written from its fields (kept in the entry's `extensions.cardforge`). An optional always-on cast list keeps NPC voices
   apart. The co-writer pitches entries for each page.
+- Trackers & regex (`src/editor/trackers.ts`): optional add-ons (stats, inventory and money, relationship stages,
+  custom fields). The model ends each reply with a status block; CardForge writes a display regex script that turns it
+  into an HTML panel, a prompt-only script that drops old blocks, an always-on reminder of the format at depth 1, and for
+  relationship stages one lorebook entry per stage keyed on the block's stage line. Scripts go in
+  `data.extensions.regex_scripts`; the user's own scripts are kept and can be edited and tried on a sample reply.
+  A sandboxed preview shows the reply as SillyTavern renders it.
 - Each provider keeps a list of saved models; the co-writer's model picker switches between them without opening
   Settings. Each provider also has its own timeout (10 minutes by default).
 - The image prompt writer (`src/features/images/`) turns the card, other cards in the project, or a lorebook entry
@@ -118,6 +124,6 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 9. Card quality: slop detector, token squeeze, lore coverage, card health score (done)
 10. Writing helpers: greeting planner, remix/fork, Surprise me (done)
 11. World pages: NPC roster, locations, economy (done)
-12. Status trackers and regex, relationship stages
+12. Status trackers and regex, relationship stages (done)
 13. Story arcs with the antagonist builder and secret mode
 14. Mechanics tab and Game Wizard
