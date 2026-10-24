@@ -3,6 +3,7 @@ import { describeEdit, planEdit, ToolInputError, type Edit } from "../../ai/tool
 import { Button } from "../../components/ui";
 import type { CardDataV3 } from "../../card";
 import { diffWords } from "../../lib/diff";
+import { estimateTokens } from "../../lib/tokens";
 
 const STATUS: Record<Proposal["status"], string> = {
   pending: "",
@@ -107,7 +108,18 @@ function EditPreview({ edit }: { edit: Edit }) {
       </div>
     );
   }
-  return <Diff before={edit.before} after={edit.after} />;
+  const before = estimateTokens(edit.before);
+  const after = estimateTokens(edit.after);
+  return (
+    <div className="flex flex-col gap-1">
+      {edit.before && before !== after && (
+        <span className="text-xs text-ink-muted">
+          ~{before} → ~{after} tokens
+        </span>
+      )}
+      <Diff before={edit.before} after={edit.after} />
+    </div>
+  );
 }
 
 function Diff({ before, after }: { before: string; after: string }) {

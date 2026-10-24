@@ -6,7 +6,9 @@ import { embeddedPath, type LorebookEntry } from "../card";
 import type { CardRecord } from "../db/db";
 import { estimateTokens } from "../lib/tokens";
 import { PERMANENT_FIELDS, type GroupId } from "../features/editor/fields";
+import { coverageRequest, findUncovered } from "./coverage";
 import { entryTitle, isRegexKey, regexError } from "./lorebook";
+import { findSlop, slopRequest } from "./slop";
 
 export type IssueLevel = "error" | "warning" | "tip";
 
@@ -22,6 +24,19 @@ export interface Issue {
   target: IssueTarget;
   /** Only the user can fix it; the co-writer can't (images, tags, asset files). */
   manual?: boolean;
+  /** Overused phrasing or a name without a lorebook entry; other issues come from the checks below. */
+  kind?: "slop" | "coverage";
+  /** What the Fix button asks the co-writer, when it isn't the message itself. */
+  request?: string;
+  /** For a name without a lorebook entry: the name, so an empty entry can be added for it. */
+  stub?: string;
+}
+
+export interface CheckOptions {
+  /** Look for these overused phrases. */
+  slopPhrases?: string[];
+  /** Look for names without lorebook entries. These entries (the project world's) count as covering them. */
+  coverage?: { otherEntries: LorebookEntry[] };
 }
 
 /** Above this many permanent tokens a card crowds out chat history on small contexts. */
@@ -44,7 +59,7 @@ const TEXT_FIELDS: { field: "description" | "personality" | "scenario" | "first_
   { field: "post_history_instructions", label: "Post-history instructions", group: "prompts" },
 ];
 
-export function checkCard(record: CardRecord): Issue[] {
+export function checkCard(record: CardRecord, options: CheckOptions = {}): Issue[] {
   const d = record.card.data;
   const issues: Issue[] = [];
   const add = (level: IssueLevel, message: string, target: IssueTarget, manual = target.section === "assets") =>
@@ -145,6 +160,27 @@ export function checkCard(record: CardRecord): Issue[] {
   for (const [type, count] of mains)
     if (count > 1) add("warning", `${count} ${type} assets are named "main". Only one per type should be.`, { section: "assets" });
 
+  // Writing quality
+  if (options.slopPhrases)
+    for (const hit of findSlop(d, options.slopPhrases))
+      issues.push({
+        level: "tip",
+        kind: "slop",
+        message: `${hit.where} uses "${hit.match}": "${hit.line}"`,
+        target: hit.target,
+        request: slopRequest(hit),
+      });
+  if (options.coverage)
+    for (const { name, count } of findUncovered(d, options.coverage.otherEntries))
+      issues.push({
+        level: "tip",
+        kind: "coverage",
+        message: `"${name}" is mentioned ${count === 1 ? "once" : `${count} times`} but has no lorebook entry.`,
+        target: { section: "lorebook" },
+        request: coverageRequest([name]),
+        stub: name,
+      });
+
   const order: Record<IssueLevel, number> = { error: 0, warning: 1, tip: 2 };
   return issues.sort((a, b) => order[a.level] - order[b.level]);
 }
@@ -160,4 +196,29 @@ function embeddedIcon(record: CardRecord): boolean {
     const path = a.type === "icon" ? embeddedPath(a.uri) : undefined;
     return !!path && !!record.files[path];
   });
+}
+
+export interface Health {
+  /** 0 to 100. */
+  score: number;
+  problems: number;
+  slop: number;
+  uncovered: number;
+  tips: number;
+}
+
+/**
+ * One number for the card's state: problems cost the most, overused phrasing and missing lorebook
+ * entries cost a little each, up to a cap so a long card isn't sunk by them alone.
+ */
+export function cardHealth(issues: Issue[]): Health {
+  const count = (f: (i: Issue) => boolean) => issues.filter(f).length;
+  const errors = count((i) => i.level === "error");
+  const warnings = count((i) => i.level === "warning");
+  const slop = count((i) => i.kind === "slop");
+  const uncovered = count((i) => i.kind === "coverage");
+  const tips = count((i) => i.level === "tip" && !i.kind);
+  const penalty =
+    errors * 15 + warnings * 6 + Math.min(tips * 2, 10) + Math.min(slop * 3, 20) + Math.min(uncovered * 3, 15);
+  return { score: Math.max(0, 100 - penalty), problems: errors + warnings, slop, uncovered, tips };
 }

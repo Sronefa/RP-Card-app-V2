@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAiSettings } from "../../ai/settings";
+import type { LorebookEntry } from "../../card";
 import { Button } from "../../components/ui";
-import { checkCard } from "../../editor/checker";
+import { listCards } from "../../db/db";
+import { cardHealth, checkCard } from "../../editor/checker";
+import { DEFAULT_SLOP_PHRASES } from "../../editor/slop";
 import { useEditor, type SaveState } from "../../editor/store";
 import { CheckDialog } from "./CheckDialog";
 
@@ -19,7 +23,7 @@ export function CardBar({ detail, children }: { detail?: React.ReactNode; childr
   const record = useEditor((s) => s.record!);
   const { saveState, past, future, undo, redo } = useEditor();
   const [checking, setChecking] = useState(false);
-  const issues = useMemo(() => checkCard(record), [record]);
+  const issues = useCardIssues();
   const problems = issues.filter((i) => i.level !== "tip").length;
 
   useKeyboardUndo();
@@ -46,8 +50,34 @@ export function CardBar({ detail, children }: { detail?: React.ReactNode; childr
         )}
       </Button>
       {children}
-      <CheckDialog open={checking} issues={issues} onClose={() => setChecking(false)} />
+      <CheckDialog open={checking} issues={issues} health={cardHealth(issues)} onClose={() => setChecking(false)} />
     </div>
+  );
+}
+
+/** Checker results for the open card, with overused phrasing and names the lorebooks don't cover. */
+function useCardIssues() {
+  const record = useEditor((s) => s.record!);
+  const { settings, load } = useAiSettings();
+  const [worldEntries, setWorldEntries] = useState<LorebookEntry[]>([]);
+  useEffect(() => void load(), [load]);
+  useEffect(() => {
+    let live = true;
+    setWorldEntries([]);
+    if (record.kind === "character")
+      void listCards(record.projectId).then((cards) => {
+        const world = cards.find((c) => c.kind === "world");
+        if (live) setWorldEntries(world?.card.data.character_book?.entries ?? []);
+      });
+    return () => {
+      live = false;
+    };
+    // The world's lorebook is read when a card opens.
+  }, [record.id]);
+  const phrases = settings.slopPhrases ?? DEFAULT_SLOP_PHRASES;
+  return useMemo(
+    () => checkCard(record, { slopPhrases: phrases, coverage: { otherEntries: worldEntries } }),
+    [record, phrases, worldEntries],
   );
 }
 

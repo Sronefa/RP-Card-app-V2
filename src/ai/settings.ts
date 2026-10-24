@@ -69,6 +69,8 @@ export interface AiSettings {
   noToolModels: string[];
   presets: PromptPreset[];
   imageStyles: ImageStyle[];
+  /** Overused phrases the card checker flags; the built-in list until the user edits it. */
+  slopPhrases?: string[];
 }
 
 const KEY = "ai";
