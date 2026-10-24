@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { newCard } from "../card";
 import type { CardRecord } from "../db/db";
-import { checkCard } from "./checker";
+import { cardHealth, checkCard } from "./checker";
 import { emptyBook, newEntry } from "./lorebook";
 
 function record(fields: Partial<CardRecord["card"]["data"]> = {}, rest: Partial<CardRecord> = {}): CardRecord {
@@ -74,5 +74,17 @@ describe("checkCard", () => {
 
   it("warns when the permanent fields are very long", () => {
     expect(messages(record({ description: "x".repeat(9000) }))[0]).toMatch(/^warning: About 2250 permanent tokens/);
+  });
+});
+
+describe("cardHealth", () => {
+  it("scores problems, overused phrasing and uncovered names", () => {
+    const r = record({ name: "", description: "A shiver ran down her spine at the Ash Ford. She met Tomas there." });
+    const issues = checkCard(r, { slopPhrases: ["shiver* * down * spine"], coverage: { otherEntries: [] } });
+    expect(issues.filter((i) => i.kind === "slop")).toHaveLength(1);
+    expect(issues.filter((i) => i.kind === "coverage").map((i) => i.stub)).toEqual(["Ash Ford", "Tomas"]);
+    // One error, one slop hit, two uncovered names.
+    expect(cardHealth(issues)).toEqual({ score: 100 - 15 - 3 - 6, problems: 1, slop: 1, uncovered: 2, tips: 0 });
+    expect(cardHealth(checkCard(record())).score).toBe(100);
   });
 });

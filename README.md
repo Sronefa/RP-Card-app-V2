@@ -69,6 +69,10 @@ CardForge's own PNG code.
   the finished card and the chat proposes fixes.
 - Personas can be built with a short interview from the persona library. Card checker findings and each text field
   have one-tap requests to the co-writer.
+- The card checker (`src/editor/checker.ts`) also flags overused AI phrasing (`slop.ts`, phrase list editable in
+  Settings) and names, places and factions without a lorebook entry (`coverage.ts`), and combines everything into one
+  card health score. Flagged lines can be rewritten, and missing entries stubbed or written, in one tap. Any text field
+  can be squeezed to a target token count by the co-writer.
 - Each provider keeps a list of saved models; the co-writer's model picker switches between them without opening
   Settings. Each provider also has its own timeout (10 minutes by default).
 - The image prompt writer (`src/features/images/`) turns the card, other cards in the project, or a lorebook entry
@@ -103,3 +107,9 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 6. Interview, Deep pipeline and lorebook brainstorm (done)
 7. Polish and release (done)
 8. Saved models, timeouts, image prompts, bringing characters into a world (done)
+9. Card quality: slop detector, token squeeze, lore coverage, card health score (done)
+10. Writing helpers: greeting planner, remix/fork, Surprise me
+11. World pages: NPC roster, locations, economy
+12. Status trackers and regex, relationship stages
+13. Story arcs with the antagonist builder and secret mode
+14. Mechanics tab and Game Wizard

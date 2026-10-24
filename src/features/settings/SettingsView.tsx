@@ -10,6 +10,7 @@ import {
 import { DEFAULT_TIMEOUT_SEC, type ModeId, type ModelChoice, type ProviderConfig } from "../../ai/types";
 import { toast } from "../../components/toast";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
+import { DEFAULT_SLOP_PHRASES } from "../../editor/slop";
 import { newId } from "../../lib/id";
 
 const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
@@ -249,6 +250,12 @@ export function SettingsView() {
           Add style
         </Button>
       </section>
+
+      <SlopPhrases
+        phrases={settings.slopPhrases ?? DEFAULT_SLOP_PHRASES}
+        custom={!!settings.slopPhrases}
+        onChange={(slopPhrases) => void update({ slopPhrases })}
+      />
 
       <Dialog open={!!imageStyle} title="Image style" onClose={() => setImageStyle(undefined)}>
         {imageStyle && (
@@ -561,5 +568,48 @@ function ImageStyleForm({
         </Button>
       </div>
     </div>
+  );
+}
+
+/** The overused phrases the card checker flags, one per line. */
+function SlopPhrases({
+  phrases,
+  custom,
+  onChange,
+}: {
+  phrases: string[];
+  custom: boolean;
+  onChange: (phrases: string[] | undefined) => void;
+}) {
+  const [text, setText] = useState(phrases.join("\n"));
+  useEffect(() => setText(phrases.join("\n")), [phrases]);
+  const save = () => {
+    const next = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (next.join("\n") !== phrases.join("\n")) onChange(next);
+  };
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-medium">Overused phrases</h2>
+      <p className="text-sm text-ink-muted">
+        The card checker flags these and offers to rewrite the line. One phrase per line. * inside a word stands for any
+        letters and * on its own for up to three words, so "shiver* * down * spine" also catches "a shiver ran down his
+        spine".
+      </p>
+      <AutoTextarea
+        aria-label="Overused phrases"
+        value={text}
+        className="min-h-40 text-sm"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={save}
+      />
+      {custom && (
+        <Button variant="ghost" className="self-start" onClick={() => onChange(undefined)}>
+          Go back to the built-in list
+        </Button>
+      )}
+    </section>
   );
 }
