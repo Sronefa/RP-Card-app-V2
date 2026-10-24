@@ -50,6 +50,7 @@ beforeEach(async () => {
       defaultModel: { providerId: "p", model: "big-model" },
       modeModels: {},
       noToolModels: [],
+      imageStyles: [],
       presets: [{ id: "pre", name: "House style", text: "Present tense." }],
     },
   });

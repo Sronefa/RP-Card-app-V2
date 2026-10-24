@@ -53,6 +53,7 @@ beforeEach(async () => {
       defaultModel: { providerId: "p", model: "m" },
       modeModels: {},
       noToolModels: [],
+      imageStyles: [],
       presets: [],
     },
   });

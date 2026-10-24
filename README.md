@@ -61,7 +61,7 @@ CardForge's own PNG code.
   Models without tool calling write the same edits as a JSON block instead; this is detected automatically.
 - The system prompt never changes during a chat. Project settings, the story bible, the card, the project's world and
   personas are sent in the user's message, only when they changed since the co-writer last saw them.
-- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic) has its own
+- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic, image prompts) has its own
   system prompt and can run on its own model; tasks without one use the default model.
 - The interview (`src/cowriter/interview.ts`) asks rounds of questions with suggested answers, then, depending on the
   project's depth, runs gap analysis and follow-up rounds, writes a story bible, and drafts the card in four calls
@@ -69,6 +69,14 @@ CardForge's own PNG code.
   the finished card and the chat proposes fixes.
 - Personas can be built with a short interview from the persona library. Card checker findings and each text field
   have one-tap requests to the co-writer.
+- Each provider keeps a list of saved models; the co-writer's model picker switches between them without opening
+  Settings. Each provider also has its own timeout (10 minutes by default).
+- The image prompt writer (`src/features/images/`) turns the card, other cards in the project, or a lorebook entry
+  into a prompt and negative prompt for an image generator, in a style saved in Settings (tags or sentences, art
+  style, fixed opening tags, negative prompt, extra rules).
+- On a world card, the lorebook brainstorm can bring in a character card from the project or a file. The co-writer
+  says how the character fits the world and what clashes, then pitches lorebook entries for them; the character card
+  itself is not changed.
 
 ## Builds
 
@@ -93,4 +101,5 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 4. Lorebook, assets and card checker (done)
 5. Co-writer core: Claude and OpenAI-compatible endpoints (NanoGPT, OpenRouter, local), tool-call edits (done)
 6. Interview, Deep pipeline and lorebook brainstorm (done)
-7. Polish and release
+7. Polish and release (done)
+8. Saved models, timeouts, image prompts, bringing characters into a world (done)

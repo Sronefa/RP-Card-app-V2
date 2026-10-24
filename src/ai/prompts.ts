@@ -46,6 +46,8 @@ const MODES: Record<ModeId, string> = {
 
   suggest: `Right now you're brainstorming the answer to one interview question with the user. Pitch 4 or 5 varied ideas with suggest_answers, from the expected to the surprising. Riff on the ideas the user likes and combine them when asked. When the user settles on something, write it up with final_answer. Follow the content mode: Dark pushes darker answers; Unhinged actively pushes explicit NSFW answers.`,
 
+  image: `Right now you write prompts for image generators, to illustrate the card. Describe only what can be seen: appearance, body, clothing, expression, pose, setting, lighting, composition and art style. Image models don't know the characters' names, so describe them instead of naming them, and leave out {{char}} and {{user}}. Follow the requested format and style exactly. Follow the content mode: in Unhinged mode explicit nudity and sex are fine when asked for; characters are always adults and look it. Hand in the result with write_image_prompt.`,
+
   critic: `Right now you're the critic. Read the card as the roleplay model that will play it, and list the concrete problems: vague or generic writing, contradictions between fields, greetings that speak or act for {{user}}, negative instructions, wasted permanent tokens, weak hooks, a voice that doesn't come through, lore that duplicates the card. Number the problems, name the field for each, and say what would fix it. At most ten, most important first. Don't rewrite the card yourself. If it is in good shape, say so in a sentence.`,
 };
 
@@ -329,4 +331,49 @@ export function personaKickoff(premise: string): string {
 
 export function personaWriteRequest(answers: string): string {
   return `<interview>\n${answers}\n</interview>\n\nWrite the persona with write_persona. The description is 100 to 300 tokens of natural third-person prose that refers to the persona as {{user}}: look first, then personality and manner, then a line of background. Only what other characters would notice or need to know. Where an answer is "${YOU_DECIDE}", decide it yourself.`;
+}
+
+// Image prompts
+
+export const FRAMINGS = {
+  portrait: "a head-and-shoulders portrait",
+  "full body": "a full-body shot",
+  scene: "a scene with the subject in their surroundings",
+  landscape: "a wide landscape or establishing shot with no main character",
+} as const;
+export type Framing = keyof typeof FRAMINGS;
+
+export function imagePromptRequest(opts: {
+  subject: string;
+  setting?: string;
+  contentMode: string;
+  style: { name: string; format: "tags" | "prose"; style: string; prefix: string; negative: string; notes: string };
+  framing: Framing;
+  instructions: string;
+}): string {
+  const { style } = opts;
+  const format =
+    style.format === "tags"
+      ? "Format: a Stable Diffusion / NovelAI prompt. Comma-separated booru-style tags, most important first: subject count, then appearance, clothing, expression, pose, setting, lighting. The negative prompt is also comma-separated tags."
+      : "Format: a natural-language prompt for models like Flux, DALL-E or Midjourney. One vivid paragraph of plain sentences. The negative prompt is a short comma-separated list of things to avoid.";
+  return [
+    `<subject>\n${opts.subject}\n</subject>`,
+    opts.setting && `<setting>\n${opts.setting}\n</setting>`,
+    `Content mode: ${opts.contentMode}.`,
+    format,
+    `Art style "${style.name}": ${style.style || "your choice"}.`,
+    style.prefix && `Start the prompt with exactly: ${style.prefix}`,
+    style.negative && `The negative prompt must include: ${style.negative}`,
+    style.notes && `Also: ${style.notes}`,
+    `Framing: ${FRAMINGS[opts.framing]}.`,
+    opts.instructions.trim() && `The user asks: ${opts.instructions.trim()}`,
+    "Write the image prompt with write_image_prompt.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Asks the lorebook brainstorm to fit a character card into this world. */
+export function bringInRequest(character: string): string {
+  return `<character_card>\n${character}\n</character_card>\n\nBring this character into this world. First, in a few short lines: where they fit (place, role, standing), their ties to people and factions already in the world, and what in their card clashes with the world and how you'd adapt it. Then pitch lorebook entries one or two at a time with add_lore_entry, starting with the character's own entry, then their ties, places and secrets. Keep them recognisable; adapt names, places and details that don't fit, and say what you changed. I'll steer before accepting.`;
 }

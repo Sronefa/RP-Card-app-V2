@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
-import { createProvider, modelKey, PROVIDER_TEMPLATES, useAiSettings, type PromptPreset } from "../../ai/settings";
-import type { ModeId, ModelChoice, ProviderConfig } from "../../ai/types";
+import {
+  createProvider,
+  modelKey,
+  PROVIDER_TEMPLATES,
+  useAiSettings,
+  type ImageStyle,
+  type PromptPreset,
+} from "../../ai/settings";
+import { DEFAULT_TIMEOUT_SEC, type ModeId, type ModelChoice, type ProviderConfig } from "../../ai/types";
 import { toast } from "../../components/toast";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { newId } from "../../lib/id";
@@ -13,6 +20,7 @@ const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
   { mode: "draft", label: "Drafting", help: "Writes the card from the story bible. Use your best prose model." },
   { mode: "lore", label: "Lorebook brainstorm", help: "Pitches lorebook entries." },
   { mode: "critic", label: "Critic", help: "Reads the card as the roleplay model would and flags weak spots." },
+  { mode: "image", label: "Image prompts", help: "Writes prompts for image generators." },
 ];
 
 export function SettingsView() {
@@ -20,6 +28,7 @@ export function SettingsView() {
   const [models, setModels] = useState<Record<string, string[]>>({});
   const [adding, setAdding] = useState(false);
   const [preset, setPreset] = useState<PromptPreset>();
+  const [imageStyle, setImageStyle] = useState<ImageStyle>();
 
   useEffect(() => void load(), [load]);
   if (!loaded) return null;
@@ -46,6 +55,10 @@ export function SettingsView() {
     });
   }
 
+  // Model suggestions: the provider's saved models, then whatever it reported.
+  const lists = Object.fromEntries(
+    settings.providers.map((p) => [p.id, [...new Set([...(p.models ?? []), ...(models[p.id] ?? [])])]]),
+  );
   const choice = settings.defaultModel;
   const noTools = choice ? settings.noToolModels.includes(modelKey(choice)) : false;
 
@@ -90,6 +103,27 @@ export function SettingsView() {
                 onChange={(e) => setProvider({ ...p, apiKey: e.target.value.trim() })}
               />
             </label>
+            <SavedModels
+              provider={p}
+              available={models[p.id]}
+              onLoad={() => void loadModels(p)}
+              onChange={(list) => setProvider({ ...p, models: list })}
+            />
+            <label className="flex flex-col gap-1 text-sm">
+              Give up after (seconds)
+              <span className="text-xs text-ink-muted">How long to wait for a reply before stopping with an error.</span>
+              <TextInput
+                type="number"
+                min={10}
+                inputMode="numeric"
+                className="max-w-32"
+                value={p.timeoutSec ?? DEFAULT_TIMEOUT_SEC}
+                onChange={(e) => {
+                  const n = Math.round(Number(e.target.value));
+                  setProvider({ ...p, timeoutSec: n > 0 ? n : undefined });
+                }}
+              />
+            </label>
             <div className="flex flex-wrap justify-between gap-2">
               <Button onClick={() => void loadModels(p)}>Test and load models</Button>
               <Button variant="danger" onClick={() => removeProvider(p)}>
@@ -111,7 +145,7 @@ export function SettingsView() {
         ) : (
           <ModelPicker
             providers={settings.providers}
-            models={models}
+            models={lists}
             value={choice}
             onLoad={(p) => void loadModels(p)}
             onChange={(defaultModel) => void update({ defaultModel })}
@@ -150,7 +184,7 @@ export function SettingsView() {
                 label={label}
                 help={help}
                 providers={settings.providers}
-                models={models}
+                models={lists}
                 value={settings.modeModels[mode]}
                 onLoad={(p) => void loadModels(p)}
                 onChange={(choice) => {
@@ -187,6 +221,54 @@ export function SettingsView() {
         </Button>
       </section>
 
+      <section className="flex flex-col gap-3">
+        <h2 className="font-medium">Image styles</h2>
+        <p className="text-sm text-ink-muted">
+          Used by the image prompt writer (Basics or Assets → ✦ Image prompt): the art style, the prompt format your
+          image generator wants, and tags that always go in.
+        </p>
+        {settings.imageStyles.map((st) => (
+          <button
+            key={st.id}
+            type="button"
+            onClick={() => setImageStyle(st)}
+            className="flex flex-col rounded-xl border border-border bg-surface-raised p-3 text-left hover:border-ink-muted"
+          >
+            <span className="font-medium">{st.name}</span>
+            <span className="line-clamp-2 text-xs text-ink-muted">
+              {st.format === "tags" ? "Tags" : "Sentences"} · {st.style || "No style set"}
+            </span>
+          </button>
+        ))}
+        <Button
+          className="self-start"
+          onClick={() =>
+            setImageStyle({ id: newId(), name: "New style", format: "tags", style: "", prefix: "", negative: "", notes: "" })
+          }
+        >
+          Add style
+        </Button>
+      </section>
+
+      <Dialog open={!!imageStyle} title="Image style" onClose={() => setImageStyle(undefined)}>
+        {imageStyle && (
+          <ImageStyleForm
+            key={imageStyle.id}
+            style={imageStyle}
+            onSave={(st) => {
+              const exists = settings.imageStyles.some((x) => x.id === st.id);
+              void update({
+                imageStyles: exists ? settings.imageStyles.map((x) => (x.id === st.id ? st : x)) : [...settings.imageStyles, st],
+              });
+              setImageStyle(undefined);
+            }}
+            onDelete={() => {
+              void update({ imageStyles: settings.imageStyles.filter((x) => x.id !== imageStyle.id) });
+              setImageStyle(undefined);
+            }}
+          />
+        )}
+      </Dialog>
       <Dialog open={adding} title="Add provider" onClose={() => setAdding(false)}>
         <div className="flex flex-col gap-2">
           {PROVIDER_TEMPLATES.map((t) => (
@@ -262,13 +344,81 @@ function ModelPicker({
           list={listId}
           value={value?.providerId === provider.id ? value.model : ""}
           placeholder={provider.kind === "anthropic" ? "claude-opus-5-5" : "Model name"}
-          onFocus={() => !list && provider.apiKey && onLoad(provider)}
+          onFocus={() => !list?.length && provider.apiKey && onLoad(provider)}
           onChange={(e) => onChange({ providerId: provider.id, model: e.target.value.trim() })}
         />
         <datalist id={listId}>
           {list?.map((m) => <option key={m} value={m} />)}
         </datalist>
       </label>
+    </div>
+  );
+}
+
+/** The models kept at hand for a provider, to switch between from the co-writer. */
+function SavedModels({
+  provider,
+  available,
+  onLoad,
+  onChange,
+}: {
+  provider: ProviderConfig;
+  /** Models the provider reported, offered as suggestions. */
+  available?: string[];
+  onLoad: () => void;
+  onChange: (models: string[]) => void;
+}) {
+  const [name, setName] = useState("");
+  const saved = provider.models ?? [];
+  const listId = `available-${provider.id}`;
+  function add() {
+    const model = name.trim();
+    if (model && !saved.includes(model)) onChange([...saved, model]);
+    setName("");
+  }
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <span>Your models</span>
+      <span className="text-xs text-ink-muted">Switch between them from the co-writer without coming back here.</span>
+      {saved.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {saved.map((m) => (
+            <li key={m} className="flex items-center gap-1 rounded-full border border-border py-0.5 pr-1 pl-3">
+              {m}
+              <button
+                type="button"
+                aria-label={`Remove ${m}`}
+                className="rounded-full px-1.5 text-ink-muted hover:text-ink"
+                onClick={() => onChange(saved.filter((x) => x !== m))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <TextInput
+          aria-label={`Add a model to ${provider.name}`}
+          list={listId}
+          value={name}
+          placeholder="Model name"
+          onFocus={() => !available && provider.apiKey && onLoad()}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
+          }}
+        />
+        <datalist id={listId}>
+          {available?.filter((m) => !saved.includes(m)).map((m) => <option key={m} value={m} />)}
+        </datalist>
+        <Button disabled={!name.trim()} onClick={add}>
+          Add
+        </Button>
+      </div>
     </div>
   );
 }
@@ -319,7 +469,7 @@ function ModeModelRow({
               list={listId}
               value={value!.model}
               placeholder="Model name"
-              onFocus={() => !models[provider.id] && provider.apiKey && onLoad(provider)}
+              onFocus={() => !models[provider.id]?.length && provider.apiKey && onLoad(provider)}
               onChange={(e) => onChange({ providerId: provider.id, model: e.target.value.trim() })}
             />
             <datalist id={listId}>
@@ -349,6 +499,59 @@ function PresetForm({ preset, onSave, onDelete }: { preset: PromptPreset; onSave
           onChange={(e) => setDraft({ ...draft, text: e.target.value })}
         />
       </label>
+      <div className="flex justify-between gap-2">
+        <Button variant="danger" onClick={onDelete}>
+          Delete
+        </Button>
+        <Button variant="primary" disabled={!draft.name.trim()} onClick={() => onSave(draft)}>
+          Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ImageStyleForm({
+  style,
+  onSave,
+  onDelete,
+}: {
+  style: ImageStyle;
+  onSave: (s: ImageStyle) => void;
+  onDelete: () => void;
+}) {
+  const [draft, setDraft] = useState(style);
+  const field = (key: "style" | "prefix" | "negative" | "notes", label: string, help: string, placeholder: string) => (
+    <label className="flex flex-col gap-1 text-sm">
+      {label}
+      <span className="text-xs text-ink-muted">{help}</span>
+      <AutoTextarea rows={2} value={draft[key]} placeholder={placeholder} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} />
+    </label>
+  );
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1 text-sm">
+        Name
+        <TextInput value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+      </label>
+      <fieldset className="flex flex-col gap-1 text-sm">
+        <legend className="mb-1">Prompt format</legend>
+        {(
+          [
+            ["tags", "Tags, for Stable Diffusion, NovelAI and similar"],
+            ["prose", "Sentences, for Flux, DALL-E, Midjourney and similar"],
+          ] as const
+        ).map(([value, label]) => (
+          <label key={value} className="flex items-center gap-2">
+            <input type="radio" className="size-4" checked={draft.format === value} onChange={() => setDraft({ ...draft, format: value })} />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {field("style", "Art style", "How it should look.", "e.g. anime, cel shading, soft pastel colours")}
+      {field("prefix", "Always start with", "Put at the very start of every prompt, e.g. quality tags or a LoRA trigger.", "e.g. masterpiece, best quality")}
+      {field("negative", "Negative prompt", "Always in the negative prompt.", "e.g. lowres, bad hands, text, watermark")}
+      {field("notes", "Other rules", "Anything else the prompt writer should follow.", "e.g. always a dark background")}
       <div className="flex justify-between gap-2">
         <Button variant="danger" onClick={onDelete}>
           Delete

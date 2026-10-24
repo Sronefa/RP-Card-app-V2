@@ -5,7 +5,13 @@
 import { DEFAULT_COWRITER } from "../ai/records";
 import { bibleContext, cardContext, personasContext, settingsContext, worldContext } from "../ai/prompts";
 import { createProvider, modelKey, resolveModel, useAiSettings } from "../ai/settings";
-import { ToolsUnsupportedError, type CompletionRequest, type CompletionResult, type ModeId } from "../ai/types";
+import {
+  DEFAULT_TIMEOUT_SEC,
+  ToolsUnsupportedError,
+  type CompletionRequest,
+  type CompletionResult,
+  type ModeId,
+} from "../ai/types";
 import { getInterview, getProject, listCards, listPersonas, type CardRecord } from "../db/db";
 
 export const isAbort = (e: unknown) => e instanceof Error && (e.name === "AbortError" || e.name === "APIUserAbortError");
@@ -28,7 +34,20 @@ export async function complete(
   const resolved = resolveModel(useAiSettings.getState().settings, mode);
   if (!resolved) throw new NoModelError();
   const provider = createProvider(resolved.config);
-  const run = (useTools: boolean) => provider.complete({ ...request, model: resolved.choice.model, useTools });
+  const seconds = resolved.config.timeoutSec ?? DEFAULT_TIMEOUT_SEC;
+  const run = async (useTools: boolean) => {
+    const timeout = AbortSignal.timeout(seconds * 1000);
+    const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
+    try {
+      return await provider.complete({ ...request, signal, model: resolved.choice.model, useTools });
+    } catch (e) {
+      if (timeout.aborted && !request.signal?.aborted)
+        throw new Error(
+          `${resolved.config.name} didn't finish within ${seconds} seconds. You can give it longer in Settings.`,
+        );
+      throw e;
+    }
+  };
   try {
     return { ...(await run(resolved.useTools)), useTools: resolved.useTools };
   } catch (e) {
