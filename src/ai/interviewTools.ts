@@ -3,6 +3,7 @@
  * Unlike the card tools they don't edit the card: they hand structured results to the app.
  */
 import { newId } from "../lib/id";
+import { KINDS, type WorldKind } from "../editor/world";
 import type { GapMemo, Question } from "./records";
 import type { ToolCall, ToolDef } from "./types";
 
@@ -230,4 +231,32 @@ export function readGreetingTags(call: ToolCall): Map<number, GreetingTag> {
     out.set(index, { mood: text(item.mood), place: text(item.place), stage: text(item.stage) });
   }
   return out;
+}
+
+/** The pitch tool for one world page; every field is a string. */
+export function pitchWorldTool(kind: WorldKind): ToolDef {
+  const def = KINDS[kind];
+  return {
+    name: "pitch",
+    description: `Pitch ${def.many} for the user to add.`,
+    parameters: obj(
+      {
+        items: {
+          type: "array",
+          items: obj(
+            Object.fromEntries(def.fields.map((f) => [f.key, str(f.hint)])),
+            def.fields.map((f) => f.key),
+          ),
+        },
+      },
+      ["items"],
+    ),
+  };
+}
+
+export function readWorldPitches(call: ToolCall, kind: WorldKind): Record<string, string>[] {
+  const items = Array.isArray(call.input.items) ? (call.input.items as Record<string, unknown>[]) : [];
+  return items
+    .map((item) => Object.fromEntries(KINDS[kind].fields.map((f) => [f.key, text(item?.[f.key])])))
+    .filter((f) => f.name);
 }

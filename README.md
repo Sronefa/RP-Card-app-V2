@@ -61,7 +61,7 @@ CardForge's own PNG code.
   Models without tool calling write the same edits as a JSON block instead; this is detected automatically.
 - The system prompt never changes during a chat. Project settings, the story bible, the card, the project's world and
   personas are sent in the user's message, only when they changed since the co-writer last saw them.
-- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic, image prompts, greeting planner) has its own
+- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic, image prompts, greeting planner, world pages) has its own
   system prompt and can run on its own model; tasks without one use the default model.
 - The interview (`src/cowriter/interview.ts`) asks rounds of questions with suggested answers, then, depending on the
   project's depth, runs gap analysis and follow-up rounds, writes a story bible, and drafts the card in four calls
@@ -77,6 +77,10 @@ CardForge's own PNG code.
   stage × place grid and asks the co-writer for the missing openings; Remix copies a card and has the co-writer rewrite
   the copy (alternate universe, darker, older, genderswap or your own change) in the same voice; Surprise me draws a
   premise from a trope deck (`src/cowriter/tropes.ts`) and starts an interview with it.
+- World pages (`src/editor/world.ts`, Lorebook → NPCs, Places, Economy): NPCs with voice notes, places with mood and
+  senses, the currency, items with prices, and shops. Each one is an ordinary lorebook entry whose text and keys are
+  written from its fields (kept in the entry's `extensions.cardforge`). An optional always-on cast list keeps NPC voices
+  apart. The co-writer pitches entries for each page.
 - Each provider keeps a list of saved models; the co-writer's model picker switches between them without opening
   Settings. Each provider also has its own timeout (10 minutes by default).
 - The image prompt writer (`src/features/images/`) turns the card, other cards in the project, or a lorebook entry
@@ -113,7 +117,7 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 8. Saved models, timeouts, image prompts, bringing characters into a world (done)
 9. Card quality: slop detector, token squeeze, lore coverage, card health score (done)
 10. Writing helpers: greeting planner, remix/fork, Surprise me (done)
-11. World pages: NPC roster, locations, economy
+11. World pages: NPC roster, locations, economy (done)
 12. Status trackers and regex, relationship stages
 13. Story arcs with the antagonist builder and secret mode
 14. Mechanics tab and Game Wizard

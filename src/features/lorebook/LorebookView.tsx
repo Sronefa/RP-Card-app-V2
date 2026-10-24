@@ -18,7 +18,17 @@ import { estimateTokens } from "../../lib/tokens";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
 import { EntryEditor } from "./EntryEditor";
+import { EconomyPage, WorldPage } from "../world/WorldPage";
 import { LoreBrainstorm } from "./LoreBrainstorm";
+
+const TABS = {
+  entries: "Entries",
+  npcs: "NPCs",
+  places: "Places",
+  economy: "Economy",
+  brainstorm: "Brainstorm",
+} as const;
+type Tab = keyof typeof TABS;
 
 export function LorebookView() {
   const record = useEditor((s) => s.record);
@@ -27,7 +37,7 @@ export function LorebookView() {
   const [open, setOpen] = useState<number | undefined>(focusEntry);
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<"settings" | "export">();
-  const [tab, setTab] = useState<"entries" | "brainstorm">("entries");
+  const [tab, setTab] = useState<Tab>("entries");
   const list = useRef<HTMLUListElement>(null);
 
   // Jump to the entry the card checker pointed at.
@@ -93,22 +103,34 @@ export function LorebookView() {
       </div>
 
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4">
-        <div role="tablist" aria-label="Lorebook" className="flex rounded-lg border border-border p-0.5">
-          {(["entries", "brainstorm"] as const).map((t) => (
+        <div role="tablist" aria-label="Lorebook" className="flex overflow-x-auto rounded-lg border border-border p-0.5">
+          {(Object.keys(TABS) as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={`min-h-9 flex-1 rounded-md px-2 text-sm ${tab === t ? "bg-accent/15 text-accent" : "text-ink-muted"}`}
+              className={`min-h-9 flex-1 rounded-md px-1.5 text-sm whitespace-nowrap ${tab === t ? "bg-accent/15 text-accent" : "text-ink-muted"}`}
             >
-              {t === "entries" ? "Entries" : "Brainstorm"}
+              {TABS[t]}
             </button>
           ))}
         </div>
         {tab === "brainstorm" ? (
           <LoreBrainstorm />
+        ) : tab === "npcs" ? (
+          <WorldPage
+            kind="npc"
+            intro="Everyone the narrator may voice. Each NPC is a lorebook entry that comes up when they're named; the voice note keeps them from all sounding alike."
+          />
+        ) : tab === "places" ? (
+          <WorldPage
+            kind="location"
+            intro="Places with their mood and what they feel like to be in. Each one is a lorebook entry that comes up when the place is named."
+          />
+        ) : tab === "economy" ? (
+          <EconomyPage />
         ) : (
           <>
             <p className="text-sm text-ink-muted">

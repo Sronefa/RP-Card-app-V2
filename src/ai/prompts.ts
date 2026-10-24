@@ -50,6 +50,8 @@ const MODES: Record<ModeId, string> = {
 
   planner: `Right now you sort the card's greetings for the greeting planner. For each greeting, pick the mood, the place and the stage of the relationship between {{char}} and {{user}} that fit it best, using only the values the user gave. If no place list is given, name the places yourself in two or three words each and reuse the same name for the same place. Hand in the result with sort_greetings.`,
 
+  world: `Right now you're filling in the world's pages: NPCs, places, money, items and shops, each kept as a lorebook entry. Pitch what the user asks for with the pitch tool, filling every field. Fit the card, the story bible and what already exists: no duplicates, no contradictions, and reuse names the card already mentions before inventing new ones. Keep each field short and concrete; NPC voices must sound different from each other and from {{char}}. Follow the content mode and tone. Characters in sexual content are adults.`,
+
   critic: `Right now you're the critic. Read the card as the roleplay model that will play it, and list the concrete problems: vague or generic writing, contradictions between fields, greetings that speak or act for {{user}}, negative instructions, wasted permanent tokens, weak hooks, a voice that doesn't come through, lore that duplicates the card. Number the problems, name the field for each, and say what would fix it. At most ten, most important first. Don't rewrite the card yourself. If it is in good shape, say so in a sentence.`,
 };
 
@@ -423,5 +425,15 @@ export function remixRequest(name: string, kind: RemixKind, details: string): st
     `This card is a copy of ${name}. Turn it into ${what}.`,
     "Keep {{char}}'s voice: the same way of speaking, humour, habits and core personality, changed only where the remix itself changes them. Rewrite every field that needs it, the greetings and the example dialogues, and update or replace lorebook entries that no longer fit. Start with the description, then go field by field.",
     "Characters in sexual content are adults, with their ages stated.",
+  ].join("\n\n");
+}
+
+/** Asks for world page pitches of one kind. */
+export function worldPitchRequest(opts: { many: string; existing: string[]; count: number; ask: string }): string {
+  return [
+    opts.existing.length ? `Already on this page: ${opts.existing.join(", ")}.` : "This page is empty so far.",
+    opts.ask.trim()
+      ? `Pitch ${opts.count} ${opts.many}. The user asks: ${opts.ask.trim()}`
+      : `Pitch ${opts.count} ${opts.many} this world needs, starting with any the card mentions that aren't on the page yet.`,
   ].join("\n\n");
 }
