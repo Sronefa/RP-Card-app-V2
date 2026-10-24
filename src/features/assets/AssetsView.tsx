@@ -21,7 +21,12 @@ const TYPES: { type: string; label: string; help: string; accept: string }[] = [
     accept: "image/*",
   },
   { type: "user_icon", label: "User avatars", help: "Avatars suggested for the user.", accept: "image/*" },
-  { type: "other", label: "Other", help: "Any other file, such as music or sounds.", accept: "image/*,audio/*" },
+  {
+    type: "other",
+    label: "Other",
+    help: "Any other file. Images here (icons, scenes, mood art) can be shown by mechanics; SillyTavern unpacks them from CHARX exports only.",
+    accept: "image/*,audio/*",
+  },
 ];
 
 const MIME: Record<string, string> = {

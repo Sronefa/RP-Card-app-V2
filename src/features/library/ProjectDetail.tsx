@@ -16,6 +16,7 @@ import {
   type PersonaRecord,
   type ProjectRecord,
 } from "../../db/db";
+import { embeddedPath } from "../../card";
 import { useEditor } from "../../editor/store";
 import { CARD_FILE_ACCEPT, exportRecord, importCard, kindOf, type ExportFormat } from "../../lib/cardFiles";
 import { pickFiles, readFileBytes } from "../../lib/files";
@@ -26,6 +27,10 @@ import { ProjectStyleDialog } from "../cowriter/ProjectStyleDialog";
 import { CardTile } from "./CardTile";
 import { RemixDialog } from "./RemixDialog";
 import { SurpriseDialog } from "./SurpriseDialog";
+
+/** Images besides the avatar that only a CHARX file carries into SillyTavern. */
+const hasPackedImages = (record: CardRecord) =>
+  (record.card.data.assets ?? []).some((a) => embeddedPath(a.uri) && !(a.type === "icon" && a.name === "main"));
 
 export function ProjectDetail({ projectId }: { projectId: string }) {
   const { setProjectId, setSection, setEditorGroup } = useUi();
@@ -131,6 +136,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     if (record.id === openCardId) await useEditor.getState().flush();
     try {
       const warnings = await exportRecord(record.id === openCardId ? useEditor.getState().record! : record, format);
+      if (warnings && format === "png" && hasPackedImages(record))
+        warnings.push("SillyTavern ignores images inside PNG cards, so export as CHARX to keep them");
       if (warnings) toast(warnings.length ? `Exported with notes: ${warnings.join("; ")}` : "Exported");
     } catch (e) {
       toast(`Export failed: ${(e as Error).message}`, "error");
@@ -289,11 +296,25 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             <Button variant="primary" onClick={() => void open(actionsFor).then(() => setActionsFor(undefined))}>
               Open in editor
             </Button>
-            <div className="grid grid-cols-3 gap-2">
-              <Button onClick={() => void exportAs(actionsFor, "png")}>Export PNG</Button>
-              <Button onClick={() => void exportAs(actionsFor, "charx")}>CHARX</Button>
-              <Button onClick={() => void exportAs(actionsFor, "json")}>JSON</Button>
-            </div>
+            {hasPackedImages(actionsFor) ? (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button onClick={() => void exportAs(actionsFor, "charx")}>Export CHARX</Button>
+                  <Button onClick={() => void exportAs(actionsFor, "png")}>PNG</Button>
+                  <Button onClick={() => void exportAs(actionsFor, "json")}>JSON</Button>
+                </div>
+                <p className="text-xs text-ink-muted">
+                  This card carries images. SillyTavern only unpacks them from CHARX; a PNG card loses them. After
+                  importing, keep the card's name in SillyTavern, or the image paths break.
+                </p>
+              </>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                <Button onClick={() => void exportAs(actionsFor, "png")}>Export PNG</Button>
+                <Button onClick={() => void exportAs(actionsFor, "charx")}>CHARX</Button>
+                <Button onClick={() => void exportAs(actionsFor, "json")}>JSON</Button>
+              </div>
+            )}
             <Button
               onClick={() => {
                 setRemixing(actionsFor);
