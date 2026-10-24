@@ -7,6 +7,7 @@
  */
 import type { CardDataV3 } from "../card";
 import type { GroupId } from "../features/editor/fields";
+import { arcHidden, isArcEntry } from "./arc";
 import { entryTitle } from "./lorebook";
 
 export const DEFAULT_SLOP_PHRASES = [
@@ -95,6 +96,7 @@ function sentenceAt(text: string, start: number, end: number): string {
 type Source = Omit<SlopHit, "phrase" | "match" | "line"> & { text: string };
 
 function sources(data: CardDataV3): Source[] {
+  const hidden = arcHidden(data);
   const field = (text: string, where: string, group: GroupId): Source => ({
     text,
     where,
@@ -111,13 +113,18 @@ function sources(data: CardDataV3): Source[] {
       ref: `alternate greeting ${i + 1}`,
     })),
     field(data.mes_example, "Example dialogues", "examples"),
-    ...(data.character_book?.entries ?? []).map(
-      (e, i): Source => ({
-        text: e.content,
-        where: `Lorebook: ${entryTitle(e)}`,
-        ref: `the lorebook entry "${entryTitle(e)}"`,
-        target: { section: "lorebook", entry: i },
-      }),
+    // A secret story arc stays out of sight, so its entries aren't quoted here.
+    ...(data.character_book?.entries ?? []).flatMap((e, i): Source[] =>
+      hidden && isArcEntry(e)
+        ? []
+        : [
+            {
+              text: e.content,
+              where: `Lorebook: ${entryTitle(e)}`,
+              ref: `the lorebook entry "${entryTitle(e)}"`,
+              target: { section: "lorebook", entry: i },
+            },
+          ],
     ),
   ];
 }

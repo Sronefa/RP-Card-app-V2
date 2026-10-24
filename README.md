@@ -61,7 +61,7 @@ CardForge's own PNG code.
   Models without tool calling write the same edits as a JSON block instead; this is detected automatically.
 - The system prompt never changes during a chat. Project settings, the story bible, the card, the project's world and
   personas are sent in the user's message, only when they changed since the co-writer last saw them.
-- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic, image prompts, greeting planner, world pages) has its own
+- Each task (chat, interview, answer brainstorm, gap analysis, drafting, lorebook brainstorm, critic, image prompts, greeting planner, world pages, story arcs) has its own
   system prompt and can run on its own model; tasks without one use the default model.
 - The interview (`src/cowriter/interview.ts`) asks rounds of questions with suggested answers, then, depending on the
   project's depth, runs gap analysis and follow-up rounds, writes a story bible, and drafts the card in four calls
@@ -87,6 +87,13 @@ CardForge's own PNG code.
   relationship stages one lorebook entry per stage keyed on the block's stage line. Scripts go in
   `data.extensions.regex_scripts`; the user's own scripts are kept and can be edited and tried on a sample reply.
   A sandboxed preview shows the reply as SillyTavern renders it.
+- Story arcs (`src/editor/arc.ts`, Lorebook → Story arc): settings for difficulty, death (including permadeath),
+  failure, pacing, endings, twists, the antagonist, secrecy and tone, then the co-writer plots the beats. Each beat is a
+  constant lorebook entry at depth 4 in one inclusion group with prioritize on, and each later beat has a longer delay
+  and a higher order, so SillyTavern swaps in the next beat after enough messages with no extension. A rules entry
+  carries the settings. The antagonist is built with a short interview or left to the co-writer, and becomes its own
+  entry. Secret mode hides the arc everywhere in CardForge (the entry list, the slop check, the co-writer is told not to
+  hint at it) until you reveal it behind a confirm; the exported card always has it.
 - Each provider keeps a list of saved models; the co-writer's model picker switches between them without opening
   Settings. Each provider also has its own timeout (10 minutes by default).
 - The image prompt writer (`src/features/images/`) turns the card, other cards in the project, or a lorebook entry
@@ -125,5 +132,5 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 10. Writing helpers: greeting planner, remix/fork, Surprise me (done)
 11. World pages: NPC roster, locations, economy (done)
 12. Status trackers and regex, relationship stages (done)
-13. Story arcs with the antagonist builder and secret mode
+13. Story arcs with the antagonist builder and secret mode (done)
 14. Mechanics tab and Game Wizard
