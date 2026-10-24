@@ -3,6 +3,7 @@
  * Unlike the card tools they don't edit the card: they hand structured results to the app.
  */
 import { newId } from "../lib/id";
+import { ANTAGONIST_FIELDS, type Antagonist, type Beat } from "../editor/arc";
 import { KINDS, type WorldKind } from "../editor/world";
 import type { GapMemo, Question } from "./records";
 import type { ToolCall, ToolDef } from "./types";
@@ -259,4 +260,59 @@ export function readWorldPitches(call: ToolCall, kind: WorldKind): Record<string
   return items
     .map((item) => Object.fromEntries(KINDS[kind].fields.map((f) => [f.key, text(item?.[f.key])])))
     .filter((f) => f.name);
+}
+
+export const WRITE_ARC: ToolDef = {
+  name: "write_arc",
+  description: "Hand in the story arc.",
+  parameters: obj(
+    {
+      title: str("The arc's title"),
+      premise: str("What the arc is about, two or three sentences"),
+      beats: {
+        type: "array",
+        items: obj(
+          {
+            title: str("A short title for the beat"),
+            summary: str("What happens: the situation and what's at stake, two or three sentences"),
+            direction: str("How the narrator plays it: pressure, clues, what NPCs do; never what {{user}} does"),
+            antagonist: str("What the antagonist does in this beat, or empty"),
+          },
+          ["title", "summary", "direction", "antagonist"],
+        ),
+      },
+      ending: str("The ending, or the endings and the choices that lead to each"),
+    },
+    ["title", "premise", "beats", "ending"],
+  ),
+};
+
+export function readArcDraft(call: ToolCall): { title: string; premise: string; beats: Beat[]; ending: string } {
+  const beats = Array.isArray(call.input.beats) ? (call.input.beats as Record<string, unknown>[]) : [];
+  return {
+    title: text(call.input.title),
+    premise: text(call.input.premise),
+    beats: beats
+      .map((b) => ({
+        title: text(b?.title),
+        summary: text(b?.summary),
+        direction: text(b?.direction),
+        antagonist: text(b?.antagonist),
+      }))
+      .filter((b) => b.title || b.summary),
+    ending: text(call.input.ending),
+  };
+}
+
+export const WRITE_ANTAGONIST: ToolDef = {
+  name: "write_antagonist",
+  description: "Hand in the antagonist.",
+  parameters: obj(
+    Object.fromEntries(ANTAGONIST_FIELDS.map((f) => [f.key, str(f.hint)])),
+    ANTAGONIST_FIELDS.map((f) => f.key),
+  ),
+};
+
+export function readAntagonist(call: ToolCall): Antagonist {
+  return Object.fromEntries(ANTAGONIST_FIELDS.map((f) => [f.key, text(call.input[f.key])])) as unknown as Antagonist;
 }

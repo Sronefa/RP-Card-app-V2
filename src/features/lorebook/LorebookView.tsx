@@ -14,18 +14,20 @@ import { Button, Dialog, TextInput } from "../../components/ui";
 import { emptyBook, entryTitle, mergeBooks, newEntry } from "../../editor/lorebook";
 import { useEditor } from "../../editor/store";
 import { pickFiles, readFileBytes, safeFileName, saveFile } from "../../lib/files";
-import { estimateTokens } from "../../lib/tokens";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
 import { EntryEditor } from "./EntryEditor";
 import { EconomyPage, WorldPage } from "../world/WorldPage";
 import { LoreBrainstorm } from "./LoreBrainstorm";
+import { ArcPage } from "../arc/ArcPage";
+import { arcHidden, constantTokens, isArcEntry } from "../../editor/arc";
 
 const TABS = {
   entries: "Entries",
   npcs: "NPCs",
   places: "Places",
   economy: "Economy",
+  arc: "Story arc",
   brainstorm: "Brainstorm",
 } as const;
 type Tab = keyof typeof TABS;
@@ -91,19 +93,24 @@ export function LorebookView() {
   }
 
   const q = query.trim().toLowerCase();
+  const secret = arcHidden(record.card.data);
+  // A secret arc shows as one line in the list.
+  const firstArc = book.entries.findIndex(isArcEntry);
+  const arcCount = book.entries.filter(isArcEntry).length;
   const matches = (e: LorebookEntry) =>
-    !q || [entryTitle(e), e.content, ...e.keys, ...(e.secondary_keys ?? [])].some((t) => t.toLowerCase().includes(q));
-  const enabled = book.entries.filter((e) => e.enabled);
-  const constantTokens = enabled.filter((e) => e.constant).reduce((n, e) => n + estimateTokens(e.content), 0);
+    !q ||
+    (!(secret && isArcEntry(e)) &&
+      [entryTitle(e), e.content, ...e.keys, ...(e.secondary_keys ?? [])].some((t) => t.toLowerCase().includes(q)));
+  const alwaysOn = constantTokens(book.entries);
 
   return (
     <div className="flex min-h-full flex-col">
       <div className="sticky top-0 z-10 border-b border-border bg-surface/95 pb-3 backdrop-blur">
-        <CardBar detail={`${book.entries.length} entries · ~${constantTokens} always-on tokens`} />
+        <CardBar detail={`${book.entries.length} entries · ~${alwaysOn} always-on tokens`} />
       </div>
 
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4">
-        <div role="tablist" aria-label="Lorebook" className="flex overflow-x-auto rounded-lg border border-border p-0.5">
+        <div role="tablist" aria-label="Lorebook" className="grid grid-cols-3 rounded-lg border border-border p-0.5 sm:flex">
           {(Object.keys(TABS) as Tab[]).map((t) => (
             <button
               key={t}
@@ -131,6 +138,8 @@ export function LorebookView() {
           />
         ) : tab === "economy" ? (
           <EconomyPage />
+        ) : tab === "arc" ? (
+          <ArcPage />
         ) : (
           <>
             <p className="text-sm text-ink-muted">
@@ -163,36 +172,50 @@ export function LorebookView() {
             )}
             <ul ref={list} className="flex flex-col gap-2">
               {book.entries.map((entry, i) => (
-                <li key={i} hidden={!matches(entry)} className="scroll-mt-32">
-                  <EntryEditor
-                    entry={entry}
-                    index={i}
-                    count={book.entries.length}
-                    open={open === i}
-                    onToggle={() => setOpen(open === i ? undefined : i)}
-                    onChange={(next, coalesceKey) =>
-                      setEntries(
-                        book.entries.map((e, j) => (j === i ? next : e)),
-                        coalesceKey && `lore.${i}.${coalesceKey}`,
-                      )
-                    }
-                    onMove={(by) => {
-                      const next = [...book.entries];
-                      [next[i], next[i + by]] = [next[i + by], next[i]];
-                      setEntries(next);
-                      if (open === i) setOpen(i + by);
-                    }}
-                    onDuplicate={() => {
-                      const copy = { ...structuredClone(entry), id: newEntry(book).id };
-                      setEntries([...book.entries.slice(0, i + 1), copy, ...book.entries.slice(i + 1)]);
-                      setOpen(i + 1);
-                    }}
-                    onDelete={() => {
-                      setEntries(book.entries.filter((_, j) => j !== i));
-                      setOpen(undefined);
-                      toast("Entry deleted. Undo with ↶ if that was a mistake.");
-                    }}
-                  />
+                <li
+                  key={i}
+                  hidden={!matches(entry) || (secret && isArcEntry(entry) && i !== firstArc)}
+                  className="scroll-mt-32"
+                >
+                  {secret && isArcEntry(entry) ? (
+                    <button
+                      type="button"
+                      onClick={() => setTab("arc")}
+                      className="w-full rounded-xl border border-dashed border-border p-3 text-left text-sm text-ink-muted"
+                    >
+                      {arcCount} story arc entries, kept secret. Reveal them on the Story arc tab.
+                    </button>
+                  ) : (
+                    <EntryEditor
+                      entry={entry}
+                      index={i}
+                      count={book.entries.length}
+                      open={open === i}
+                      onToggle={() => setOpen(open === i ? undefined : i)}
+                      onChange={(next, coalesceKey) =>
+                        setEntries(
+                          book.entries.map((e, j) => (j === i ? next : e)),
+                          coalesceKey && `lore.${i}.${coalesceKey}`,
+                        )
+                      }
+                      onMove={(by) => {
+                        const next = [...book.entries];
+                        [next[i], next[i + by]] = [next[i + by], next[i]];
+                        setEntries(next);
+                        if (open === i) setOpen(i + by);
+                      }}
+                      onDuplicate={() => {
+                        const copy = { ...structuredClone(entry), id: newEntry(book).id };
+                        setEntries([...book.entries.slice(0, i + 1), copy, ...book.entries.slice(i + 1)]);
+                        setOpen(i + 1);
+                      }}
+                      onDelete={() => {
+                        setEntries(book.entries.filter((_, j) => j !== i));
+                        setOpen(undefined);
+                        toast("Entry deleted. Undo with ↶ if that was a mistake.");
+                      }}
+                    />
+                  )}
                 </li>
               ))}
             </ul>

@@ -7,6 +7,7 @@ import type { CardRecord } from "../db/db";
 import { estimateTokens } from "../lib/tokens";
 import { PERMANENT_FIELDS, type GroupId } from "../features/editor/fields";
 import { coverageRequest, findUncovered } from "./coverage";
+import { constantTokens } from "./arc";
 import { entryTitle, isRegexKey, regexError } from "./lorebook";
 import { findSlop, slopRequest } from "./slop";
 
@@ -139,12 +140,10 @@ export function checkCard(record: CardRecord, options: CheckOptions = {}): Issue
     if (tokens > LONG_ENTRY_TOKENS)
       add("tip", `Lorebook entry ${title} is about ${tokens} tokens. Shorter entries leave more room for chat.`, target);
   });
-  const constantTokens = entries
-    .filter((e) => e.enabled && e.constant)
-    .reduce((n, e) => n + estimateTokens(e.content), 0);
+  const alwaysOn = constantTokens(entries);
   const budget = d.character_book?.token_budget;
-  if (budget && constantTokens > budget)
-    add("warning", `Constant lorebook entries use about ${constantTokens} tokens, over the book's budget of ${budget}.`, {
+  if (budget && alwaysOn > budget)
+    add("warning", `Constant lorebook entries use about ${alwaysOn} tokens, over the book's budget of ${budget}.`, {
       section: "lorebook",
     });
 

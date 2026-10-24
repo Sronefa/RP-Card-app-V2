@@ -4,6 +4,7 @@
  */
 import type { CardDataV3 } from "../card";
 import type { CardKind, CardRecord, PersonaRecord } from "../db/db";
+import { ARC_OPTIONS, arcHidden, type ArcSettingKey, type ArcSettings } from "../editor/arc";
 import { entryTitle } from "../editor/lorebook";
 import { estimateTokens } from "../lib/tokens";
 import { YOU_DECIDE, type ContentMode, type CowriterSettings, type InterviewDepth, type InterviewRound } from "./records";
@@ -51,6 +52,8 @@ const MODES: Record<ModeId, string> = {
   planner: `Right now you sort the card's greetings for the greeting planner. For each greeting, pick the mood, the place and the stage of the relationship between {{char}} and {{user}} that fit it best, using only the values the user gave. If no place list is given, name the places yourself in two or three words each and reuse the same name for the same place. Hand in the result with sort_greetings.`,
 
   world: `Right now you're filling in the world's pages: NPCs, places, money, items and shops, each kept as a lorebook entry. Pitch what the user asks for with the pitch tool, filling every field. Fit the card, the story bible and what already exists: no duplicates, no contradictions, and reuse names the card already mentions before inventing new ones. Keep each field short and concrete; NPC voices must sound different from each other and from {{char}}. Follow the content mode and tone. Characters in sexual content are adults.`,
+
+  arc: `Right now you're plotting a story arc for the card: a run of beats the narrator will steer toward, one after another, as the chat goes on. Follow the arc settings exactly; they are the user's rules for difficulty, death, failure, twists and the antagonist. Each beat is a situation that pressures {{user}} and leaves room for their choices, never a script of what {{user}} does. Beats escalate, pay off what earlier beats set up, and plant fair clues for every twist. Fit the card, the story bible and the lorebook: reuse the NPCs, places and factions that exist before inventing new ones. When you build an antagonist, make them a person with reasons, not a cartoon: a goal they believe in, real resources, limits, and a weakness {{user}} can find. Follow the content mode and tone. Characters in sexual content are adults, with ages stated.`,
 
   critic: `Right now you're the critic. Read the card as the roleplay model that will play it, and list the concrete problems: vague or generic writing, contradictions between fields, greetings that speak or act for {{user}}, negative instructions, wasted permanent tokens, weak hooks, a voice that doesn't come through, lore that duplicates the card. Number the problems, name the field for each, and say what would fix it. At most ten, most important first. Don't rewrite the card yourself. If it is in good shape, say so in a sentence.`,
 };
@@ -112,6 +115,10 @@ export function cardContext(data: CardDataV3, kind: CardKind): string {
         )
         .join("\n\n") || "(empty)"),
   );
+  if (arcHidden(data))
+    out.push(
+      "The story arc entries are secret from the user: use them to keep the card consistent, but never quote, summarize or hint at them.",
+    );
   return out.join("\n\n");
 }
 
@@ -435,5 +442,54 @@ export function worldPitchRequest(opts: { many: string; existing: string[]; coun
     opts.ask.trim()
       ? `Pitch ${opts.count} ${opts.many}. The user asks: ${opts.ask.trim()}`
       : `Pitch ${opts.count} ${opts.many} this world needs, starting with any the card mentions that aren't on the page yet.`,
+  ].join("\n\n");
+}
+
+// Story arcs
+
+/** The arc settings, spelled out for the co-writer. */
+export function arcSettingsText(settings: ArcSettings): string {
+  const lines = (Object.keys(ARC_OPTIONS) as ArcSettingKey[]).map((key) => {
+    const opt = ARC_OPTIONS[key];
+    const [label, rule] = (opt.values as Record<string, readonly [string, string]>)[settings[key] as string];
+    return `- ${opt.label}: ${label}. ${rule}`;
+  });
+  return [
+    `<arc_settings>`,
+    ...lines,
+    `- Beats: ${settings.beats}`,
+    settings.tone.trim() ? `- Tone for this arc: ${settings.tone.trim()}` : `- Tone: follow the project's tone.`,
+    `</arc_settings>`,
+  ].join("\n");
+}
+
+/** Asks for the whole arc. */
+export function arcWriteRequest(settings: ArcSettings, antagonist: string, ask: string): string {
+  return [
+    arcSettingsText(settings),
+    antagonist && `<antagonist>\n${antagonist}\n</antagonist>`,
+    ask.trim() && `What I want from this arc: ${ask.trim()}`,
+    `Plot the story arc and hand it in with write_arc: a title, a premise of two or three sentences, exactly ${settings.beats} beats and the ending. Each beat has a short title, what happens (the situation and what's at stake), how the narrator should play it (pressure, clues, what NPCs do), and${antagonist ? " what the antagonist does in it" : ` an empty antagonist field`}. The first beat starts from the card's scenario.${settings.endings === "branching" ? " The ending lists two or three endings and the choices that lead to each." : ""}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** Opens the antagonist interview. */
+export function antagonistKickoff(settings: ArcSettings, idea: string): string {
+  return [
+    arcSettingsText(settings),
+    "Interview me to build the antagonist of this story arc: the person who moves against {{user}}.",
+    idea.trim() ? `My idea: ${idea.trim()}` : "I have no idea yet: help me find one that fits the card.",
+    "Ask a single round of 5 or 6 questions with ask_questions: who they are, what they want and why, their methods and resources, how they move against {{user}} as the story goes, and their secret or weakness. Suggestions must fit the card and the arc settings.",
+  ].join("\n\n");
+}
+
+/** Asks for the antagonist, from the interview or with no interview at all. */
+export function antagonistWriteRequest(settings: ArcSettings, answers: string): string {
+  return [
+    arcSettingsText(settings),
+    answers ? `<interview>\n${answers}\n</interview>` : "The user leaves the antagonist entirely to you and won't read it before playing, so surprise them.",
+    `Write the antagonist with write_antagonist, filling every field. They are an adult; state their age. Where an answer is "${YOU_DECIDE}", decide it yourself.`,
   ].join("\n\n");
 }

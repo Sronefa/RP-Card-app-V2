@@ -23,6 +23,7 @@ const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
   { mode: "critic", label: "Critic", help: "Reads the card as the roleplay model would and flags weak spots." },
   { mode: "image", label: "Image prompts", help: "Writes prompts for image generators." },
   { mode: "world", label: "World pages", help: "Pitches NPCs, places, money, items and shops." },
+  { mode: "arc", label: "Story arcs", help: "Plans the story arc and builds the antagonist. Use a strong model." },
   { mode: "planner", label: "Greeting planner", help: "Sorts greetings by mood, place and relationship stage. A cheaper model works well." },
 ];
 
