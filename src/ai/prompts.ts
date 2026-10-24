@@ -48,6 +48,8 @@ const MODES: Record<ModeId, string> = {
 
   image: `Right now you write prompts for image generators, to illustrate the card. Describe only what can be seen: appearance, body, clothing, expression, pose, setting, lighting, composition and art style. Image models don't know the characters' names, so describe them instead of naming them, and leave out {{char}} and {{user}}. Follow the requested format and style exactly. Follow the content mode: in Unhinged mode explicit nudity and sex are fine when asked for; characters are always adults and look it. Hand in the result with write_image_prompt.`,
 
+  planner: `Right now you sort the card's greetings for the greeting planner. For each greeting, pick the mood, the place and the stage of the relationship between {{char}} and {{user}} that fit it best, using only the values the user gave. If no place list is given, name the places yourself in two or three words each and reuse the same name for the same place. Hand in the result with sort_greetings.`,
+
   critic: `Right now you're the critic. Read the card as the roleplay model that will play it, and list the concrete problems: vague or generic writing, contradictions between fields, greetings that speak or act for {{user}}, negative instructions, wasted permanent tokens, weak hooks, a voice that doesn't come through, lore that duplicates the card. Number the problems, name the field for each, and say what would fix it. At most ten, most important first. Don't rewrite the card yourself. If it is in good shape, say so in a sentence.`,
 };
 
@@ -376,4 +378,50 @@ export function imagePromptRequest(opts: {
 /** Asks the lorebook brainstorm to fit a character card into this world. */
 export function bringInRequest(character: string): string {
   return `<character_card>\n${character}\n</character_card>\n\nBring this character into this world. First, in a few short lines: where they fit (place, role, standing), their ties to people and factions already in the world, and what in their card clashes with the world and how you'd adapt it. Then pitch lorebook entries one or two at a time with add_lore_entry, starting with the character's own entry, then their ties, places and secrets. Keep them recognisable; adapt names, places and details that don't fit, and say what you changed. I'll steer before accepting.`;
+}
+
+/** Asks the planner to sort the greetings onto the user's axes. */
+export function greetingSortRequest(greetings: string[], axes: { moods: string[]; places: string[]; stages: string[] }): string {
+  return [
+    greetings.map((g, i) => `<greeting index="${i}">\n${g}\n</greeting>`).join("\n\n"),
+    `Moods: ${axes.moods.join(", ")}`,
+    axes.places.length ? `Places: ${axes.places.join(", ")}` : "Places: name them yourself.",
+    `Relationship stages: ${axes.stages.join(", ")}`,
+    "Sort every greeting with sort_greetings.",
+  ].join("\n\n");
+}
+
+/** Asks the co-writer chat for greetings that fill gaps in the planner grid. */
+export function greetingFillRequest(cells: { mood: string; stage: string; place?: string }[]): string {
+  const list = cells.map((c) => `- mood: ${c.mood}; relationship stage: ${c.stage}; place: ${c.place ?? "a place no other greeting uses"}`);
+  return [
+    `Write ${cells.length === 1 ? "an alternate greeting" : `${cells.length} alternate greetings`} for openings the card doesn't have yet, one add_greeting each:`,
+    list.join("\n"),
+    "Each greeting sets up its own situation with a hook, matches the first message in voice and length, and never speaks or acts for {{user}}. The relationship stage is where {{char}} and {{user}} stand when the scene opens.",
+  ].join("\n");
+}
+
+export const REMIXES = {
+  au: { label: "Alternate universe", ask: "Which universe?", placeholder: "e.g. modern-day college, space station, 1920s noir" },
+  darker: { label: "Darker", ask: "Anything specific?", placeholder: "e.g. she made the deal with the demon" },
+  older: { label: "Older", ask: "How much older?", placeholder: "e.g. twenty years later, in her fifties" },
+  genderswap: { label: "Genderswap", ask: "Anything specific?", placeholder: "e.g. keep the name" },
+  custom: { label: "Your own", ask: "What changes?", placeholder: "e.g. she never left the convent" },
+} as const;
+export type RemixKind = keyof typeof REMIXES;
+
+/** Asks the co-writer chat to turn a copied card into a remix of the original. */
+export function remixRequest(name: string, kind: RemixKind, details: string): string {
+  const what = {
+    au: `an alternate-universe version of ${name}, set in ${details || "a different setting you choose"}`,
+    darker: `a darker version of ${name}${details ? `: ${details}` : ""}`,
+    older: `an older version of ${name}${details ? `: ${details}` : ", some years later"}`,
+    genderswap: `a genderswapped version of ${name}${details ? ` (${details})` : ""}`,
+    custom: `a version of ${name} where ${details || "something important went differently"}`,
+  }[kind];
+  return [
+    `This card is a copy of ${name}. Turn it into ${what}.`,
+    "Keep {{char}}'s voice: the same way of speaking, humour, habits and core personality, changed only where the remix itself changes them. Rewrite every field that needs it, the greetings and the example dialogues, and update or replace lorebook entries that no longer fit. Start with the description, then go field by field.",
+    "Characters in sexual content are adults, with their ages stated.",
+  ].join("\n\n");
 }

@@ -19,8 +19,13 @@ import {
 import { useEditor } from "../../editor/store";
 import { CARD_FILE_ACCEPT, exportRecord, importCard, kindOf, type ExportFormat } from "../../lib/cardFiles";
 import { pickFiles, readFileBytes } from "../../lib/files";
+import { REMIXES, remixRequest, type RemixKind } from "../../ai/prompts";
+import { askCowriter } from "../../cowriter/ask";
+import { useInterview } from "../../cowriter/interview";
 import { ProjectStyleDialog } from "../cowriter/ProjectStyleDialog";
 import { CardTile } from "./CardTile";
+import { RemixDialog } from "./RemixDialog";
+import { SurpriseDialog } from "./SurpriseDialog";
 
 export function ProjectDetail({ projectId }: { projectId: string }) {
   const { setProjectId, setSection, setEditorGroup } = useUi();
@@ -34,6 +39,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const [confirmDelete, setConfirmDelete] = useState<"project" | CardRecord>();
   const [addingPersona, setAddingPersona] = useState(false);
   const [styling, setStyling] = useState(false);
+  const [remixing, setRemixing] = useState<CardRecord>();
+  const [surprise, setSurprise] = useState<CardKind>();
 
   const reload = useCallback(async () => {
     // Save the open card first, so the list shows its latest name and image.
@@ -69,6 +76,35 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
   async function create(kind: CardKind) {
     await open(await createCard(projectId, kind));
+  }
+
+  /** A new card with an interview started from the drawn idea. */
+  async function startSurprise(kind: CardKind, idea: string) {
+    setSurprise(undefined);
+    const record = await createCard(projectId, kind);
+    await open(record);
+    const ui = useUi.getState();
+    ui.setCowriterTab("interview");
+    ui.setSection("cowriter");
+    await useInterview.getState().load(record.id);
+    await useInterview.getState().start(idea);
+  }
+
+  /** Copies the card and has the co-writer rewrite the copy. */
+  async function remix(record: CardRecord, kind: RemixKind, details: string) {
+    setRemixing(undefined);
+    if (record.id === openCardId) await useEditor.getState().flush();
+    const source = record.id === openCardId ? useEditor.getState().record! : record;
+    const card = structuredClone(source.card);
+    const name = card.data.name;
+    card.data.name = `${name} (${REMIXES[kind].label.toLowerCase()})`;
+    const copy = await createCard(projectId, source.kind, {
+      card,
+      files: structuredClone(source.files),
+      image: source.image && source.image.slice(),
+    });
+    await open(copy);
+    await askCowriter({ send: remixRequest(name, kind, details) });
   }
 
   async function importFiles() {
@@ -134,9 +170,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
   const section = (title: string, list: CardRecord[], actions: React.ReactNode, empty: string) => (
     <section className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">{title}</h2>
-        <div className="flex gap-2">{actions}</div>
+        <div className="flex flex-wrap justify-end gap-2 whitespace-nowrap">{actions}</div>
       </div>
       {list.length === 0 && <p className="text-sm text-ink-muted">{empty}</p>}
       <div className="grid gap-2 sm:grid-cols-2">
@@ -169,7 +205,14 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       {section(
         "World",
         worlds,
-        worlds.length === 0 && <Button onClick={() => void create("world")}>New world</Button>,
+        worlds.length === 0 && (
+          <>
+            <Button variant="ghost" onClick={() => setSurprise("world")}>
+              ✦ Surprise me
+            </Button>
+            <Button onClick={() => void create("world")}>New world</Button>
+          </>
+        ),
         "The world card narrates the setting and carries the shared lorebook.",
       )}
 
@@ -177,6 +220,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         "Characters",
         characters,
         <>
+          <Button variant="ghost" onClick={() => setSurprise("character")}>
+            ✦ Surprise me
+          </Button>
           <Button onClick={() => void importFiles()}>Import</Button>
           <Button variant="primary" onClick={() => void create("character")}>
             New character
@@ -222,6 +268,20 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </Button>
       </div>
       <ProjectStyleDialog projectId={projectId} open={styling} onClose={() => setStyling(false)} />
+      {remixing && (
+        <RemixDialog
+          name={remixing.card.data.name || "the card"}
+          onClose={() => setRemixing(undefined)}
+          onRemix={(kind, details) => void remix(remixing, kind, details)}
+        />
+      )}
+      {surprise && (
+        <SurpriseDialog
+          kind={surprise}
+          onClose={() => setSurprise(undefined)}
+          onStart={(idea) => void startSurprise(surprise, idea)}
+        />
+      )}
 
       <Dialog open={!!actionsFor} title={actionsFor?.card.data.name || "Card"} onClose={() => setActionsFor(undefined)}>
         {actionsFor && (
@@ -234,6 +294,14 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               <Button onClick={() => void exportAs(actionsFor, "charx")}>CHARX</Button>
               <Button onClick={() => void exportAs(actionsFor, "json")}>JSON</Button>
             </div>
+            <Button
+              onClick={() => {
+                setRemixing(actionsFor);
+                setActionsFor(undefined);
+              }}
+            >
+              ✦ Remix…
+            </Button>
             <Button onClick={() => void setKind(actionsFor, actionsFor.kind === "world" ? "character" : "world")}>
               Make it a {actionsFor.kind === "world" ? "character" : "world"} card
             </Button>
