@@ -109,7 +109,12 @@ describe("economy", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add item" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Item" }), { target: { value: "Rope" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Price" }), { target: { value: "2 shillings" } });
-    await waitFor(() => expect(entries().map((e) => e.content)).toEqual(["Money: crowns.", "Rope: costs 2 shillings."]));
+    await waitFor(() =>
+      expect(entries().map((e) => e.content)).toEqual([
+        '<currency name="crowns">\n</currency>',
+        '<item name="Rope" price="2 shillings">\n</item>',
+      ]),
+    );
     fireEvent.click(screen.getByRole("tab", { name: "Entries" }));
     expect(screen.getAllByText("Rope").length).toBeGreaterThan(0);
   });

@@ -37,6 +37,15 @@ const ALIASES: FieldDef = {
   hint: "other names, titles or nicknames the chat may use, comma-separated",
 };
 
+/** An XML-tagged entry, like the arc and mechanics entries: attributes for the short facts, lines for the rest. */
+function tagged(tag: string, attrs: Record<string, string | undefined>, body: (string | false | undefined)[]): string {
+  const attr = Object.entries(attrs)
+    .filter(([, v]) => v?.trim())
+    .map(([k, v]) => ` ${k}="${v!.trim().replace(/"/g, "'")}"`)
+    .join("");
+  return [`<${tag}${attr}>`, ...body.filter((p) => p && p.trim()), `</${tag}>`].join("\n");
+}
+
 const lines = (...parts: (string | false | undefined)[]) => parts.filter((p) => p && p.trim()).join("\n");
 
 export const KINDS: Record<WorldKind, KindDef> = {
@@ -96,17 +105,31 @@ export const KINDS: Record<WorldKind, KindDef> = {
         key: "units",
         label: "Coins and exchange",
         placeholder: "e.g. 1 crown = 12 shillings = 144 pennies",
-        hint: "the coins or notes and how they convert",
+        hint: "the coins or notes, what they look like, and how they convert",
       },
       {
-        key: "notes",
-        label: "Notes",
+        key: "wages",
+        label: "Wages and prices",
         multiline: true,
-        placeholder: "What a day's wage buys, who mints it, barter",
-        hint: "what a day's wage is and buys, and anything unusual about money",
+        placeholder: "e.g. a labourer earns 2 shillings a day; a meal costs 3 pennies",
+        hint: "what a day's wage is and what common things cost, as a few reference prices",
       },
+      {
+        key: "economy",
+        label: "Economy",
+        multiline: true,
+        placeholder: "Who mints it, how scarce it is, barter, debt, banks",
+        hint: "how money works: who issues it, scarcity, barter, credit and debt, and who holds the wealth",
+      },
+      { key: "notes", label: "Notes", multiline: true, hint: "anything else about money that matters in play: forgery, taxes, foreign coin" },
     ],
-    render: (f) => lines(`Money: ${f.name}.${f.units ? ` ${f.units}.` : ""}`, f.notes),
+    render: (f) =>
+      tagged("currency", { name: f.name }, [
+        f.units && `Coins: ${f.units}`,
+        f.wages && `Wages and prices: ${f.wages}`,
+        f.economy && `Economy: ${f.economy}`,
+        f.notes,
+      ]),
     keys: () => ["price", "cost", "pay", "buy", "sell", "coin", "money"],
   },
   item: {
@@ -114,12 +137,23 @@ export const KINDS: Record<WorldKind, KindDef> = {
     plural: "Items",
     many: "items",
     fields: [
-      { key: "name", label: "Item", hint: "the item's name" },
+      { key: "name", label: "Item", hint: "the item's or service's name" },
       { key: "price", label: "Price", placeholder: "e.g. 3 shillings", hint: "the usual price, in the world's currency" },
-      { key: "notes", label: "Notes", multiline: true, hint: "what it does or why it matters, one or two sentences" },
+      { key: "category", label: "Category", placeholder: "e.g. healing, weapon, lodging", hint: "its category, one or two words" },
+      { key: "type", label: "Item or service", placeholder: "item or service", hint: '"item" for goods, "service" for something done for {{user}}' },
+      { key: "quality", label: "Quality", placeholder: "e.g. average", hint: "poor, average, fine or masterwork" },
+      { key: "rarity", label: "Rarity", placeholder: "e.g. common", hint: "common, uncommon, rare or unique" },
+      { key: "effect", label: "Effect", multiline: true, hint: "what it does or provides, concretely, one or two sentences" },
+      { key: "shop", label: "Sold at", placeholder: "Where to get it", hint: "who sells it or where to find it" },
+      { key: "notes", label: "Notes", multiline: true, hint: "anything else: side effects, legality, who wants it" },
       ALIASES,
     ],
-    render: (f) => lines(`${f.name}${f.price ? `: costs ${f.price}.` : "."}`, f.notes),
+    render: (f) =>
+      tagged(
+        "item",
+        { name: f.name, category: f.category, type: f.type, price: f.price, quality: f.quality, rarity: f.rarity },
+        [f.effect, f.shop && `Sold at: ${f.shop}`, f.notes],
+      ),
   },
   shop: {
     label: "shop",
@@ -134,11 +168,7 @@ export const KINDS: Record<WorldKind, KindDef> = {
       ALIASES,
     ],
     render: (f) =>
-      lines(
-        `${f.name}${f.place ? `, ${f.place}` : ""}.${f.owner ? ` Run by ${f.owner}.` : ""}`,
-        f.sells && `Sells: ${f.sells}`,
-        f.notes,
-      ),
+      tagged("shop", { name: f.name, where: f.place, owner: f.owner }, [f.sells && `Sells: ${f.sells}`, f.notes]),
   },
 };
 

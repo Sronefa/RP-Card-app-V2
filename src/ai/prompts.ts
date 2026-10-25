@@ -455,6 +455,68 @@ export function worldPitchRequest(opts: { many: string; existing: string[]; coun
   ].join("\n\n");
 }
 
+/** Asks for the NPCs the card already establishes, to fill the NPC page from it. */
+export function npcScanRequest(existing: string[]): string {
+  return [
+    existing.length ? `Already on the NPC page: ${existing.join(", ")}.` : "The NPC page is empty so far.",
+    "Find every character the card already establishes besides {{char}} and {{user}}: in the description, personality, scenario, greetings, example dialogues, lorebook entries, the story bible and the project's world. Pitch each one not on the page yet with the pitch tool, filling the fields from what the card says about them. Where the card says nothing, keep the field short and consistent with the card, or leave it empty; don't invent new people. Unnamed but recurring figures (the innkeeper, the captain) count, named by their role. If there are none, pitch nothing.",
+  ].join("\n\n");
+}
+
+/** Opens the currency interview. */
+export function currencyKickoff(idea: string): string {
+  return [
+    "Interview me to build this world's currency and economy. Money is a real part of play here, so it has to be concrete and usable.",
+    idea.trim() ? `My idea: ${idea.trim()}` : "I have no idea yet: suggest what fits the world.",
+    "Ask a single round of 5 or 6 questions with ask_questions covering the basics: the coin itself (name, metal or material, look, denominations and how they convert), what a day's wage is and what everyday things cost, who issues money and how scarce it is, and how people deal in it (barter, credit, debt, banks, forgery, foreign coin). Suggestions must fit the card and the world.",
+  ].join("\n\n");
+}
+
+/** Asks for the currency, from the interview. */
+export function currencyWriteRequest(answers: string): string {
+  return `<interview>\n${answers}\n</interview>\n\nWrite the currency with the pitch tool: one currency, every field filled, with concrete numbers. Give a handful of reference prices (a meal, a night's lodging, a weapon, a horse) in the wages field. Where an answer is "${YOU_DECIDE}", decide it yourself.`;
+}
+
+export const ITEM_PRICES = ["cheap", "low", "average", "high", "expensive", "mixed"] as const;
+export const ITEM_QUALITIES = ["poor", "average", "fine", "masterwork", "mixed"] as const;
+export const ITEM_RARITIES = ["common", "uncommon", "rare", "unique", "mixed"] as const;
+
+export interface BulkItemSettings {
+  what: string;
+  count: number;
+  price: (typeof ITEM_PRICES)[number];
+  quality: (typeof ITEM_QUALITIES)[number];
+  rarity: (typeof ITEM_RARITIES)[number];
+  service: boolean;
+  /** Where they're sold; empty lets the co-writer pick. */
+  shop: string;
+  notes: string;
+}
+
+/** Asks for a batch of items or services made to the user's settings. */
+export function bulkItemsRequest(o: BulkItemSettings, existing: string[]): string {
+  const mixed = (v: string, what: string) => (v === "mixed" ? `a spread of ${what}` : `${v} ${what}`);
+  return [
+    existing.length ? `Already on the page: ${existing.join(", ")}.` : "",
+    `Make ${o.count} ${o.service ? "services" : "items"}: ${o.what.trim() || "whatever this world's markets need"}.`,
+    [
+      `Price: ${o.price === "mixed" ? "a spread from cheap to expensive" : `${o.price} for the world`}, in the world's currency, against its wages and existing prices.`,
+      `Quality: ${mixed(o.quality, "quality")}.`,
+      `Rarity: ${mixed(o.rarity, "rarity")}.`,
+      o.service
+        ? 'They are services (something done for {{user}}, like healing or lodging), so set type to "service".'
+        : 'They are goods, so set type to "item".',
+      o.shop.trim() ? `Sold at: ${o.shop.trim()}.` : "Say who sells each one, using the world's shops where they fit.",
+      o.notes.trim() && `Also: ${o.notes.trim()}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    `Pitch exactly ${o.count} with the pitch tool, every field filled. Each needs a distinct name and a concrete effect; no duplicates of what's already on the page.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 // Story arcs
 
 /** The arc settings, spelled out for the co-writer. */

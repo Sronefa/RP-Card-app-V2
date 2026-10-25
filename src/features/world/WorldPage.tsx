@@ -1,21 +1,14 @@
 import { useRef, useState } from "react";
 import { pitchWorldTool, readWorldPitches } from "../../ai/interviewTools";
-import { systemPrompt, worldPitchRequest } from "../../ai/prompts";
+import { npcScanRequest, systemPrompt, worldPitchRequest } from "../../ai/prompts";
 import type { Lorebook, LorebookEntry } from "../../card";
 import { AutoTextarea, Button, TextInput } from "../../components/ui";
 import { complete, gatherContext, isAbort, partsText } from "../../cowriter/engine";
 import { emptyBook } from "../../editor/lorebook";
 import { useEditor } from "../../editor/store";
-import {
-  isKind,
-  KINDS,
-  setCastList,
-  syncCast,
-  worldEntry,
-  worldMeta,
-  type WorldKind,
-} from "../../editor/world";
+import { isKind, KINDS, setCastList, syncCast, worldEntry, worldMeta, type WorldKind } from "../../editor/world";
 import { estimateTokens } from "../../lib/tokens";
+import { BulkItems, CurrencyInterview } from "./EconomyTools";
 
 function useBook() {
   const record = useEditor((s) => s.record)!;
@@ -37,9 +30,11 @@ export function WorldPage({ kind, intro, single }: { kind: WorldKind; intro?: st
   const castOn = book.entries.some((e) => isKind(e, "cast"));
 
   function add(fields: Record<string, string>) {
-    const entry = worldEntry(book, kind, fields);
-    setBook({ ...book, entries: [...book.entries, entry] });
-    return book.entries.length;
+    // Read the book fresh: several pitches can be added in one go.
+    const current = useEditor.getState().record!.card.data.character_book ?? emptyBook();
+    const entry = worldEntry(current, kind, fields);
+    setBook({ ...current, entries: [...current.entries, entry] });
+    return current.entries.length;
   }
   const update = (index: number, fields: Record<string, string>, key: string) =>
     setBook(
@@ -193,27 +188,28 @@ function Pitches({
   const [error, setError] = useState<string>();
   const controller = useRef<AbortController>(undefined);
 
-  async function suggest() {
+  async function suggest(scan = false) {
     setBusy(true);
     setError(undefined);
     controller.current = new AbortController();
     try {
       const tool = pitchWorldTool(kind);
       const parts = await gatherContext(record);
+      const request = scan ? npcScanRequest(existing) : worldPitchRequest({ many: def.many, existing, count, ask });
       const result = await complete("world", {
         system: systemPrompt("world"),
-        messages: [
-          {
-            role: "user",
-            text: `${partsText(parts)}\n\n${worldPitchRequest({ many: def.many, existing, count, ask })}`,
-          },
-        ],
+        messages: [{ role: "user", text: `${partsText(parts)}\n\n${request}` }],
         tools: [tool],
         signal: controller.current.signal,
       });
       const call = result.toolCalls.find((c) => c.name === tool.name);
       const next = call ? readWorldPitches(call, kind) : [];
-      if (!next.length) throw new Error("The co-writer didn't pitch anything. Try again.");
+      if (!next.length)
+        throw new Error(
+          scan
+            ? "The card doesn't mention anyone who isn't on this page yet."
+            : "The co-writer didn't pitch anything. Try again.",
+        );
       setPitches(next);
     } catch (e) {
       if (!isAbort(e)) setError((e as Error).message || "Something went wrong");
@@ -237,6 +233,11 @@ function Pitches({
         <Button disabled={busy || disabled} onClick={() => void suggest()}>
           ✦ Suggest {count === 1 ? def.label : def.many}
         </Button>
+        {kind === "npc" && (
+          <Button disabled={busy} onClick={() => void suggest(true)}>
+            ✦ Find NPCs in the card
+          </Button>
+        )}
         {busy && (
           <Button variant="ghost" onClick={() => controller.current?.abort()}>
             Stop
@@ -245,13 +246,24 @@ function Pitches({
       </div>
       {busy && (
         <p className="text-sm text-ink-muted" aria-live="polite">
-          Thinking up {count === 1 ? `a ${def.label}` : def.many}…
+          Working on {count === 1 ? `a ${def.label}` : def.many}…
         </p>
       )}
       {error && (
         <p role="alert" className="text-sm text-red-300">
           {error}
         </p>
+      )}
+      {pitches.length > 1 && !disabled && (
+        <Button
+          className="self-end"
+          onClick={() => {
+            pitches.forEach((p) => onAdd(p));
+            setPitches([]);
+          }}
+        >
+          Add all {pitches.length}
+        </Button>
       )}
       {pitches.map((p, i) => (
         <div key={i} className="flex flex-col gap-1 rounded-lg bg-surface-sunken p-3 text-sm">
@@ -283,7 +295,9 @@ function Pitches({
         </div>
       ))}
       {pitches.length === 0 && !busy && (
-        <p className="text-xs text-ink-muted">{capital(def.many)} are pitched from the card, the story bible and what's already here.</p>
+        <p className="text-xs text-ink-muted">
+          {capital(def.many)} are pitched from the card, the story bible and what's already here.
+        </p>
       )}
     </div>
   );
@@ -291,24 +305,71 @@ function Pitches({
 
 /** Currency, items and shops on one page. */
 export function EconomyPage() {
+  const { record, setBook } = useBook();
+  const [dialog, setDialog] = useState<"currency" | "items">();
+  const fresh = () => useEditor.getState().record!.card.data.character_book ?? emptyBook();
+  const named = (kind: WorldKind) =>
+    fresh()
+      .entries.filter((e) => isKind(e, kind))
+      .map((e) => worldMeta(e)!.fields.name)
+      .filter(Boolean);
+  const hasCurrency = fresh().entries.some((e) => isKind(e, "currency"));
+
+  function saveCurrency(fields: Record<string, string>) {
+    const book = fresh();
+    const i = book.entries.findIndex((e) => isKind(e, "currency"));
+    const entry = worldEntry(book, "currency", fields, i === -1 ? undefined : book.entries[i]);
+    setBook({
+      ...book,
+      entries: i === -1 ? [...book.entries, entry] : book.entries.map((e, j) => (j === i ? entry : e)),
+    });
+    setDialog(undefined);
+  }
+  function addItems(items: Record<string, string>[]) {
+    let book = fresh();
+    for (const fields of items) book = { ...book, entries: [...book.entries, worldEntry(book, "item", fields)] };
+    setBook(book);
+    setDialog(undefined);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <p className="text-sm text-ink-muted">
-        Money, what things cost and where to buy them. Each becomes a lorebook entry that only comes up when the chat
-        talks about it.
+        Money, what things cost and where to buy them. Each becomes an XML-tagged lorebook entry that only comes up when
+        the chat talks about it.
       </p>
       <div className="flex flex-col gap-2">
-        <h3 className="font-medium">Currency</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-medium">Currency</h3>
+          <Button onClick={() => setDialog("currency")}>
+            {hasCurrency ? "✦ Redo it with an interview" : "✦ Build it with an interview"}
+          </Button>
+        </div>
         <WorldPage kind="currency" single />
       </div>
       <div className="flex flex-col gap-2">
-        <h3 className="font-medium">Items and prices</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-medium">Items and prices</h3>
+          <Button onClick={() => setDialog("items")}>✦ Make items in bulk</Button>
+        </div>
         <WorldPage kind="item" />
       </div>
       <div className="flex flex-col gap-2">
         <h3 className="font-medium">Shops</h3>
         <WorldPage kind="shop" />
       </div>
+      {dialog === "currency" && (
+        <CurrencyInterview record={record} onClose={() => setDialog(undefined)} onSave={saveCurrency} />
+      )}
+      {dialog === "items" && (
+        <BulkItems
+          record={record}
+          existing={named("item")}
+          shops={named("shop")}
+          onClose={() => setDialog(undefined)}
+          onAdd={addItems}
+        />
+      )}
     </div>
   );
 }

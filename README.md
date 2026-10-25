@@ -80,7 +80,11 @@ CardForge's own PNG code.
 - World pages (`src/editor/world.ts`, Lorebook → NPCs, Places, Economy): NPCs with voice notes, places with mood and
   senses, the currency, items with prices, and shops. Each one is an ordinary lorebook entry whose text and keys are
   written from its fields (kept in the entry's `extensions.cardforge`). An optional always-on cast list keeps NPC voices
-  apart. The co-writer pitches entries for each page.
+  apart. The co-writer pitches entries for each page; on the NPC page it can also find the NPCs the card already
+  mentions and add them all at once. The currency can be built with a short interview on the coin and the economy,
+  and items or services can be made in bulk with settings for count, price, quality, rarity and where they're sold.
+  Currency, item and shop entries are XML-tagged (`<item name="…" price="…" quality="…">`), like the arc and mechanics
+  entries.
 - Trackers & regex (`src/editor/trackers.ts`): optional add-ons (stats, inventory and money, relationship stages,
   custom fields). The model ends each reply with a status block; CardForge writes a display regex script that turns it
   into an HTML panel, a prompt-only script that drops old blocks, an always-on reminder of the format at depth 1, and for
@@ -148,5 +152,5 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 13. Story arcs with the antagonist builder and secret mode (done)
 14. Mechanics tab and Game Wizard (done)
 15. Quality of life: one model picker, per-task models from the provider lists, jailbreaks (done)
-16. Quality of life: NPC scan, currency interview, bulk items
+16. Quality of life: NPC scan, currency interview, bulk items (done)
 17. Quality of life: personas built from a card
