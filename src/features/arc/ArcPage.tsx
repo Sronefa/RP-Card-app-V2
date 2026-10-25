@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useUi } from "../../app/store";
 import {
   ASK_QUESTIONS,
@@ -20,7 +20,7 @@ import { resolveModel, useAiSettings } from "../../ai/settings";
 import type { CardRecord } from "../../db/db";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { toast } from "../../components/toast";
-import { complete, gatherContext, isAbort, partsText } from "../../cowriter/engine";
+import { complete, gatherContext, partsText } from "../../cowriter/engine";
 import {
   ANTAGONIST_FIELDS,
   antagonistText,
@@ -39,49 +39,11 @@ import {
 import { useEditor } from "../../editor/store";
 import { estimateTokens } from "../../lib/tokens";
 import { BrainstormDialog } from "../cowriter/BrainstormDialog";
+import { useRun } from "../cowriter/useRun";
 import { QuestionCard } from "../cowriter/QuestionCard";
 
 const selectClass = "min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm";
 
-/** Runs one co-writer call at a time, with a status line, an error and a Stop button. */
-function useRun() {
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState<string>();
-  const controller = useRef<AbortController>(undefined);
-  useEffect(() => () => controller.current?.abort(), []);
-  async function run(status: string, fn: (signal: AbortSignal) => Promise<void>) {
-    setBusy(status);
-    setError(undefined);
-    controller.current = new AbortController();
-    try {
-      await fn(controller.current.signal);
-    } catch (e) {
-      if (!isAbort(e)) setError((e as Error).message || "Something went wrong");
-    } finally {
-      setBusy("");
-    }
-  }
-  const status = (busy || error) && (
-    <>
-      {busy && (
-        <div className="flex items-center gap-2">
-          <p className="text-sm text-ink-muted" aria-live="polite">
-            {busy}
-          </p>
-          <Button variant="ghost" onClick={() => controller.current?.abort()}>
-            Stop
-          </Button>
-        </div>
-      )}
-      {error && (
-        <p role="alert" className="rounded-lg border border-red-500/40 p-2 text-sm text-red-300">
-          {error}
-        </p>
-      )}
-    </>
-  );
-  return { busy, run, status };
-}
 
 async function writeAntagonist(record: CardRecord, settings: ArcSettings, answers: string, signal: AbortSignal) {
   const parts = await gatherContext(record);

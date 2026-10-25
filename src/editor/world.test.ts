@@ -20,7 +20,7 @@ describe("world entries", () => {
     expect(worldMeta(npc)?.kind).toBe("npc");
 
     const money = worldEntry(book, "currency", { name: "crowns", units: "1 crown = 12 shillings", notes: "" });
-    expect(money.content).toBe("Money: crowns. 1 crown = 12 shillings.");
+    expect(money.content).toBe('<currency name="crowns">\nCoins: 1 crown = 12 shillings\n</currency>');
     expect(money.keys).toContain("price");
 
     // Editing keeps the entry's own settings.

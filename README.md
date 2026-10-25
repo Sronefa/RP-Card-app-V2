@@ -80,7 +80,11 @@ CardForge's own PNG code.
 - World pages (`src/editor/world.ts`, Lorebook → NPCs, Places, Economy): NPCs with voice notes, places with mood and
   senses, the currency, items with prices, and shops. Each one is an ordinary lorebook entry whose text and keys are
   written from its fields (kept in the entry's `extensions.cardforge`). An optional always-on cast list keeps NPC voices
-  apart. The co-writer pitches entries for each page.
+  apart. The co-writer pitches entries for each page; on the NPC page it can also find the NPCs the card already
+  mentions and add them all at once. The currency can be built with a short interview on the coin and the economy,
+  and items or services can be made in bulk with settings for count, price, quality, rarity and where they're sold.
+  Currency, item and shop entries are XML-tagged (`<item name="…" price="…" quality="…">`), like the arc and mechanics
+  entries.
 - Trackers & regex (`src/editor/trackers.ts`): optional add-ons (stats, inventory and money, relationship stages,
   custom fields). The model ends each reply with a status block; CardForge writes a display regex script that turns it
   into an HTML panel, a prompt-only script that drops old blocks, an always-on reminder of the format at depth 1, and for
@@ -103,6 +107,9 @@ CardForge's own PNG code.
   contradictions, and can be rewritten to fit. Values a module tracks become status tracker fields. Modules can be
   saved to a library shared by all projects. A module can show the card's images using the path SillyTavern gives
   CHARX assets (`/user/images/<card name>/<file>`); cards with images export as CHARX by default, with a warning on PNG.
+- Personas focus on what other characters see and what the player can do (look, capabilities, gear, role), not
+  personality, since the player brings that. From a project, "Build from a card" starts the persona interview from the
+  world card or a character card and links the new persona to the project.
 - Models are chosen in one place: each provider keeps a list of saved models, one of them marked as the default (the
   first one saved, until you pick another). A task's own model is picked from the same lists, and the co-writer's
   model picker switches between them without opening Settings. Each provider also has its own timeout (10 minutes by
@@ -148,5 +155,5 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 13. Story arcs with the antagonist builder and secret mode (done)
 14. Mechanics tab and Game Wizard (done)
 15. Quality of life: one model picker, per-task models from the provider lists, jailbreaks (done)
-16. Quality of life: NPC scan, currency interview, bulk items
-17. Quality of life: personas built from a card
+16. Quality of life: NPC scan, currency interview, bulk items (done)
+17. Quality of life: personas built from a card (done)

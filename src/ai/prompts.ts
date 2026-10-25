@@ -342,16 +342,46 @@ export function brainstormKickoff(question: string, suggestions: string[], known
 
 // Personas
 
-export function personaKickoff(premise: string): string {
+/** A card summarized as the starting point for a persona. */
+export function personaSourceText(record: CardRecord): string {
+  const d = record.card.data;
+  const entries = d.character_book?.entries ?? [];
   return [
-    "Interview me to build a persona: the character I play in SillyTavern, not a character card. A persona is short and sent with every message, so only what other characters would notice or need to know matters.",
-    premise.trim() ? `My idea: ${premise.trim()}` : "I have no idea yet: help me find one.",
-    "Ask a single round of 4 to 6 questions with ask_questions: name, look, personality and manner, background, and what makes them interesting to meet. Don't ask about the story or the scenario.",
-  ].join("\n\n");
+    `<source_card kind="${record.kind === "world" ? "world card" : "character card"}" name="${d.name}">`,
+    d.description && `Description: ${d.description}`,
+    d.scenario && `Scenario: ${d.scenario}`,
+    d.first_mes && `First message: ${d.first_mes}`,
+    entries.length > 0 && `Lorebook: ${entries.map(entryTitle).join(", ")}`,
+    `</source_card>`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
-export function personaWriteRequest(answers: string): string {
-  return `<interview>\n${answers}\n</interview>\n\nWrite the persona with write_persona. The description is 100 to 300 tokens of natural third-person prose that refers to the persona as {{user}}: look first, then personality and manner, then a line of background. Only what other characters would notice or need to know. Where an answer is "${YOU_DECIDE}", decide it yourself.`;
+const PERSONA_FOCUS =
+  "A persona is the character the user plays, so the user brings the personality. Focus on what others can see and what {{user}} can do: appearance (build, face, hair, clothing, marks), capabilities (skills, training, powers, gear, resources) and their place in the world (role, standing, a few background facts). Keep manner to a single line at most, and leave out inner thoughts and feelings.";
+
+export function personaKickoff(premise: string, source?: string): string {
+  return [
+    "Interview me to build a persona: the character I play in SillyTavern, not a character card. A persona is short and sent with every message, so only what other characters would notice or need to know matters.",
+    PERSONA_FOCUS,
+    source &&
+      `${source}\nBuild the persona to fit this card: someone who belongs in its world and has a reason to be in its scenario. Suggestions should come from the card's places, factions and situation.`,
+    premise.trim() ? `My idea: ${premise.trim()}` : "I have no idea yet: help me find one.",
+    "Ask a single round of 4 to 6 questions with ask_questions: name, appearance, clothing and gear, what they can do, and their role and standing in the world. At most one question on manner, none on deeper personality. Don't ask about the story itself.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function personaWriteRequest(answers: string, source?: string): string {
+  return [
+    source,
+    `<interview>\n${answers}\n</interview>`,
+    `Write the persona with write_persona. The description is 100 to 300 tokens of natural third-person prose that refers to the persona as {{user}}: appearance first, then capabilities and gear, then their role and a line of background${source ? " tied to the card" : ""}. ${PERSONA_FOCUS} Adults only, with the age stated. Where an answer is "${YOU_DECIDE}", decide it yourself.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 // Image prompts
@@ -453,6 +483,68 @@ export function worldPitchRequest(opts: { many: string; existing: string[]; coun
       ? `Pitch ${opts.count} ${opts.many}. The user asks: ${opts.ask.trim()}`
       : `Pitch ${opts.count} ${opts.many} this world needs, starting with any the card mentions that aren't on the page yet.`,
   ].join("\n\n");
+}
+
+/** Asks for the NPCs the card already establishes, to fill the NPC page from it. */
+export function npcScanRequest(existing: string[]): string {
+  return [
+    existing.length ? `Already on the NPC page: ${existing.join(", ")}.` : "The NPC page is empty so far.",
+    "Find every character the card already establishes besides {{char}} and {{user}}: in the description, personality, scenario, greetings, example dialogues, lorebook entries, the story bible and the project's world. Pitch each one not on the page yet with the pitch tool, filling the fields from what the card says about them. Where the card says nothing, keep the field short and consistent with the card, or leave it empty; don't invent new people. Unnamed but recurring figures (the innkeeper, the captain) count, named by their role. If there are none, pitch nothing.",
+  ].join("\n\n");
+}
+
+/** Opens the currency interview. */
+export function currencyKickoff(idea: string): string {
+  return [
+    "Interview me to build this world's currency and economy. Money is a real part of play here, so it has to be concrete and usable.",
+    idea.trim() ? `My idea: ${idea.trim()}` : "I have no idea yet: suggest what fits the world.",
+    "Ask a single round of 5 or 6 questions with ask_questions covering the basics: the coin itself (name, metal or material, look, denominations and how they convert), what a day's wage is and what everyday things cost, who issues money and how scarce it is, and how people deal in it (barter, credit, debt, banks, forgery, foreign coin). Suggestions must fit the card and the world.",
+  ].join("\n\n");
+}
+
+/** Asks for the currency, from the interview. */
+export function currencyWriteRequest(answers: string): string {
+  return `<interview>\n${answers}\n</interview>\n\nWrite the currency with the pitch tool: one currency, every field filled, with concrete numbers. Give a handful of reference prices (a meal, a night's lodging, a weapon, a horse) in the wages field. Where an answer is "${YOU_DECIDE}", decide it yourself.`;
+}
+
+export const ITEM_PRICES = ["cheap", "low", "average", "high", "expensive", "mixed"] as const;
+export const ITEM_QUALITIES = ["poor", "average", "fine", "masterwork", "mixed"] as const;
+export const ITEM_RARITIES = ["common", "uncommon", "rare", "unique", "mixed"] as const;
+
+export interface BulkItemSettings {
+  what: string;
+  count: number;
+  price: (typeof ITEM_PRICES)[number];
+  quality: (typeof ITEM_QUALITIES)[number];
+  rarity: (typeof ITEM_RARITIES)[number];
+  service: boolean;
+  /** Where they're sold; empty lets the co-writer pick. */
+  shop: string;
+  notes: string;
+}
+
+/** Asks for a batch of items or services made to the user's settings. */
+export function bulkItemsRequest(o: BulkItemSettings, existing: string[]): string {
+  const mixed = (v: string, what: string) => (v === "mixed" ? `a spread of ${what}` : `${v} ${what}`);
+  return [
+    existing.length ? `Already on the page: ${existing.join(", ")}.` : "",
+    `Make ${o.count} ${o.service ? "services" : "items"}: ${o.what.trim() || "whatever this world's markets need"}.`,
+    [
+      `Price: ${o.price === "mixed" ? "a spread from cheap to expensive" : `${o.price} for the world`}, in the world's currency, against its wages and existing prices.`,
+      `Quality: ${mixed(o.quality, "quality")}.`,
+      `Rarity: ${mixed(o.rarity, "rarity")}.`,
+      o.service
+        ? 'They are services (something done for {{user}}, like healing or lodging), so set type to "service".'
+        : 'They are goods, so set type to "item".',
+      o.shop.trim() ? `Sold at: ${o.shop.trim()}.` : "Say who sells each one, using the world's shops where they fit.",
+      o.notes.trim() && `Also: ${o.notes.trim()}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    `Pitch exactly ${o.count} with the pitch tool, every field filled. Each needs a distinct name and a concrete effect; no duplicates of what's already on the page.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 // Story arcs
