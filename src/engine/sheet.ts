@@ -59,6 +59,13 @@ export interface EngineConfig {
   /** Ids CardForge wrote, so they are replaced and not duplicated. */
   scriptId: string;
   regexIds: string[];
+  /** The sandbox's test turns, replayed after each change. */
+  scenario?: ScenarioTurn[];
+}
+
+export interface ScenarioTurn {
+  role: "user" | "assistant";
+  text: string;
 }
 
 const EXT = "cardforge";
@@ -454,3 +461,17 @@ export function varsFromTracker(tracker: TrackerConfig): EngineVar[] {
   });
 }
 
+
+/** A reply that changes a value or two, in the format the rules ask for. */
+export function sampleReply(config: EngineConfig): string {
+  const match = /<UpdateVariable>[\s\S]*<\/UpdateVariable>/.exec(rulesText(config));
+  return `{{char}} hands you the map.\n\n${match ? match[0].replace(/<Analysis>[\s\S]*?<\/Analysis>/, "<Analysis>A sample change.</Analysis>") : ""}`;
+}
+
+/** The sandbox scenario: the card's own, or one turn each way with the sample reply. */
+export function scenarioOf(config: EngineConfig): ScenarioTurn[] {
+  return config.scenario ?? [
+    { role: "user", text: "I look around." },
+    { role: "assistant", text: sampleReply(config) },
+  ];
+}
