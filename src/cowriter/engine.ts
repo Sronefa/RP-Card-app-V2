@@ -4,10 +4,11 @@
  */
 import { DEFAULT_COWRITER } from "../ai/records";
 import { bibleContext, cardContext, personasContext, settingsContext, worldContext } from "../ai/prompts";
-import { createProvider, modelKey, resolveModel, useAiSettings } from "../ai/settings";
+import { createProvider, jailbreakText, modelKey, resolveModel, useAiSettings } from "../ai/settings";
 import {
   DEFAULT_TIMEOUT_SEC,
   ToolsUnsupportedError,
+  type ChatMessage,
   type CompletionRequest,
   type CompletionResult,
   type ModeId,
@@ -22,6 +23,22 @@ export class NoModelError extends Error {
   }
 }
 
+/** Puts the jailbreak after the last message, the deepest spot in the prompt. Only this request carries it. */
+export function withJailbreak(messages: ChatMessage[], jailbreak: string): ChatMessage[] {
+  const last = messages.at(-1);
+  const tagged = `<jailbreak>\n${jailbreak}\n</jailbreak>`;
+  if (!last) return messages;
+  const rest = messages.slice(0, -1);
+  if (last.role === "user") return [...rest, { ...last, text: `${last.text}\n\n${tagged}` }];
+  if (last.role === "tool" && last.results.length) {
+    const results = [...last.results];
+    const end = results.length - 1;
+    results[end] = { ...results[end], content: `${results[end].content}\n\n${tagged}` };
+    return [...rest, { ...last, results }];
+  }
+  return messages;
+}
+
 /**
  * Runs one model call for a mode. When the endpoint turns out not to support tools, the model is
  * remembered as tool-less and the call is repeated with JSON edits.
@@ -34,6 +51,8 @@ export async function complete(
   const resolved = resolveModel(useAiSettings.getState().settings, mode);
   if (!resolved) throw new NoModelError();
   const provider = createProvider(resolved.config);
+  const jailbreak = jailbreakText(useAiSettings.getState().settings);
+  if (jailbreak) request = { ...request, messages: withJailbreak(request.messages, jailbreak) };
   const seconds = resolved.config.timeoutSec ?? DEFAULT_TIMEOUT_SEC;
   const run = async (useTools: boolean) => {
     const timeout = AbortSignal.timeout(seconds * 1000);
@@ -63,7 +82,7 @@ export async function projectSettings(projectId: string) {
   const project = await getProject(projectId);
   const settings = { ...DEFAULT_COWRITER, ...project?.cowriter };
   await useAiSettings.getState().load();
-  const presets = useAiSettings.getState().settings.presets.filter((p) => settings.presetIds.includes(p.id));
+  const presets = useAiSettings.getState().settings.presets.filter((p) => p.kind !== "jailbreak" && settings.presetIds.includes(p.id));
   return { project, settings, presets };
 }
 

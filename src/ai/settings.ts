@@ -12,7 +12,21 @@ export interface PromptPreset {
   id: string;
   name: string;
   text: string;
+  /**
+   * A jailbreak goes at the very end of every request, after the chat, where it has the most
+   * weight; other presets join the project's settings and are turned on per project.
+   */
+  kind?: "jailbreak";
+  /** For a jailbreak: whether it's sent. */
+  active?: boolean;
 }
+
+/** The active jailbreaks' text, to put after everything else in a request. */
+export const jailbreakText = (settings: AiSettings) =>
+  settings.presets
+    .filter((p) => p.kind === "jailbreak" && p.active && p.text.trim())
+    .map((p) => p.text.trim())
+    .join("\n\n");
 
 /** A reusable look for image prompts. */
 export interface ImageStyle {
@@ -132,11 +146,20 @@ export function createProvider(config: ProviderConfig): Provider {
   };
 }
 
+const usable = (settings: AiSettings, c?: ModelChoice): c is ModelChoice =>
+  !!c?.model && settings.providers.some((p) => p.id === c.providerId);
+
+/** The model every task uses unless it has its own: the chosen default, else the first model saved on a provider. */
+export function defaultChoice(settings: AiSettings): ModelChoice | undefined {
+  if (usable(settings, settings.defaultModel)) return settings.defaultModel;
+  const first = settings.providers.find((p) => p.models?.length);
+  return first && { providerId: first.id, model: first.models![0] };
+}
+
 /** The provider and model a mode runs on, or undefined when none is set up. */
 export function resolveModel(settings: AiSettings, mode: ModeId) {
   const own = settings.modeModels[mode];
-  // A mode without a finished choice of its own uses the default model.
-  const choice = own?.model && settings.providers.some((p) => p.id === own.providerId) ? own : settings.defaultModel;
+  const choice = usable(settings, own) ? own : defaultChoice(settings);
   const config = choice && settings.providers.find((p) => p.id === choice.providerId);
   if (!choice || !config || !choice.model) return undefined;
   return { choice, config, useTools: !settings.noToolModels.includes(modelKey(choice)) };

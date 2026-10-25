@@ -34,7 +34,8 @@ let saving = Promise.resolve();
 /** The project's co-writer settings: how dark, what tone and genre, how proactive. */
 export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: string; open: boolean; onClose: () => void }) {
   const [settings, setSettings] = useState<CowriterSettings>();
-  const presets = useAiSettings((s) => s.settings.presets);
+  const allPresets = useAiSettings((s) => s.settings.presets);
+  const presets = allPresets.filter((p) => p.kind !== "jailbreak");
   const loadAi = useAiSettings((s) => s.load);
 
   useEffect(() => {
