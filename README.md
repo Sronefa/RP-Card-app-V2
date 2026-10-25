@@ -107,6 +107,9 @@ CardForge's own PNG code.
   contradictions, and can be rewritten to fit. Values a module tracks become status tracker fields. Modules can be
   saved to a library shared by all projects. A module can show the card's images using the path SillyTavern gives
   CHARX assets (`/user/images/<card name>/<file>`); cards with images export as CHARX by default, with a warning on PNG.
+- Personas focus on what other characters see and what the player can do (look, capabilities, gear, role), not
+  personality, since the player brings that. From a project, "Build from a card" starts the persona interview from the
+  world card or a character card and links the new persona to the project.
 - Models are chosen in one place: each provider keeps a list of saved models, one of them marked as the default (the
   first one saved, until you pick another). A task's own model is picked from the same lists, and the co-writer's
   model picker switches between them without opening Settings. Each provider also has its own timeout (10 minutes by
@@ -153,4 +156,4 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 14. Mechanics tab and Game Wizard (done)
 15. Quality of life: one model picker, per-task models from the provider lists, jailbreaks (done)
 16. Quality of life: NPC scan, currency interview, bulk items (done)
-17. Quality of life: personas built from a card
+17. Quality of life: personas built from a card (done)

@@ -26,6 +26,7 @@ import { useInterview } from "../../cowriter/interview";
 import { ProjectStyleDialog } from "../cowriter/ProjectStyleDialog";
 import { CardTile } from "./CardTile";
 import { RemixDialog } from "./RemixDialog";
+import { PersonaInterview } from "./PersonaInterview";
 import { SurpriseDialog } from "./SurpriseDialog";
 
 /** Images besides the avatar that only a CHARX file carries into SillyTavern. */
@@ -43,6 +44,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const [actionsFor, setActionsFor] = useState<CardRecord>();
   const [confirmDelete, setConfirmDelete] = useState<"project" | CardRecord>();
   const [addingPersona, setAddingPersona] = useState(false);
+  const [buildingPersona, setBuildingPersona] = useState(false);
   const [styling, setStyling] = useState(false);
   const [remixing, setRemixing] = useState<CardRecord>();
   const [surprise, setSurprise] = useState<CardKind>();
@@ -241,7 +243,14 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Personas</h2>
-          <Button onClick={() => setAddingPersona(true)}>Add persona</Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            {cards.length > 0 && (
+              <Button variant="ghost" onClick={() => setBuildingPersona(true)}>
+                ✦ Build from a card
+              </Button>
+            )}
+            <Button onClick={() => setAddingPersona(true)}>Add persona</Button>
+          </div>
         </div>
         {linked.length === 0 && <p className="text-sm text-ink-muted">Pick personas from your library to use with this project.</p>}
         <div className="flex flex-wrap gap-2">
@@ -357,6 +366,18 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </div>
       </Dialog>
 
+      {buildingPersona && (
+        <PersonaInterview
+          sources={[...worlds, ...characters]}
+          onClose={() => setBuildingPersona(false)}
+          onCreated={(p) => {
+            setBuildingPersona(false);
+            setPersonas([...personas, p]);
+            void updatePersonas([...project.personaIds, p.id]);
+            toast(`${p.name} is in your persona library and linked to this project.`);
+          }}
+        />
+      )}
       <Dialog open={addingPersona} title="Add a persona" onClose={() => setAddingPersona(false)}>
         {personas.length === 0 ? (
           <p className="text-ink-muted">Your persona library is empty. Create personas in the Personas tab.</p>

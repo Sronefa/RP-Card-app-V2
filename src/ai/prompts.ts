@@ -342,16 +342,46 @@ export function brainstormKickoff(question: string, suggestions: string[], known
 
 // Personas
 
-export function personaKickoff(premise: string): string {
+/** A card summarized as the starting point for a persona. */
+export function personaSourceText(record: CardRecord): string {
+  const d = record.card.data;
+  const entries = d.character_book?.entries ?? [];
   return [
-    "Interview me to build a persona: the character I play in SillyTavern, not a character card. A persona is short and sent with every message, so only what other characters would notice or need to know matters.",
-    premise.trim() ? `My idea: ${premise.trim()}` : "I have no idea yet: help me find one.",
-    "Ask a single round of 4 to 6 questions with ask_questions: name, look, personality and manner, background, and what makes them interesting to meet. Don't ask about the story or the scenario.",
-  ].join("\n\n");
+    `<source_card kind="${record.kind === "world" ? "world card" : "character card"}" name="${d.name}">`,
+    d.description && `Description: ${d.description}`,
+    d.scenario && `Scenario: ${d.scenario}`,
+    d.first_mes && `First message: ${d.first_mes}`,
+    entries.length > 0 && `Lorebook: ${entries.map(entryTitle).join(", ")}`,
+    `</source_card>`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
-export function personaWriteRequest(answers: string): string {
-  return `<interview>\n${answers}\n</interview>\n\nWrite the persona with write_persona. The description is 100 to 300 tokens of natural third-person prose that refers to the persona as {{user}}: look first, then personality and manner, then a line of background. Only what other characters would notice or need to know. Where an answer is "${YOU_DECIDE}", decide it yourself.`;
+const PERSONA_FOCUS =
+  "A persona is the character the user plays, so the user brings the personality. Focus on what others can see and what {{user}} can do: appearance (build, face, hair, clothing, marks), capabilities (skills, training, powers, gear, resources) and their place in the world (role, standing, a few background facts). Keep manner to a single line at most, and leave out inner thoughts and feelings.";
+
+export function personaKickoff(premise: string, source?: string): string {
+  return [
+    "Interview me to build a persona: the character I play in SillyTavern, not a character card. A persona is short and sent with every message, so only what other characters would notice or need to know matters.",
+    PERSONA_FOCUS,
+    source &&
+      `${source}\nBuild the persona to fit this card: someone who belongs in its world and has a reason to be in its scenario. Suggestions should come from the card's places, factions and situation.`,
+    premise.trim() ? `My idea: ${premise.trim()}` : "I have no idea yet: help me find one.",
+    "Ask a single round of 4 to 6 questions with ask_questions: name, appearance, clothing and gear, what they can do, and their role and standing in the world. At most one question on manner, none on deeper personality. Don't ask about the story itself.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function personaWriteRequest(answers: string, source?: string): string {
+  return [
+    source,
+    `<interview>\n${answers}\n</interview>`,
+    `Write the persona with write_persona. The description is 100 to 300 tokens of natural third-person prose that refers to the persona as {{user}}: appearance first, then capabilities and gear, then their role and a line of background${source ? " tied to the card" : ""}. ${PERSONA_FOCUS} Adults only, with the age stated. Where an answer is "${YOU_DECIDE}", decide it yourself.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 // Image prompts

@@ -1,21 +1,33 @@
 import { useEffect, useRef, useState } from "react";
 import { useUi } from "../../app/store";
 import { ASK_QUESTIONS, INTERVIEW_TOOLS, readPersona, readQuestions, WRITE_PERSONA } from "../../ai/interviewTools";
-import { answersText, personaKickoff, personaWriteRequest, systemPrompt } from "../../ai/prompts";
+import { answersText, personaKickoff, personaSourceText, personaWriteRequest, systemPrompt } from "../../ai/prompts";
 import type { InterviewRound, Question } from "../../ai/records";
 import { resolveModel, useAiSettings } from "../../ai/settings";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { complete, isAbort } from "../../cowriter/engine";
-import { createPersona, type PersonaRecord } from "../../db/db";
+import { createPersona, type CardRecord, type PersonaRecord } from "../../db/db";
 import { estimateTokens } from "../../lib/tokens";
 import { BrainstormDialog } from "../cowriter/BrainstormDialog";
 import { QuestionCard } from "../cowriter/QuestionCard";
 
 /** A short interview that writes a persona for the library. */
-export function PersonaInterview({ onClose, onCreated }: { onClose: () => void; onCreated: (p: PersonaRecord) => void }) {
+export function PersonaInterview({
+  onClose,
+  onCreated,
+  sources,
+}: {
+  onClose: () => void;
+  onCreated: (p: PersonaRecord) => void;
+  /** Cards the persona can start from; the world card comes first. */
+  sources?: CardRecord[];
+}) {
   const { settings, load } = useAiSettings();
   const setSection = useUi((s) => s.setSection);
   const [premise, setPremise] = useState("");
+  const [sourceId, setSourceId] = useState(sources?.[0]?.id ?? "");
+  const sourceCard = sources?.find((c) => c.id === sourceId);
+  const source = sourceCard && personaSourceText(sourceCard);
   const [round, setRound] = useState<InterviewRound>();
   const [persona, setPersona] = useState<{ name: string; description: string }>();
   const [busy, setBusy] = useState("");
@@ -43,7 +55,7 @@ export function PersonaInterview({ onClose, onCreated }: { onClose: () => void; 
     run("Preparing questions…", async (signal) => {
       const result = await complete("interview", {
         system: systemPrompt("interview"),
-        messages: [{ role: "user", text: personaKickoff(premise) }],
+        messages: [{ role: "user", text: personaKickoff(premise, source) }],
         tools: INTERVIEW_TOOLS,
         signal,
       });
@@ -57,7 +69,7 @@ export function PersonaInterview({ onClose, onCreated }: { onClose: () => void; 
     run("Writing the persona…", async (signal) => {
       const result = await complete("draft", {
         system: systemPrompt("draft"),
-        messages: [{ role: "user", text: personaWriteRequest(answersText(round!)) }],
+        messages: [{ role: "user", text: personaWriteRequest(answersText(round!), source) }],
         tools: [WRITE_PERSONA],
         signal,
       });
@@ -129,14 +141,32 @@ export function PersonaInterview({ onClose, onCreated }: { onClose: () => void; 
         ) : (
           <>
             <p className="text-sm text-ink-muted">
-              A few questions with answers you can tap, then the co-writer writes a short persona you can edit.
+              A few questions with answers you can tap, then the co-writer writes a short persona you can edit. It
+              focuses on how they look and what they can do; you bring the personality when you play.
             </p>
+            {sources && sources.length > 0 && (
+              <label className="flex flex-col gap-1 text-sm">
+                Start from
+                <select
+                  className="min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm"
+                  value={sourceId}
+                  onChange={(e) => setSourceId(e.target.value)}
+                >
+                  {sources.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.card.data.name || "Untitled"} ({c.kind === "world" ? "world" : "character"})
+                    </option>
+                  ))}
+                  <option value="">Nothing, start fresh</option>
+                </select>
+              </label>
+            )}
             <label className="flex flex-col gap-1 text-sm">
               Your idea, if you have one
               <AutoTextarea
                 rows={2}
                 value={premise}
-                placeholder="e.g. a retired knight who became a baker"
+                placeholder={source ? "Optional, e.g. a smuggler who knows the docks" : "e.g. a retired knight who became a baker"}
                 onChange={(e) => setPremise(e.target.value)}
               />
             </label>
