@@ -46,3 +46,29 @@ input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--color-accent);
 }
+
+/* The Immersive Engine button's RGB light. Still for people who prefer less motion. */
+@property --rgb-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.rgb-glow {
+  position: relative;
+}
+.rgb-glow > svg {
+  color: hsl(calc(var(--rgb-angle) * 1) 90% 70%);
+  filter: drop-shadow(0 0 4px hsl(calc(var(--rgb-angle) * 1) 90% 60% / 0.7));
+  animation: rgb-spin 4s linear infinite;
+}
+@keyframes rgb-spin {
+  to {
+    --rgb-angle: 360deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rgb-glow > svg {
+    animation: none;
+    --rgb-angle: 280deg;
+  }
+}

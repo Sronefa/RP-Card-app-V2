@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { usePrefs } from "../../app/prefs";
 import {
   createProvider,
   modelKey,
@@ -33,6 +34,8 @@ const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
 ];
 
 export function SettingsView() {
+  const engineGlow = usePrefs((p) => p.engineGlow);
+  const setPrefs = usePrefs((p) => p.set);
   const { settings, loaded, load, update, addProvider } = useAiSettings();
   const [models, setModels] = useState<Record<string, string[]>>({});
   const [adding, setAdding] = useState(false);
@@ -275,6 +278,14 @@ export function SettingsView() {
         custom={!!settings.slopPhrases}
         onChange={(slopPhrases) => void update({ slopPhrases })}
       />
+
+      <section className="flex flex-col gap-3">
+        <h2 className="font-medium">Look</h2>
+        <label className="flex min-h-8 items-center gap-2 text-sm">
+          <input type="checkbox" className="size-4" checked={engineGlow} onChange={(e) => setPrefs({ engineGlow: e.target.checked })} />
+          RGB light on the Engine button
+        </label>
+      </section>
 
       <Dialog open={!!imageStyle} title="Image style" onClose={() => setImageStyle(undefined)}>
         {imageStyle && (
