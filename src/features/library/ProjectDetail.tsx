@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { usesEngine } from "../../engine/sheet";
 import { useUi } from "../../app/store";
 import { toast } from "../../components/toast";
 import { Button, Dialog, TextInput } from "../../components/ui";
@@ -323,6 +324,12 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 <Button onClick={() => void exportAs(actionsFor, "charx")}>CHARX</Button>
                 <Button onClick={() => void exportAs(actionsFor, "json")}>JSON</Button>
               </div>
+            )}
+            {usesEngine(actionsFor.card.data) && (
+              <p className="text-xs text-ink-muted">
+                This card runs the Immersive Engine: in SillyTavern it needs the Tavern Helper extension
+                (JS-Slash-Runner), and the player allows the card's script when asked.
+              </p>
             )}
             <Button
               onClick={() => {
