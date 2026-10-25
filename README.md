@@ -103,8 +103,12 @@ CardForge's own PNG code.
   contradictions, and can be rewritten to fit. Values a module tracks become status tracker fields. Modules can be
   saved to a library shared by all projects. A module can show the card's images using the path SillyTavern gives
   CHARX assets (`/user/images/<card name>/<file>`); cards with images export as CHARX by default, with a warning on PNG.
-- Each provider keeps a list of saved models; the co-writer's model picker switches between them without opening
-  Settings. Each provider also has its own timeout (10 minutes by default).
+- Models are chosen in one place: each provider keeps a list of saved models, one of them marked as the default (the
+  first one saved, until you pick another). A task's own model is picked from the same lists, and the co-writer's
+  model picker switches between them without opening Settings. Each provider also has its own timeout (10 minutes by
+  default).
+- Jailbreaks in the prompt library are sent at the very end of every request, after the last message, wrapped in
+  `<jailbreak>` tags, for every task while they're on.
 - The image prompt writer (`src/features/images/`) turns the card, other cards in the project, or a lorebook entry
   into a prompt and negative prompt for an image generator, in a style saved in Settings (tags or sentences, art
   style, fixed opening tags, negative prompt, extra rules).
@@ -143,3 +147,6 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 12. Status trackers and regex, relationship stages (done)
 13. Story arcs with the antagonist builder and secret mode (done)
 14. Mechanics tab and Game Wizard (done)
+15. Quality of life: one model picker, per-task models from the provider lists, jailbreaks (done)
+16. Quality of life: NPC scan, currency interview, bulk items
+17. Quality of life: personas built from a card
