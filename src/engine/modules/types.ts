@@ -48,7 +48,8 @@ export interface ModuleRegex {
   minDepth?: number;
 }
 
-export type CoreKind = "time" | "settings" | "creator" | "phone";
+export const CORE_KINDS = ["time", "settings", "creator", "phone", "title", "menu", "people", "events", "journal", "notify"] as const;
+export type CoreKind = (typeof CORE_KINDS)[number];
 
 export interface EngineModule {
   /** Unique within a card; also the id in `<cf-module id="…"/>` and `CF.open("…")`. */

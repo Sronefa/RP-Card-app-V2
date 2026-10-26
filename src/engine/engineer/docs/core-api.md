@@ -43,6 +43,8 @@ interface CardForge {
   setSettings(patch: Partial<Settings>): Promise<Settings>;
   /** The theme as a :root { --cf-… } rule, for the current settings. */
   themeCss(settings?: Settings): string;
+  /** Whether the card has a status panel, which open("status") shows. */
+  hasPanel(): boolean;
   /** The card's enabled modules. */
   modules(): { id: string; name: string; slot: string; button: string }[];
   /** Turns older status panels into still pictures (the player's "live panels" setting). Runs on its own after each message. */
@@ -239,7 +241,7 @@ Use these in your CSS instead of fixed colours, so the screen follows the card t
 
 A module's `script` file runs once when the chat opens, inside the card's Tavern Helper script, as the body of `function (CF, settings, hooks) { … }`. Tavern Helper's functions are globals there (`getVariables`, `injectPrompts`, `eventOn`, `generate`…).
 
-`hooks.afterUpdate(function (stat, before, info) { … return stat; })` runs after every update the model writes, and on the starting values (with `before` null). Change `stat` and return it to keep derived values consistent: roll a counter over, clamp a total, work out a label from a number. The in-game time module does its day roll, weekday and timers this way. Keep hooks quick and never throw: a failing hook is logged and skipped.
+`hooks.afterUpdate(function (stat, before, info) { … return stat; })` runs after every update the model writes, and on the starting values (with `before` null). `info.messageId` is the message being updated and `info.latest` is true when it is the newest one: only then show banners or start side calls, since older messages are updated again on a swipe or an edit. Change `stat` and return it to keep derived values consistent: roll a counter over, clamp a total, work out a label from a number. The in-game time module does its day roll, weekday and timers this way. Keep hooks quick and never throw: a failing hook is logged and skipped.
 
 ## Card images
 

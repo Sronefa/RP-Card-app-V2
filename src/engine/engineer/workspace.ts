@@ -6,7 +6,7 @@
 import { ToolInputError } from "../../ai/tools";
 import type { ToolCall } from "../../ai/types";
 import { BUILT_IN_SCREENS, coreModules, modulesOf, newModule } from "../modules/compile";
-import { cleanModule } from "../modules/pack";
+import { addModules, cleanModule } from "../modules/pack";
 import { SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../modules/types";
 import { newVar, themeOf, VAR_TYPES, type EngineConfig, type EngineVar, type VarType } from "../sheet";
 import { cleanOverrides, PRESET_IDS, type PresetId, type ThemeTokens } from "../theme";
@@ -156,6 +156,13 @@ export function applyOp(config: EngineConfig, call: ToolCall): { config: EngineC
       // A core module is rebuilt from its settings, which checks them.
       const next = module.core ? (cleanModule(merged) ?? merged) : merged;
       return { config: withModule(config, index, next), summary: `Change the "${module.name}" module's options` };
+    }
+    case "install_part": {
+      const incoming = (Array.isArray(input.modules) ? input.modules : []).map(cleanModule).filter((m): m is EngineModule => !!m);
+      const enable = new Set(Array.isArray(input.enable) ? input.enable.map(String) : []);
+      if (!incoming.length && !enable.size) throw new ToolInputError("Use install_part through the tool: it fills the part from the card.");
+      const current = modulesIn(config).map((m) => (enable.has(m.id) ? { ...m, enabled: true } : m));
+      return { config: { ...config, modules: addModules(current, incoming) }, summary: `Install the ${str(input, "part") || incoming[0]?.name} part` };
     }
     case "add_built_in": {
       const screen = BUILT_IN_SCREENS.find((b) => b.core === input.screen);

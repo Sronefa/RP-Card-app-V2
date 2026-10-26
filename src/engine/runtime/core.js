@@ -598,9 +598,15 @@ function cfClose() {
 /** Opens a module's screen over the chat (the hub buttons do this). "status" opens the status panel. */
 function cfOpen(moduleId) {
   var doc = cfHost().document;
-  cfClose();
+  // A screen opening another (the menu's tiles) runs in the frame being replaced: that frame goes
+  // only once the new one is written, or the new screen's page never starts.
+  var previous = cfOverlay;
+  cfOverlay = null;
   var mod = moduleId === "status" ? { id: "status", name: CF_CONFIG.panelTitle || "Status" } : cfModule(moduleId);
-  if (!mod) throw new Error("No module '" + moduleId + "' to open.");
+  if (!mod) {
+    cfOverlay = previous;
+    throw new Error("No module '" + moduleId + "' to open.");
+  }
   var back = doc.createElement("div");
   back.id = "cf-overlay";
   back.setAttribute("role", "dialog");
@@ -633,6 +639,10 @@ function cfOpen(moduleId) {
   fdoc.open();
   fdoc.write(html);
   fdoc.close();
+  if (previous) {
+    previous.remove();
+    eventEmit("cf:closed");
+  }
   eventEmit("cf:opened", moduleId);
   return frame;
 }
@@ -716,9 +726,13 @@ function cfFreezeSoon() {
 /** Modules that keep derived values (the clock, routines) change the state after each update. */
 function cfRunHooks(stat, before, messageId) {
   var out = stat;
+  var latest = true;
+  try {
+    latest = messageId === undefined || messageId === null || messageId >= getLastMessageId();
+  } catch (e) {}
   cfHooks.forEach(function (hook) {
     try {
-      var next = hook.fn(out, before, { messageId: messageId, settings: hook.settings });
+      var next = hook.fn(out, before, { messageId: messageId, latest: latest, settings: hook.settings });
       if (cfIsObject(next)) out = next;
     } catch (e) {
       console.error("[CardForge] The '" + hook.module + "' module's update hook failed.", e);
@@ -743,6 +757,10 @@ var CardForgeApi = {
   /** With side-call updates on: about how many tokens each one costs. Otherwise null. */
   sideCall: function () {
     return CF_CONFIG.side ? { tokens: CF_CONFIG.side.tokens } : null;
+  },
+  /** Whether the card has a status panel ("status" opens it). */
+  hasPanel: function () {
+    return !!CF_CONFIG.panelDoc;
   },
   modules: function () {
     return cfModules().map(function (m) {
@@ -772,10 +790,17 @@ var CardForgeApi = {
 
 function cfStartHub() {
   var buttons = [];
-  if (CF_CONFIG.panelDoc) buttons.push({ name: CF_CONFIG.statusButton || "📊 Status", open: "status" });
-  cfModules().forEach(function (m) {
-    if (m.slot === "overlay" && m.button) buttons.push({ name: m.button, open: m.id });
+  // A menu that collects the hub keeps the input box clear: everything opens from it.
+  var menu = cfModules().find(function (m) {
+    return m.slot === "overlay" && m.button && m.settings && m.settings.only === true && m.id === "menu";
   });
+  if (menu) buttons.push({ name: menu.button, open: menu.id });
+  else {
+    if (CF_CONFIG.panelDoc) buttons.push({ name: CF_CONFIG.statusButton || "📊 Status", open: "status" });
+    cfModules().forEach(function (m) {
+      if (m.slot === "overlay" && m.button) buttons.push({ name: m.button, open: m.id });
+    });
+  }
   if (!buttons.length || typeof replaceScriptButtons !== "function") return;
   try {
     replaceScriptButtons(

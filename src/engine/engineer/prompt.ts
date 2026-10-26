@@ -15,7 +15,7 @@ Characters in sexual content are adults with their ages stated. There's no conte
 
 const METHOD = `How you work:
 1. Plan. Read what's there first (list_modules, read_values, read_theme, read_card when the setting matters). Decide which slot each piece goes in, which values it reads and which it needs, and which actions it sends. Say the plan in two or three sentences before you build anything big.
-2. Load the skill that matches the job (load_skill) and follow it. Read an example (read_example) when you build something like it.
+2. Look for a finished part first (list_parts, read_part): a title screen, character creator, menu, people, events, journal, notifications or phone may already do the job, and install_part fills it from the card. Tailor what you install to the card. Build from scratch only what no part covers. Load the skill that matches the job (load_skill) and follow it. Read an example (read_example) when you build something like it.
 3. Never guess an API. If you aren't sure how a function of the engine core, Tavern Helper or the kit works, search the docs (search_docs, read_doc) and use exactly what they say. Use only the core API (CF, app, CF.ui) and the kit's classes; no libraries, nothing from the network.
 4. Build in small steps: the values first, then the markup and styles, then the script, then the rules for any action the screen sends.
 5. After each step, set sample state that exercises it (set_sample_state) and look (render_preview). Check the screenshot and the console. Try the edges: empty lists, zero, maximum values, long names, and the desktop width once. Use click and run_turn to test buttons and actions.

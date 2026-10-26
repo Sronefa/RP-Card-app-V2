@@ -20,6 +20,7 @@ import { EnginePreview } from "./preview";
 import { engineSummary, engineerSystemPrompt } from "./prompt";
 import { ENGINEER_TOOLS, runEngineerTool, type EngineerContext, type SampleState } from "./tools";
 import { diffConfigs, replay, type FileChange } from "./workspace";
+import { loadModuleLibrary } from "../../features/engine/moduleLibrary";
 
 export type EngineerProposalStatus = "pending" | "accepted" | "rejected" | "failed" | "replaced";
 
@@ -167,6 +168,7 @@ export const useEngineer = create<EngineerState>((set, get) => {
         sampleDirty: !!chat.sample,
         preview,
         libs: preview ? sandboxLibs : undefined,
+        library: await loadModuleLibrary().catch(() => []),
       };
       const text = [
         `<engine>\n${engineSummary(ctx.draft, record.card.data.name)}\n</engine>`,

@@ -11,7 +11,8 @@ import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { SandboxLibs } from "../sandbox/sandbox";
 import { applyEngine, scenarioOf, stateSchema, themeOf, varPath, VAR_TYPES, type EngineConfig } from "../sheet";
 import { PRESET_IDS, themeBundle } from "../theme";
-import { SLOTS } from "../modules/types";
+import { SLOTS, type EngineModule } from "../modules/types";
+import { allParts, hasPart, installParts, partsText, searchParts } from "../parts/catalog";
 import { docsIndex, examplesIndex, readDoc, readExample, searchDocsText, skillsIndex, type Skill } from "./knowledge";
 import { findingsText, lintConfig, screenFindings, type Finding } from "./lint";
 import type { EnginePreview, PreviewDevice } from "./preview";
@@ -78,6 +79,16 @@ export const KNOWLEDGE_TOOLS: ToolDef[] = [
     obj({ id: str("The skill's id") }, ["id"]),
   ),
   tool("list_examples", "List the example modules you can copy patterns from."),
+  tool(
+    "list_parts",
+    "List finished parts you can install: CardForge's (title screen, character creator, menu, people, events, journal, notifications, phone, time…) and the user's saved modules. Search by words or a tag.",
+    obj({ query: str("Words to match, like 'relationships' or 'map'"), tag: str("A tag, like 'shared', 'npc' or 'screen'") }),
+  ),
+  tool(
+    "read_part",
+    "Read a part before installing it: what it does, what it needs, its settings filled from this card, its sample values, and what to tailor.",
+    obj({ id: str("The part's id") }, ["id"]),
+  ),
   tool("read_example", "Read an example module as files.", obj({ id: str("The example's id") }, ["id"])),
 ];
 
@@ -105,6 +116,11 @@ export const WRITE_TOOLS: ToolDef[] = [
       },
       ["id", "name", "slot"],
     ),
+  ),
+  tool(
+    "install_part",
+    "Install a finished part with the parts it needs, filled from the card's world pages. Prefer this to building from scratch when a part fits; then tailor it (set_module_settings, or patch its files if it's the user's own).",
+    obj({ id: str("The part's id"), settings: { type: "object", description: "Settings to start with, over the part's own (read_part shows them)" } }, ["id"]),
   ),
   tool(
     "add_built_in",
@@ -308,6 +324,8 @@ export interface EngineerContext {
   sampleDirty?: boolean;
   preview?: EnginePreview;
   libs?: () => Promise<SandboxLibs>;
+  /** The user's saved modules, which are parts too. */
+  library?: EngineModule[];
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -348,6 +366,33 @@ function cardText(data: CardDataV3): string {
           .slice(0, 40)
           .join(", ")}`
       : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function partText(ctx: EngineerContext, id: string): string {
+  const parts = allParts(ctx.library);
+  const part = parts.find((p) => p.id === id);
+  if (!part) throw new ToolInputError(`There's no part "${id}". Parts:\n${partsText(parts, ctx.draft)}`);
+  const module = part.make();
+  let settings: Record<string, unknown> = { ...module.settings };
+  delete settings.live;
+  if (part.fill) settings = part.fill(settings, ctx.data);
+  const code = module.core
+    ? "Its code is CardForge's: change it through its settings (set_module_settings once installed)."
+    : (["html", "css", "js", "script"] as const)
+        .filter((f) => module[f].trim())
+        .map((f) => `<file name="${f}">\n${module[f]}\n</file>`)
+        .join("\n\n");
+  return [
+    `${part.name} (${part.id})${hasPart(ctx.draft, part.id) ? ", already in the card" : ""}: ${part.summary}`,
+    `Slot: ${SLOTS[module.slot].label}${module.button ? `, hub button "${module.button}"` : ""}. Tags: ${part.tags.join(", ")}.${part.requires.length ? ` Installs with: ${part.requires.join(", ")}.` : ""}`,
+    module.vars.length ? `Values it adds (with these settings may differ):\n${module.vars.map((v) => `- ${varPath(v).join(".")} (${v.type})`).join("\n")}` : "It adds no values.",
+    `Settings, filled from this card:\n${YAML.stringify(settings)}`,
+    part.sample ? `Sample values for set_sample_state:\n${YAML.stringify(part.sample)}` : "",
+    `To tailor: ${part.tailor}`,
+    code,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -484,6 +529,41 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
           ? text(call.id, example)
           : text(call.id, `There's no example "${String(input.id)}". Examples:\n${examplesIndex()}`, true);
       }
+      case "list_parts":
+        return text(call.id, partsText(searchParts(allParts(ctx.library), String(input.query ?? ""), String(input.tag ?? "")), ctx.draft));
+      case "read_part":
+        return text(call.id, partText(ctx, String(input.id ?? "")));
+      case "install_part": {
+        const id = String(input.id ?? "");
+        const parts = allParts(ctx.library);
+        if (!parts.some((p) => p.id === id)) throw new ToolInputError(`There's no part "${id}". Parts:\n${partsText(parts, ctx.draft)}`);
+        if (hasPart(ctx.draft, id)) throw new ToolInputError(`The card already has the "${id}" part. Change it with set_module_settings.`);
+        if (input.settings !== undefined && !isObject(input.settings)) throw new ToolInputError(`"settings" must be an object`);
+        const before = new Set((ctx.draft.modules ?? []).filter((m) => m.enabled).map((m) => m.id));
+        let out;
+        try {
+          out = installParts(ctx.draft, ctx.data, [id], parts, input.settings ? { [id]: input.settings as Record<string, unknown> } : {});
+        } catch (e) {
+          throw new ToolInputError((e as Error).message);
+        }
+        const enable = (out.config.modules ?? []).filter((m) => m.enabled && !before.has(m.id) && !out.added.includes(m)).map((m) => m.id);
+        // Kept with the installed modules themselves, so the proposal replays the same way.
+        const op: ToolCall = { id: call.id, name: "install_part", input: { part: id, modules: out.added, enable } };
+        ctx.draft = applyOp(ctx.draft, op).config;
+        ctx.ops.push(op);
+        return text(
+          call.id,
+          [
+            `Installed ${out.added.map((m) => `${m.name} (${m.id})`).join(", ") || "nothing new"}${enable.length ? `; turned on ${enable.join(", ")}` : ""}.`,
+            out.messageTags.length
+              ? `It shows in the opening message: tell the user to press "Put it in the first message" in its settings on the Modules tab (or to add ${out.messageTags.join(" and ")} there themselves).`
+              : "",
+            out.notes.length ? `Tailor it to this card:\n${out.notes.map((n) => `- ${n}`).join("\n")}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        );
+      }
       case "set_sample_state": {
         if (input.clear === true) {
           ctx.sample = undefined;
@@ -606,6 +686,12 @@ export function describeCall(call: ToolCall): string {
       return "Listed examples";
     case "read_example":
       return `Read the ${s(i.id)} example`;
+    case "list_parts":
+      return s(i.query) || s(i.tag) ? `Searched the parts for "${s(i.query) || s(i.tag)}"` : "Listed the parts";
+    case "read_part":
+      return `Read the ${s(i.id)} part`;
+    case "install_part":
+      return `Installed the ${s(i.id) || s(i.part)} part`;
     case "create_module":
       return `Created ${s(i.id)}`;
     case "add_built_in":

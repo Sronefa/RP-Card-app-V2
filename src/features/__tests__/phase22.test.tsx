@@ -51,8 +51,8 @@ describe("built-in screens", () => {
   it("adds the character creator and puts it in the first message", () => {
     useEditor.getState().setField("first_mes", "The gate opens.");
     openTab("Modules");
+    // Adding it puts it in the first message.
     fireEvent.click(screen.getByRole("button", { name: "Add the character creator" }));
-    fireEvent.click(screen.getByRole("button", { name: "Put it in the first message" }));
     expect(data().first_mes).toBe(`The gate opens.\n\n${CREATOR_TAG}`);
     expect(screen.getByText("It's in the first message.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Points to spend"), { target: { value: "9" } });

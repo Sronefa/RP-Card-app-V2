@@ -77,3 +77,22 @@ Screens send structured actions through `app.send(app, payload, text)`: `<action
 ## Sizes
 
 The whole engine script is shown on the Modules tab. Keep a module's code to a few kilobytes: a panel section is built again for every reply it shows under, and phones are slow.
+
+## Parts and kits
+
+Parts are finished modules you can install instead of building from scratch: `list_parts` finds them (by words or a tag), `read_part` shows one with its settings already filled from this card, and `install_part` adds it with the parts it needs. CardForge's own parts are built-in modules: change them only through `set_module_settings`. The user's saved modules are parts too; those you can patch like your own.
+
+The shared parts every kit starts from:
+
+- `time` (In-game time) and `settings` (the settings app): the core modules.
+- `title` (Title screen): an inline block for the opening message, with New game, Continue and Settings. It keeps `Game.$Started`; the character creator waits for New game when both are in the card.
+- `creator` (Character creator): the opening screen where the player makes their character.
+- `menu` (Menu): one hub button with a tile for every other hub screen. With `only` on, the other hub buttons go away.
+- `people` (People): a profile per person in the cast, with `<Name>.Affection` and `<Name>.Learned`. Values another module already keeps (the phone's affection) are shared, not added twice. Where someone is comes from `<Name>.Location`, else `Time._Whereabouts`.
+- `events` (Events): scheduled and random events by day, time and place. After each update the engine puts what's happening now in `Events._Now` for the model. Random events roll the same way on every swipe.
+- `journal` (Journal): the model adds the day's key events to `Journal.Today`; at the day's end they're filed in the hidden `Journal.$Past` and the last few days go back to the model as a short memory. A side call can write each day up.
+- `notify` (Notifications): banners over the chat in the card's theme. A screen announces something with `CF.notify({ title, text, icon, open })` when the part is on, or with `app.emit("notify", { … })`, which works either way. It also watches lists in the state (`Phone.Texts`, `Phone.News`…) and announces new lines from the latest reply.
+
+The phone is a part too, with the library parts that come in with the kits.
+
+When you install a part, tailor it: fill in what the card's world pages didn't (likes, events, a tagline), and rename labels and stages to fit the setting. The user saves kits (a theme plus parts) from the Modules tab.

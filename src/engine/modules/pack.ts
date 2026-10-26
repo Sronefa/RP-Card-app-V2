@@ -5,7 +5,7 @@
 import { newId } from "../../lib/id";
 import { VAR_TYPES, type EngineVar, type VarType } from "../sheet";
 import { resolveModule } from "./compile";
-import { PACK_FORMAT, SLOTS, type CoreKind, type EngineModule, type ModulePack, type ModuleRegex, type ModuleRule, type Slot } from "./types";
+import { CORE_KINDS, PACK_FORMAT, SLOTS, type CoreKind, type EngineModule, type ModulePack, type ModuleRegex, type ModuleRule, type Slot } from "./types";
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
@@ -63,7 +63,7 @@ export function cleanModule(raw: unknown): EngineModule | null {
   const name = str(raw.name).trim();
   const id = str(raw.id).trim();
   if (!name && !id) return null;
-  const core = ["time", "settings", "creator", "phone"].includes(str(raw.core)) ? (raw.core as CoreKind) : undefined;
+  const core = (CORE_KINDS as readonly string[]).includes(str(raw.core)) ? (raw.core as CoreKind) : undefined;
   const slot = (str(raw.slot) in SLOTS ? raw.slot : "overlay") as Slot;
   const m: EngineModule = {
     id: id || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "module",
