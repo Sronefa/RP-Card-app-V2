@@ -93,6 +93,16 @@ The shared parts every kit starts from:
 - `journal` (Journal): the model adds the day's key events to `Journal.Today`; at the day's end they're filed in the hidden `Journal.$Past` and the last few days go back to the model as a short memory. A side call can write each day up.
 - `notify` (Notifications): banners over the chat in the card's theme. A screen announces something with `CF.notify({ title, text, icon, open })` when the part is on, or with `app.emit("notify", { … })`, which works either way. It also watches lists in the state (`Phone.Texts`, `Phone.News`…) and announces new lines from the latest reply.
 
-The phone is a part too, with the library parts that come in with the kits.
+Parts the kits bring, which any card can use:
+
+- `phone` (Phone): the modern phone hub. Other parts pay from its money (`Phone.Money`) when the card has one.
+- `life` (Daily life): needs in `Needs.<Name>` (0 to 100) that the engine drains by the time that passed, unless the story changed that need in the same update; a job with `Job.Performance` and the next shift in `Job._Shift`; bills due in `Life._Bills` (paid ones in `Life.$Paid`); skills (in `Skills`, or the creator's group when `skillsGroup` names it, so they share the creator's stats); a home with rooms. Actions: `<action app="life">` with `{"do":"sleep"|"cook"|"eat"|"wash"|"relax"|"work"|"skip"|"practice"|"room"}`.
+- `school` (School app): `School._Now` and `School._Next` from the timetable and the clock, `School.Grades` and `School.Study` per subject, `School._Exams` counting down, `School.Attendance`, `School.Violations` as "What — expires Day N" (removed when they expire), the club, announcements, and council requests. Actions: `<action app="school">` with `{"do":"attend"|"skip"|"study"|"join"|"visit"|"request"}`.
+- `routes` (Routes): per love interest `<Name>.Affection` (shared with the phone or people when they keep it), `<Name>.Trust`, `<Name>.Route` (Open, Locked in, Lost) and `<Name>.Discovered` tastes; `Routes.Focus`, `Routes.Dates`, `Routes.Gifts`. When the model inserts a caption into `Routes.Unlocked` or sets `Routes.Ending`, the picture or ending is kept with the character (`CF.keep`) across chats. A stage-up plays a short banner. Actions: `<action app="routes">` with `{"date":{…}}` or `{"give":G,"to":N}`. `CF.open("routes", { tab: "gallery" })` opens on a tab.
+- `choices` (Choice menu): the model ends a reply with `<cf-module id="choices"/>` and fills `Choices.Options`; a tap sends `<action app="choices">{"pick":…}</action>` at once. It has an optional timer.
+
+The title screen has styles for the kits: `classic`, `lock` (a phone lock screen), `gate` (petals, leaves or snow by the in-game season) and `cast` (portraits of the cast, plus Gallery and Endings when the card has routes).
+
+Built-in kits: "Starter game" (the shared parts), "Modern life sim" (phone theme, lock-screen title, phone with a Jobs app, daily life, people, diary), "School / academy" (Academy theme, school-gate title, school app, phone with a Forum app, people with school stages, festivals on the calendar) and "Dating sim / VN" (dating theme, cast title, routes, choice menu, a light phone, festival and confession-day events). Installing a kit adds what the card doesn't have, filled from the card.
 
 When you install a part, tailor it: fill in what the card's world pages didn't (likes, events, a tagline), and rename labels and stages to fit the setting. The user saves kits (a theme plus parts) from the Modules tab.

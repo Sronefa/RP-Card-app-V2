@@ -66,6 +66,49 @@ async function cfSetSettings(patch) {
   return next;
 }
 
+// ---------------------------------------------------------------- kept across chats
+
+/** Values kept with the character, not the chat: unlocked endings, gallery pictures, achievements. */
+function cfKept() {
+  try {
+    var vars = getVariables({ type: "character" }) || {};
+    return (vars[CF_KEY] && vars[CF_KEY].keep) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function cfKeepGet(key) {
+  var all = cfKept();
+  return key === undefined ? all : all[key];
+}
+
+async function cfKeepSet(key, value) {
+  await updateVariablesWith(
+    function (vars) {
+      var mine = Object.assign({}, vars[CF_KEY]);
+      mine.keep = Object.assign({}, mine.keep);
+      mine.keep[key] = value;
+      vars[CF_KEY] = mine;
+      return vars;
+    },
+    { type: "character" },
+  );
+  await eventEmit("cf:keep", key);
+  return value;
+}
+
+/** Adds lines to a kept list, once each; resolves to the lines that were new. */
+async function cfKeepAdd(key, lines) {
+  var have = cfKeepGet(key);
+  have = Array.isArray(have) ? have : [];
+  var fresh = (Array.isArray(lines) ? lines : [lines]).map(String).filter(function (l, i, all) {
+    return l && have.indexOf(l) < 0 && all.indexOf(l) === i;
+  });
+  if (fresh.length) await cfKeepSet(key, have.concat(fresh));
+  return fresh;
+}
+
 // ---------------------------------------------------------------- theme
 
 function cfMode(settings) {
@@ -256,6 +299,8 @@ var CF_ICONS = {
   lock: "M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z",
   check: "M5 12l5 5 9-10",
   plus: "M12 5v14M5 12h14",
+  book: "M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zm0 0v16m4-14h7",
+  gift: "M4 11h16v9H4zM3 7h18v4H3zm9 0v13M12 7c-1-3-5-3.5-5-1s5 1 5 1zm0 0c1-3 5-3.5 5-1s-5 1-5 1",
 };
 
 function cfEsc(value) {
@@ -415,6 +460,17 @@ function cfFrame(win, options) {
     render(history[history.length - 1]);
     return true;
   }
+  /** Draws the current page again (after a state change), keeping the scroll. */
+  function refresh() {
+    if (!routes || !history.length) return;
+    var top = routeRoot.scrollTop;
+    var scroller = routeRoot.querySelector(".cf-appbody");
+    var inner = scroller ? scroller.scrollTop : 0;
+    render(history[history.length - 1]);
+    routeRoot.scrollTop = top;
+    scroller = routeRoot.querySelector(".cf-appbody");
+    if (scroller) scroller.scrollTop = inner;
+  }
 
   var app = {
     window: win,
@@ -489,7 +545,7 @@ function cfFrame(win, options) {
       routeRoot = root;
       history = [];
       go(start, params);
-      return { go: go, back: back };
+      return { go: go, back: back, refresh: refresh };
     },
   };
   app.go = go;
@@ -596,8 +652,12 @@ function cfClose() {
 }
 
 /** Opens a module's screen over the chat (the hub buttons do this). "status" opens the status panel. */
-function cfOpen(moduleId) {
+var cfOpenParams = {};
+
+/** `params` reach the opened screen through CF.openParams(), like which tab to start on. */
+function cfOpen(moduleId, params) {
   var doc = cfHost().document;
+  cfOpenParams = params && typeof params === "object" ? params : {};
   // A screen opening another (the menu's tiles) runs in the frame being replaced: that frame goes
   // only once the new one is written, or the new screen's page never starts.
   var previous = cfOverlay;
@@ -748,6 +808,10 @@ var CardForgeApi = {
   mount: cfMount,
   mountSlot: cfMountSlot,
   open: cfOpen,
+  /** What the latest open() passed, like { tab: "gallery" }. */
+  openParams: function () {
+    return cfOpenParams;
+  },
   close: cfClose,
   asset: cfAsset,
   settings: cfSettings,
@@ -775,6 +839,7 @@ var CardForgeApi = {
     reset: cfPlayerReset,
   },
   act: { send: cfSend, text: cfActionText, write: cfWriteInput },
+  keep: { get: cfKeepGet, set: cfKeepSet, add: cfKeepAdd },
   bus: {
     on: function (name, fn) {
       eventOn("cf:" + name, fn);

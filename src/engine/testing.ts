@@ -8,13 +8,17 @@ export function fakeTavern(messages: { role: string; message: string }[]) {
   const globals: Record<string, unknown> = {};
   const id = (option: { message_id?: number | "latest" }) =>
     option.message_id === "latest" || option.message_id === undefined ? messages.length - 1 : option.message_id;
+  // Chat and character variables; anything else is a message's.
+  const scopes: Record<string, Record<string, unknown>> = { chat: {}, character: {} };
+  type Option = { type?: string; message_id?: number | "latest" };
+  const read = (o: Option) => (o.type && o.type in scopes ? scopes[o.type] : vars[id(o)]);
+  const write = (o: Option, v: Record<string, unknown>) => (o.type && o.type in scopes ? (scopes[o.type] = v) : (vars[id(o)] = v));
   const api = {
     z,
     YAML: { parse: (s: string) => JSON.parse(s) },
-    getVariables: (o: { message_id?: number }) => structuredClone(vars[id(o)]),
-    replaceVariables: (v: Record<string, unknown>, o: { message_id?: number }) => (vars[id(o)] = structuredClone(v)),
-    updateVariablesWith: async (fn: (v: Record<string, unknown>) => Record<string, unknown>, o: { message_id?: number }) =>
-      (vars[id(o)] = fn(structuredClone(vars[id(o)]))),
+    getVariables: (o: Option) => structuredClone(read(o)),
+    replaceVariables: (v: Record<string, unknown>, o: Option) => write(o, structuredClone(v)),
+    updateVariablesWith: async (fn: (v: Record<string, unknown>) => Record<string, unknown>, o: Option) => write(o, fn(structuredClone(read(o) ?? {}))),
     getChatMessages: (i: number) => (messages[i] ? [{ message_id: i, ...messages[i] }] : []),
     setChatMessages: async (changes: { message_id: number; message?: string }[]) => {
       for (const c of changes) if (c.message !== undefined) messages[c.message_id].message = c.message;
@@ -37,7 +41,7 @@ export function fakeTavern(messages: { role: string; message: string }[]) {
     registerVariableSchema: () => {},
     console: { info: () => {}, warn: console.warn, error: console.error },
   };
-  return { api, vars, messages, listeners, globals };
+  return { api, vars, scopes, messages, listeners, globals };
 }
 
 const ours = new Set<string>();

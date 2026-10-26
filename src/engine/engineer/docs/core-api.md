@@ -32,8 +32,10 @@ interface CardForge {
   mount(win: Window, moduleId: string, root?: Element, options?: { app?: App }): App | null;
   /** Mounts every module of a slot under `el`, one <section class="cf-slot"> each. */
   mountSlot(win: Window, slot: "panel" | "overlay" | "message", el: Element, options?: { app?: App }): App;
-  /** Opens a hub screen over the chat. "status" opens the status panel full size. */
-  open(moduleId: string): HTMLIFrameElement;
+  /** Opens a hub screen over the chat. "status" opens the status panel full size. `params` reach it through openParams(). */
+  open(moduleId: string, params?: Record<string, any>): HTMLIFrameElement;
+  /** What the latest open() passed, like { tab: "gallery" }; {} when nothing. */
+  openParams(): Record<string, any>;
   close(): void;
   /** A card image by file name: /user/images/<character>/<file>. */
   asset(file: string): string;
@@ -69,6 +71,14 @@ interface CardForge {
     /** Writes plain text into the input box (no action tag); with now, sends it. */
     write(text: string, options?: { now?: boolean }): Promise<string>;
   };
+  /** Values kept with the character across every chat: unlocked endings, gallery pictures, achievements. */
+  keep: {
+    get(key?: string): any;
+    /** Emits "cf:keep" once saved. */
+    set(key: string, value: any): Promise<any>;
+    /** Adds lines to a kept list once each; resolves to the lines that were new. */
+    add(key: string, lines: string | string[]): Promise<string[]>;
+  };
   bus: {
     /** Listens for "cf:<name>" events between screens. Returns a function that stops listening. */
     on(name: string, fn: (detail: any) => void): () => void;
@@ -90,7 +100,7 @@ interface App {
   setMany(changes: [string | string[], any][], note?: string): Promise<any>;
   send(app: string, payload?: any, text?: string, options?: { now?: boolean }): Promise<string>;
   write(text: string, options?: { now?: boolean }): Promise<string>;
-  open(moduleId: string): void;
+  open(moduleId: string, params?: Record<string, any>): void;
   close(): void;
   /** Runs fn after updates, swipes, deletions and the player's edits. */
   onState(fn: () => void): void;
@@ -100,7 +110,7 @@ interface App {
   /** A modal over this screen; returns its backdrop element (remove() closes it). */
   modal(html: string): HTMLElement;
   /** A router for app-like screens. Routes are functions (params, app) => HTML string. */
-  router(root: Element, routes: Record<string, (params: any, app: App) => string | void>, start: string, params?: any): { go(name: string, params?: any): void; back(): boolean };
+  router(root: Element, routes: Record<string, (params: any, app: App) => string | void>, start: string, params?: any): { go(name: string, params?: any): void; back(): boolean; refresh(): void };
   go(name: string, params?: any): void;
   back(): boolean;
   settings(): Settings;
@@ -126,7 +136,7 @@ interface UiKit {
   appBar(title: string, o?: { back?: boolean; close?: boolean }): string;
 }
 
-type IconName = "heart" | "star" | "coin" | "clock" | "sun" | "moon" | "cloud" | "rain" | "snow" | "fog" | "storm" | "gear" | "back" | "close" | "phone" | "bag" | "map" | "chat" | "user" | "chart" | "calendar";
+type IconName = "heart" | "star" | "coin" | "clock" | "sun" | "moon" | "cloud" | "rain" | "snow" | "fog" | "storm" | "gear" | "back" | "close" | "phone" | "bag" | "map" | "chat" | "user" | "chart" | "calendar" | "news" | "wallet" | "camera" | "note" | "spark" | "home" | "send" | "people" | "lock" | "check" | "plus" | "book" | "gift";
 ```
 
 ## A screen script
@@ -204,7 +214,13 @@ root.addEventListener("click", function (e) {
 });
 ```
 
-`data-cf-back` buttons (the app bar's back arrow) go back one page, and close the screen on the first page.
+`data-cf-back` buttons (the app bar's back arrow) go back one page, and close the screen on the first page. `nav.refresh()` draws the current page again, keeping the scroll: call it from `app.onState`.
+
+`app.open("routes", { tab: "gallery" })` passes options to the screen it opens; that screen reads them with `CF.openParams()` when it starts.
+
+## Kept across chats
+
+`CF.keep` stores values with the character, not the chat, so they outlast a playthrough: endings reached, gallery pictures unlocked, achievements. `CF.keep.add("endings", "Mina: The café at dawn")` adds a line once; `CF.keep.get("endings")` reads the list. Screens hear `app.on("keep", …)` after a change. Keep it small: it is saved in the character card's variables.
 
 ## UI kit
 
@@ -220,7 +236,7 @@ Every builder returns an HTML string; put several together and set `root.innerHT
 - `CF.ui.button("Use", { primary: true, icon: "bag" })`. It can also take `send`/`payload`/`text`/`now`, `open: "moduleId"`, `close: true` or `back: true`.
 - `CF.ui.tabs([{ id: "bag", label: "Bag", html: "…" }, { id: "quests", label: "Quests", html: "…" }], "bag")`: tab switching works by itself.
 - `CF.ui.appBar("Inventory", { back: true })`: the title bar of an app screen.
-- `CF.ui.icon("coin")`: an inline SVG icon from the set: heart, star, coin, clock, sun, moon, cloud, rain, snow, fog, storm, gear, back, close, phone, bag, map, chat, user, chart, calendar.
+- `CF.ui.icon("coin")`: an inline SVG icon from the set: heart, star, coin, clock, sun, moon, cloud, rain, snow, fog, storm, gear, back, close, phone, bag, map, chat, user, chart, calendar, news, wallet, camera, note, spark, home, send, people, lock, check, plus, book, gift.
 - `app.toast("Saved")`: a short message at the top.
 - `app.modal('<h2>Sure?</h2><button class="cf-btn" data-cf-close>Close</button>')`: a dialog; `data-cf-close` inside it closes it.
 

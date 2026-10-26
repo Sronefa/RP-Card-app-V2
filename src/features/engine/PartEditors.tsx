@@ -11,7 +11,7 @@ import { WRITE_UP_TOKENS, type JournalSettings } from "../../engine/modules/jour
 import type { MenuSettings } from "../../engine/modules/menu";
 import type { NotifySettings } from "../../engine/modules/notify";
 import { peopleSettings, type PeopleSettings } from "../../engine/modules/people";
-import { TITLE_TAG, titleSettings, type TitleSettings } from "../../engine/modules/title";
+import { TITLE_STYLES, TITLE_TAG, titleSettings, type TitleSettings, type TitleStyle } from "../../engine/modules/title";
 import { fillPeople, fillTitle, worldOf } from "../../engine/parts/catalog";
 import { Check, Labelled, Rows } from "./ScreenEditors";
 import { selectClass } from "./VarEditor";
@@ -43,9 +43,18 @@ export function TitleEditor({ settings, onChange }: { settings: TitleSettings; o
             Put it in the first message
           </Button>
         )}
-        <Button onClick={() => set(titleSettings(fillTitle({ ...raw(settings), title: "", premise: "" }, data)), "card")}>Fill from the card</Button>
+        <Button onClick={() => set(titleSettings(fillTitle({ ...raw(settings), title: "", premise: "", cast: [] }, data)), "card")}>Fill from the card</Button>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Labelled label="Style" className="sm:col-span-2">
+          <select className={selectClass} value={settings.style} onChange={(e) => set({ style: e.target.value as TitleStyle }, "style")}>
+            {Object.entries(TITLE_STYLES).map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </Labelled>
         <Labelled label="Title">
           <TextInput value={settings.title} placeholder={data.name} onChange={(e) => set({ title: e.target.value }, "title")} />
         </Labelled>
@@ -68,6 +77,21 @@ export function TitleEditor({ settings, onChange }: { settings: TitleSettings; o
           <TextInput value={settings.opening} placeholder="Nothing" onChange={(e) => set({ opening: e.target.value }, "opening")} />
         </Labelled>
       </div>
+      {settings.style === "cast" && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="font-medium">The cast on the title screen (up to six)</legend>
+          <Rows
+            label="a cast member"
+            rows={settings.cast}
+            blank={{ name: "", avatar: "" }}
+            fields={[
+              { key: "name", label: "Name" },
+              { key: "avatar", label: "Picture file", wide: true },
+            ]}
+            onChange={(cast, key) => set({ cast }, `cast.${key}`)}
+          />
+        </fieldset>
+      )}
     </div>
   );
 }

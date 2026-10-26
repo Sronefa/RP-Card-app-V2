@@ -6,13 +6,17 @@
  */
 import type { SillyTavernRegex } from "../../editor/trackers";
 import { varLabel, varPath, type EngineConfig, type EngineVar } from "../sheet";
+import { choicesModule } from "./choices";
 import { creatorModule } from "./creator";
 import { eventsModule } from "./events";
 import { journalModule } from "./journal";
+import { lifeModule } from "./life";
 import { menuModule } from "./menu";
 import { notifyModule } from "./notify";
 import { peopleModule, valueKey } from "./people";
-import { phoneModule } from "./phone";
+import { phoneModule, phoneSettings } from "./phone";
+import { routesModule } from "./routes";
+import { schoolModule } from "./school";
 import { settingsAppModule } from "./settingsApp";
 import { timeModule } from "./time";
 import { titleModule } from "./title";
@@ -60,12 +64,28 @@ export function resolveModule(m: EngineModule, all: EngineModule[] = []): Engine
   if (m.core === "events") return eventsModule(m.settings, m.enabled);
   if (m.core === "journal") return journalModule(m.settings, m.enabled);
   if (m.core === "notify") return notifyModule(m.settings, m.enabled);
-  if (m.core === "people") {
-    // Values another module keeps (the phone's affection) are shared, not doubled.
-    const taken = new Set(all.filter((o) => o !== m && o.enabled && o.core !== "people").flatMap((o) => resolveModule(o).vars.map(valueKey)));
-    return peopleModule(m.settings, m.enabled, taken);
-  }
+  if (m.core === "school") return schoolModule(m.settings, m.enabled);
+  if (m.core === "choices") return choicesModule(m.settings, m.enabled);
+  if (m.core === "life") return lifeModule(m.settings, m.enabled, sharedMoney(all), takenBy(m, all, ["life", "routes", "people"]));
+  // Values another module keeps (the phone's affection) are shared, not doubled: the phone first,
+  // then routes, then people.
+  if (m.core === "routes") return routesModule(m.settings, m.enabled, sharedMoney(all), takenBy(m, all, ["routes", "people", "life"]));
+  if (m.core === "people") return peopleModule(m.settings, m.enabled, takenBy(m, all, ["people", "life"]));
   return m;
+}
+
+/** The values the card's other modules keep (by valueKey), leaving out the kinds named. */
+function takenBy(m: EngineModule, all: EngineModule[], skip: string[]): Set<string> {
+  return new Set(all.filter((o) => o !== m && o.enabled && !skip.includes(o.core ?? "")).flatMap((o) => resolveModule(o, all).vars.map(valueKey)));
+}
+
+/** The phone's own money, when the card has a phone that keeps it: other parts pay from it. */
+function sharedMoney(all: EngineModule[]): string {
+  const phone = all.find((o) => o.core === "phone" && o.enabled);
+  if (!phone) return "";
+  const s = phoneSettings(phone.settings);
+  if (s.moneyPath) return s.moneyPath;
+  return s.apps.includes("wallet") || s.apps.includes("shop") ? "Phone.Money" : "";
 }
 
 /** The card's modules, resolved. Cards from before modules get the core ones. */

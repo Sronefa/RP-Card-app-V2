@@ -9,7 +9,11 @@ import { toast } from "../../components/toast";
 import { coreModules, moduleConflicts, resolveModule, modulePaths, modulesOf, newModule } from "../../engine/modules/compile";
 import { creatorModule, creatorSettings } from "../../engine/modules/creator";
 import { eventsModule, eventsSettings } from "../../engine/modules/events";
+import { choicesModule, choicesSettings } from "../../engine/modules/choices";
 import { journalModule, journalSettings } from "../../engine/modules/journal";
+import { lifeSettings } from "../../engine/modules/life";
+import { routesSettings } from "../../engine/modules/routes";
+import { schoolModule, schoolSettings } from "../../engine/modules/school";
 import { menuModule, menuSettings } from "../../engine/modules/menu";
 import { notifyModule, notifySettings } from "../../engine/modules/notify";
 import { peopleSettings } from "../../engine/modules/people";
@@ -23,6 +27,7 @@ import { scriptSource } from "../../engine/runtime";
 import { newVar, settingsSource, type EngineConfig, type EngineVar } from "../../engine/sheet";
 import { pickFiles, safeFileName, saveFile } from "../../lib/files";
 import { loadModuleLibrary, removeFromModuleLibrary, saveModulesToLibrary } from "./moduleLibrary";
+import { ChoicesEditor, LifeEditor, RoutesEditor, SchoolEditor } from "./KitEditors";
 import { EventsEditor, JournalEditor, MenuEditor, NotifyEditor, PeopleEditor, TitleEditor } from "./PartEditors";
 import { PartsBrowser } from "./PartsBrowser";
 import { CreatorEditor, ListInput, PhoneEditor } from "./ScreenEditors";
@@ -134,6 +139,14 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
                     <JournalEditor settings={journalSettings(m.settings)} onChange={(s, key) => update(i, journalModule(raw(s), m.enabled), key)} />
                   ) : m.core === "notify" ? (
                     <NotifyEditor settings={notifySettings(m.settings)} onChange={(s, key) => update(i, notifyModule(raw(s), m.enabled), key)} />
+                  ) : m.core === "life" ? (
+                    <LifeEditor settings={lifeSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
+                  ) : m.core === "school" ? (
+                    <SchoolEditor settings={schoolSettings(m.settings)} onChange={(s, key) => update(i, schoolModule(raw(s), m.enabled), key)} />
+                  ) : m.core === "routes" ? (
+                    <RoutesEditor settings={routesSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
+                  ) : m.core === "choices" ? (
+                    <ChoicesEditor settings={choicesSettings(m.settings)} onChange={(s, key) => update(i, choicesModule(raw(s), m.enabled), key)} />
                   ) : (
                     <CustomEditor m={m} onChange={(next, key) => update(i, next, key)} />
                   )}
