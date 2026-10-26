@@ -30,6 +30,7 @@ const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
   { mode: "world", label: "World pages", help: "Pitches NPCs, places, money, items and shops." },
   { mode: "arc", label: "Story arcs", help: "Plans the story arc and builds the antagonist. Use a strong model." },
   { mode: "mechanics", label: "Game Wizard", help: "Writes mechanics modules and checks them for contradictions. Use a strong model." },
+  { mode: "engineer", label: "UI engineer", help: "Builds and tests the engine's screens. Use your strongest model that can see images." },
   { mode: "planner", label: "Greeting planner", help: "Sorts greetings by mood, place and relationship stage. A cheaper model works well." },
 ];
 

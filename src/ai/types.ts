@@ -28,7 +28,10 @@ export interface ModelChoice {
 }
 
 /** Co-writer modes. Each has its own system prompt and can use its own model. */
-export type ModeId = "refine" | "interview" | "gap" | "draft" | "suggest" | "lore" | "critic" | "image" | "planner" | "world" | "arc" | "mechanics";
+export type ModeId = "refine" | "interview" | "gap" | "draft" | "suggest" | "lore" | "critic" | "image" | "planner" | "world" | "arc" | "mechanics" | "engineer";
+
+/** How hard a model thinks before it answers, where the provider supports it. */
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ToolCall {
   id: string;
@@ -40,6 +43,14 @@ export interface ToolResult {
   id: string;
   content: string;
   isError?: boolean;
+  /** Pictures that go with the result, like a screenshot, for models that can see. */
+  images?: ToolImage[];
+}
+
+export interface ToolImage {
+  mediaType: "image/png" | "image/jpeg";
+  /** Base64, without the data: prefix. */
+  data: string;
 }
 
 /**
@@ -68,6 +79,10 @@ export interface CompletionRequest {
   tools: ToolDef[];
   /** False for models that can't call tools: edits come back as a JSON block in the text instead. */
   useTools: boolean;
+  /** Thinking effort; left out, the model's own default. */
+  effort?: Effort;
+  /** The longest reply allowed; left out, the provider's default. */
+  maxTokens?: number;
   signal?: AbortSignal;
   onText?: (delta: string) => void;
 }

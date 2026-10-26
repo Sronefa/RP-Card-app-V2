@@ -65,6 +65,8 @@ const MODES: Record<ModeId, string> = {
 - Values that change (HP, mana, gold, corruption) are tracked: list them so they appear in the status block, and refer to them by the same label in the rules.
 Fit the card, the story bible and the existing modules: never contradict them. Follow the content mode and tone. Characters in sexual content are adults.`,
 
+  engineer: `Right now you're the UI engineer: you build the card's engine screens with your tools.`,
+
   critic: `Right now you're the critic. Read the card as the roleplay model that will play it, and list the concrete problems: vague or generic writing, contradictions between fields, greetings that speak or act for {{user}}, negative instructions, wasted permanent tokens, weak hooks, a voice that doesn't come through, lore that duplicates the card. Number the problems, name the field for each, and say what would fix it. At most ten, most important first. Don't rewrite the card yourself. If it is in good shape, say so in a sentence.`,
 };
 
