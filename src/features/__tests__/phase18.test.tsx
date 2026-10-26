@@ -36,7 +36,7 @@ describe("Immersive Engine section", () => {
     const engine = readEngine(data())!;
     expect(engine.vars[1]).toMatchObject({ group: "Player", name: "Gold", start: "25", hidden: true });
     const initvar = data().character_book!.entries.find((e) => e.comment === "[initvar] Starting values")!;
-    expect(initvar.content).toBe("Player:\n  Health: 100\n  $Gold: 25");
+    expect(initvar.content.startsWith("Player:\n  Health: 100\n  $Gold: 25\nTime:")).toBe(true);
     expect(screen.getByText(/What the model is told/)).toBeInTheDocument();
   });
 
@@ -62,7 +62,7 @@ describe("Immersive Engine section", () => {
   it("runs a sample reply through the updater", () => {
     render(<EngineView />);
     fireEvent.click(screen.getByRole("button", { name: "Turn on the engine" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Test a reply" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Test" }));
     fireEvent.change(screen.getByRole("textbox", { name: "A reply" }), {
       target: {
         value:

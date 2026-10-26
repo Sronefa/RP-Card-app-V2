@@ -82,7 +82,7 @@ async function cfInitialState(greeting) {
     var checked = schema.safeParse(initial);
     if (checked.success) initial = checked.data;
   }
-  return initial;
+  return cfRunHooks(initial, null, 0);
 }
 
 function cfMerge(base, extra) {
@@ -116,6 +116,7 @@ async function cfInitialize() {
   var data = { stat_data: await cfInitialState(greeting), initialized_lorebooks: {} };
   await cfWrite(0, data);
   await eventEmit(CF_EVENTS.VARIABLE_INITIALIZED, data, 0);
+  await eventEmit("cf:state", 0);
   cfLog("Game state initialized.");
 }
 
@@ -145,8 +146,9 @@ async function cfHandleNow(messageId) {
   await eventEmit(CF_EVENTS.VARIABLE_UPDATE_STARTED, data);
   var result = cfUpdate(before.stat_data, message.message, cfSchemaOrNull());
   if (result.skipped.length) cfLog("Skipped updates", result.skipped);
-  data.stat_data = result.stat_data;
-  data.delta_data = result.delta;
+  // Modules keep derived values (the clock, routines) in step with what the model changed.
+  data.stat_data = cfRunHooks(result.stat_data, before.stat_data, messageId);
+  data.delta_data = cfDelta(before.stat_data, data.stat_data);
   await eventEmit(CF_EVENTS.VARIABLE_UPDATE_ENDED, data, before);
   await cfWrite(messageId, data);
   if (message.role === "assistant" && CF_CONFIG.panel && message.message.indexOf(CF_PLACEHOLDER) < 0) {
@@ -156,6 +158,7 @@ async function cfHandleNow(messageId) {
   } else if (message.role === "assistant") {
     await setChatMessages([{ message_id: messageId }], { refresh: "affected" });
   }
+  await eventEmit("cf:state", messageId);
 }
 
 /** The MVU-compatible interface panels use (`await waitGlobalInitialized('Mvu')`). */
@@ -196,6 +199,7 @@ function cfStart() {
     }
   }
   initializeGlobal("Mvu", cfMvu);
+  cfCoreStart();
   initializeGlobal("CardForgeEngine", { version: CF_CONFIG.version, state: cfLatestState, update: cfUpdate });
   eventOn(tavern_events.MESSAGE_RECEIVED, function (id) {
     return cfHandle(id);

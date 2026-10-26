@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { newCard } from "../card";
 import { applyTracker, addAddon, newTracker } from "../editor/trackers";
@@ -83,11 +83,12 @@ describe("the engine in the card", () => {
       ["Game state", true, true],
       ["[mvu_update] Format reminder", true, true],
     ]);
-    expect(entries[0].content).toBe("Player:\n  Health: 80\n  Gold: 12\n$Secret: the key is under the bell");
+    expect(entries[0].content.startsWith("Player:\n  Health: 80\n  Gold: 12\n$Secret: the key is under the bell\nTime:\n  Day: 1\n  Clock: \"08:00\"")).toBe(true);
     expect(entries[2].content).toContain("{{format_message_variable::stat_data}}");
     const helper = data.extensions.tavern_helper as { scripts: { name: string; enabled: boolean; type: string }[] };
     expect(helper.scripts).toEqual([expect.objectContaining({ type: "script", name: "CardForge engine", enabled: true })]);
-    expect((data.extensions.regex_scripts as unknown[]).length).toBe(4);
+    // The engine's four, and the two for actions the screens send.
+    expect((data.extensions.regex_scripts as unknown[]).length).toBe(6);
   });
 
   it("keeps the AI from seeing hidden fields and explains the format", () => {
@@ -108,7 +109,7 @@ describe("the engine in the card", () => {
     const once = applyEngine(withOther, config());
     const twice = applyEngine(once, { ...readEngine(once)!, reminder: false });
     expect(twice.character_book!.entries).toHaveLength(3);
-    expect((twice.extensions.regex_scripts as unknown[]).length).toBe(4);
+    expect((twice.extensions.regex_scripts as unknown[]).length).toBe(6);
     expect((twice.extensions.tavern_helper as { scripts: unknown[] }).scripts).toHaveLength(2);
     expect(twice.creator_notes).toBe(`${NOTE}\n\nPlay slow.`);
     const off = applyEngine(twice, undefined);
@@ -178,5 +179,31 @@ describe("the engine script in a chat", () => {
     const tavern = fakeTavern([{ role: "assistant", message: 'Rich start.\n<initvar>{ "Player": { "Gold": 500 } }</initvar>' }]);
     await runScript(tavernHelperScript(config()).content, tavern);
     expect(tavern.vars[0]).toMatchObject({ stat_data: { Player: { Health: 80, Gold: 500 } } });
+  });
+
+  it("keeps the in-game clock: rolls the day, runs out timers and feeds the lorebook scan", async () => {
+    const tavern = fakeTavern([{ role: "assistant", message: "Evening at the inn." }]);
+    const injected: { content: string }[][] = [];
+    // Module scripts see Tavern Helper's functions as globals, the way its script frames do.
+    vi.stubGlobal("injectPrompts", (p: { content: string }[]) => injected.push(p));
+    await runScript(tavernHelperScript(config()).content, tavern);
+    expect(tavern.vars[0]).toMatchObject({ stat_data: { Time: { Day: 1, Clock: "08:00", _Weekday: "Monday", _PartOfDay: "Morning" } } });
+
+    tavern.messages.push({ role: "user", message: "We talk all night." });
+    tavern.vars.push({});
+    await tavern.api.eventEmit("message_sent", 1);
+    tavern.messages.push({
+      role: "assistant",
+      message:
+        'Dawn comes.\n<UpdateVariable><JSONPatch>[{ "op": "replace", "path": "/Time/Clock", "value": "01:30" }, { "op": "insert", "path": "/Time/Timers/-", "value": "Meet Mina @ Day 1 20:00" }, { "op": "insert", "path": "/Time/Timers/-", "value": "Market @ Day 3 09:00" }]</JSONPatch></UpdateVariable>',
+    });
+    tavern.vars.push({});
+    await tavern.api.eventEmit("message_received", 2);
+    // The clock went back, so the night passed: day 2, a Tuesday, and the evening meeting ran out.
+    expect(tavern.vars[2]).toMatchObject({
+      stat_data: { Time: { Day: 2, Clock: "01:30", _Weekday: "Tuesday", _PartOfDay: "Night", Timers: ["Market @ Day 3 09:00"], _Expired: ["Meet Mina"] } },
+    });
+    expect(injected.at(-1)?.[0].content).toBe("Tuesday Night Spring Clear");
+    vi.unstubAllGlobals();
   });
 });
