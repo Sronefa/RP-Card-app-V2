@@ -60,7 +60,7 @@ export function LifeEditor({ settings, onChange }: { settings: LifeSettings; onC
             { key: "start", label: "Start", type: "number" },
             { key: "perHour", label: "Per hour", type: "number" },
             { key: "warn", label: "Warn at", type: "number" },
-            { key: "worse", label: "Worse when (low/high)" },
+            { key: "worse", label: "Worse when", options: ["low", "high"] },
             { key: "hint", label: "What changes it", wide: true },
           ]}
           onChange={(needs, key) => set({ needs: needs.map((n) => ({ ...n, worse: n.worse === "high" ? "high" : "low" })) }, `need.${key}`)}
@@ -360,7 +360,7 @@ export function RoutesEditor({ settings, onChange }: { settings: RoutesSettings;
           blank={{ route: "", name: "", kind: "good" as EndingKind, hint: "" }}
           fields={[
             { key: "route", label: "Route" },
-            { key: "kind", label: "Kind" },
+            { key: "kind", label: "Kind", options: ENDING_KINDS },
             { key: "name", label: "Ending", wide: true },
             { key: "hint", label: "Hint", wide: true },
           ]}

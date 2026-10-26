@@ -9,6 +9,7 @@ import { useEditor } from "../../editor/store";
 import { CREATOR_TAG, creatorSettings, type CreatorSettings } from "../../engine/modules/creator";
 import { PHONE_APP_IDS, PHONE_APPS, phoneSettings, type PhoneAppId, type PhoneSettings } from "../../engine/modules/phone";
 import { fillCreator, fillPhone, worldOf } from "../../engine/parts/catalog";
+import { selectClass } from "./VarEditor";
 
 type Change<T> = (s: T, key?: string) => void;
 
@@ -43,6 +44,8 @@ interface Field<T> {
   key: keyof T & string;
   label: string;
   type?: "number" | "color";
+  /** A fixed set of values, picked from a list. */
+  options?: readonly string[];
   /** Spans the whole row. */
   wide?: boolean;
 }
@@ -58,18 +61,28 @@ export function Rows<T>({ label, rows, fields, blank, onChange }: { label: strin
     <div className="flex flex-col gap-2">
       {rows.map((r, i) => (
         <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-border p-2 sm:grid-cols-4">
-          {fields.map((f) => (
-            <TextInput
-              key={f.key}
-              aria-label={f.label}
-              placeholder={f.label}
-              type={f.type === "color" ? "color" : "text"}
-              inputMode={f.type === "number" ? "numeric" : undefined}
-              className={`${f.wide ? "col-span-2" : ""} ${f.type === "color" ? "h-10 p-1" : ""}`}
-              value={String(r[f.key] ?? "")}
-              onChange={(e) => set(i, f.key, e.target.value)}
-            />
-          ))}
+          {fields.map((f) =>
+            f.options ? (
+              <select key={f.key} aria-label={f.label} className={`${selectClass} ${f.wide ? "col-span-2" : ""}`} value={String(r[f.key] ?? "")} onChange={(e) => set(i, f.key, e.target.value)}>
+                {f.options.map((o) => (
+                  <option key={o} value={o}>
+                    {f.label}: {o}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <TextInput
+                key={f.key}
+                aria-label={f.label}
+                placeholder={f.label}
+                type={f.type === "color" ? "color" : "text"}
+                inputMode={f.type === "number" ? "numeric" : undefined}
+                className={`${f.wide ? "col-span-2" : ""} ${f.type === "color" ? "h-10 p-1" : ""}`}
+                value={String(r[f.key] ?? "")}
+                onChange={(e) => set(i, f.key, e.target.value)}
+              />
+            ),
+          )}
           <Button variant="ghost" className="col-span-2 sm:col-span-4 sm:justify-self-end" onClick={() => onChange(rows.filter((_, j) => j !== i), "rows")}>
             Remove
           </Button>

@@ -10,22 +10,27 @@ import { worldMeta } from "../../editor/world";
 import { newId } from "../../lib/id";
 import { coreModules, modulesOf } from "../modules/compile";
 import { choicesModule } from "../modules/choices";
+import { combatModule } from "../modules/combat";
 import { creatorModule, creatorSettings, CREATOR_TAG } from "../modules/creator";
 import { eventsModule } from "../modules/events";
+import { heroModule } from "../modules/hero";
+import { inventoryModule, inventorySettings, type ItemKind } from "../modules/inventory";
 import { journalModule } from "../modules/journal";
 import { lifeModule } from "../modules/life";
+import { defaultMapSettings, mapModule, mapSettings } from "../modules/map";
 import { menuModule } from "../modules/menu";
 import { notifyModule } from "../modules/notify";
 import { addModules, cleanModule } from "../modules/pack";
-import { peopleModule, peopleSettings } from "../modules/people";
+import { peopleModule, peopleSettings, valueKey } from "../modules/people";
 import { phoneModule, phoneSettings } from "../modules/phone";
+import { questsModule } from "../modules/quests";
 import { routesModule, routesSettings } from "../modules/routes";
 import { schoolModule } from "../modules/school";
 import { settingsAppModule } from "../modules/settingsApp";
 import { timeModule } from "../modules/time";
 import { titleModule, titleSettings, TITLE_TAG } from "../modules/title";
 import type { EngineModule } from "../modules/types";
-import type { EngineConfig } from "../sheet";
+import { isStarterVar, type EngineConfig } from "../sheet";
 import type { CardTheme } from "../theme";
 
 type Settings = Record<string, unknown>;
@@ -59,7 +64,7 @@ export interface Part {
 // ---------------------------------------------------------------- tailoring from the card
 
 /** The card's world pages of one kind, as their fields. */
-export function worldOf(data: CardDataV3, kind: "npc" | "location" | "item") {
+export function worldOf(data: CardDataV3, kind: "npc" | "location" | "item" | "shop") {
   return (data.character_book?.entries ?? [])
     .map(worldMeta)
     .filter((m) => m?.kind === kind && m.fields.name?.trim())
@@ -162,6 +167,52 @@ export function fillRoutes(raw: Settings, data: CardDataV3): Settings {
     gifts: mergeByName(s.gifts, gifts),
     gallery: [...s.gallery, ...gallery.filter((g) => !byFile.has(g.file))],
   };
+}
+
+/** An item's kind from its world page's category and name. */
+function itemKind(f: Record<string, string>): ItemKind {
+  const t = `${f.category ?? ""} ${f.name ?? ""}`.toLowerCase();
+  if (/weapon|sword|blade|dagger|bow|axe|mace|spear|staff|knife|gun|pistol|rifle/.test(t)) return "weapon";
+  if (/armou?r|shield|helm|mail|cloak|boots|gauntlet|clothes/.test(t)) return "armor";
+  if (/ring|amulet|necklace|charm|trinket|jewel|accessor|talisman/.test(t)) return "accessory";
+  if (/heal|potion|elixir|tonic|food|drink|ration|bread|meal|consum|bandage|medicine|herbal/.test(t)) return "consumable";
+  if (/material|ore|ingot|pelt|hide|herb|ingredient|reagent|wood|cloth/.test(t)) return "material";
+  if (/key|pass|seal/.test(t)) return "key";
+  return "other";
+}
+
+/** Items from the world's item pages, and merchants from its shop pages with what they sell. */
+export function fillInventory(raw: Settings, data: CardDataV3): Settings {
+  const s = inventorySettings(raw);
+  const goods = worldOf(data, "item").filter((f) => (f.type ?? "item").toLowerCase() !== "service");
+  const items = goods.map((f) => ({ name: f.name.trim(), kind: itemKind(f), slot: "", effect: f.effect ?? "", price: firstNumber(f.price) }));
+  const places = new Set(worldOf(data, "location").map((f) => f.name.trim()));
+  const merchants = worldOf(data, "shop").map((f) => {
+    const shop = f.name.trim().toLowerCase();
+    const sells = (f.sells ?? "").toLowerCase();
+    const stock = goods.filter((g) => (g.shop ?? "").toLowerCase().includes(shop) || sells.includes(g.name.trim().toLowerCase())).map((g) => g.name.trim());
+    return { name: f.name.trim(), where: places.has((f.place ?? "").trim()) ? (f.place ?? "").trim() : "", stock: stock.join(", ") };
+  });
+  return { ...raw, items: mergeByName(s.items, items), merchants: mergeByName(s.merchants, merchants.filter((m) => m.stock)) };
+}
+
+/**
+ * The world's places on the map. Two or more replace the part's own example places (an author's own
+ * rows with the same names are kept); each new place gets a road to the first, to edit from there.
+ */
+export function fillMap(raw: Settings, data: CardDataV3): Settings {
+  const s = mapSettings(raw);
+  const world = worldOf(data, "location");
+  if (world.length < 2) return raw;
+  const examples = new Set(defaultMapSettings().places.map((p) => p.name));
+  const own = s.places.filter((p) => !examples.has(p.name));
+  const hub = own[0]?.name ?? world[0].name.trim();
+  const added = world.map((f) => {
+    const name = f.name.trim();
+    return { name, region: "", description: f.mood ? `${f.mood.charAt(0).toUpperCase()}${f.mood.slice(1)}.` : "", danger: 0, links: name === hub ? "" : hub, x: -1, y: -1 };
+  });
+  const places = mergeByName(own, added);
+  return { ...raw, places, start: places.some((p) => p.name === s.start) ? s.start : hub };
 }
 
 // ---------------------------------------------------------------- the built-in parts
@@ -382,6 +433,105 @@ export const BUILT_IN_PARTS: Part[] = [
     previewTag: '<cf-module id="choices"/>',
     sample: { Choices: { Options: ["Tell her the truth", "Change the subject", "Kiss her"] } },
   },
+  {
+    id: "hero",
+    name: "Hero sheet",
+    summary: "Level and XP, health, mana and stamina that grow with the level, stat points to spend, skills that unlock, conditions and titles; an isekai status window style.",
+    tags: ["rpg", "stats", "fantasy", "isekai", "screen"],
+    requires: [],
+    source: "built-in",
+    make: (s) => heroModule(s),
+    tailor: "Name the resources and stats in the setting's words, write the skills each class or path unlocks and when, and set how fast levels come.",
+    sample: {
+      Player: {
+        Name: "Arin",
+        Class: "Warrior",
+        _Level: 4,
+        XP: 180,
+        _NextXP: 338,
+        _Points: 3,
+        Health: 92,
+        _MaxHealth: 136,
+        Mana: 12,
+        _MaxMana: 48,
+        Stamina: 41,
+        _MaxStamina: 65,
+        Strength: 9,
+        Agility: 6,
+        Intellect: 5,
+        Vitality: 8,
+        Abilities: ["Power Strike", "Second Wind"],
+        Conditions: ["Poisoned until Day 4"],
+      },
+      Time: { Day: 3 },
+    },
+  },
+  {
+    id: "inventory",
+    name: "Inventory",
+    summary: "A bag of items with a slot limit, gear slots to equip, gold, and merchants to buy from and sell to.",
+    tags: ["rpg", "items", "money", "fantasy", "screen"],
+    requires: [],
+    source: "built-in",
+    make: (s) => inventoryModule(s),
+    tailor: "Fill the item catalog with the setting's gear and prices, set the currency and starting gold, the gear slots, and who sells what where.",
+    fill: fillInventory,
+    generic: (s) => ({ ...s, merchants: [] }),
+    sample: {
+      Inventory: { Items: { Shortsword: 1, "Leather armor": 1, "Health potion": 2, Rations: 3, "Wolf pelt": 2 }, Gold: 64 },
+      Equipped: { Weapon: "Shortsword", Armor: "Leather armor", Accessory: "" },
+    },
+  },
+  {
+    id: "quests",
+    name: "Quest log",
+    summary: "Quests with their objectives, a board of offers to accept, a log of what's done and failed, and a guild rank from renown.",
+    tags: ["rpg", "quests", "fantasy", "isekai", "screen"],
+    requires: [],
+    source: "built-in",
+    make: (s) => questsModule(s),
+    tailor: "Write the opening quest and the first offers from the card's conflicts and NPCs, name the board, and set or remove the ranks.",
+    generic: (s) => ({ ...s, start: [], offers: [] }),
+    sample: {
+      Quests: {
+        Active: ["Wolves at the mill — Find the den in the hills", "A new arrival — Register at the adventurers' guild"],
+        Board: ["The missing courier — Find the courier who never arrived (reward: 80 gold)"],
+        Done: ["Herbs for the healer"],
+        Failed: [],
+        Tracked: "Wolves at the mill",
+        Renown: 70,
+        _Rank: "E",
+      },
+    },
+  },
+  {
+    id: "map",
+    name: "World map",
+    summary: "Places joined by roads on a map to tap: where you are, what the fog still hides, and travel with its hours and danger.",
+    tags: ["map", "travel", "fantasy", "screen"],
+    requires: [],
+    source: "built-in",
+    make: (s) => mapModule(s),
+    tailor: "Lay out the places (across and down, 0 to 100), join them with roads, set each one's danger and region, and pick the start.",
+    fill: fillMap,
+    generic: (s) => ({ ...s, art: "" }),
+    sample: { Map: { Location: "Oakvale", Discovered: ["Oakvale", "Old Mill", "Whispering Woods", "King's Road", "Ruined Keep"], _Nearby: ["Old Mill (3h)", "Whispering Woods (3h)", "King's Road (3h)"] } },
+  },
+  {
+    id: "combat",
+    name: "Combat HUD",
+    summary: "In a fight, a block under the reply with the foes' health, your bars, the last blows, and attack, skill, item, defend and flee buttons.",
+    tags: ["rpg", "combat", "inline", "fantasy"],
+    requires: [],
+    source: "built-in",
+    make: (s) => combatModule(s),
+    tailor: "Pick how hard fights are, and whether fleeing and defending are allowed. Install the hero sheet and inventory for skills and items.",
+    previewTag: '<cf-module id="combat"/>',
+    sample: {
+      Combat: { Active: true, Enemies: { "Wolf 1": 14, "Wolf 2": 30 }, $Max: { "Wolf 1": 30, "Wolf 2": 30 }, _Round: 2, Log: ["You slash Wolf 1: −16", "Wolf 2 bites you: −8"] },
+      Player: { Health: 84, _MaxHealth: 136, Stamina: 31, _MaxStamina: 65, Abilities: ["Power Strike"] },
+    },
+  },
 ];
 
 /** The author's saved modules, as parts. */
@@ -464,7 +614,10 @@ export function installParts(config: EngineConfig, data: CardDataV3, ids: string
     notes.push(`${part.name}: ${part.tailor}`);
   };
   for (const id of ids) visit(id, []);
-  return { config: { ...config, modules }, added, messageTags, notes };
+  // The engine's starter value gives way to a part that keeps the same one (the hero's health).
+  const kept = new Set(added.flatMap((m) => m.vars.map(valueKey)));
+  const vars = config.vars.filter((v) => !(isStarterVar(v) && kept.has(valueKey(v))));
+  return { config: { ...config, vars, modules }, added, messageTags, notes };
 }
 
 function stripLive(settings: Settings): Settings {
@@ -673,6 +826,360 @@ export const BUILT_IN_KITS: Kit[] = [
       { id: "journal", settings: { title: "Memories", button: "💌 Memories" } },
       { id: "menu", settings: { title: "Menu", only: true } },
       { id: "notify", settings: { watch: [{ path: "Phone.Texts", title: "Messages", icon: "chat" }] } },
+    ],
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-fantasy",
+    name: "Fantasy RPG",
+    description: "Levels, stats and skills; a bag with gear, gold and merchants; quests from the guild board; a map to travel; turn-based fights under the reply.",
+    theme: { preset: "parchment", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Monday", startClock: "08:00", startSeason: "Spring", weathers: ["Clear", "Cloudy", "Rain", "Fog", "Storm"] } },
+      { id: "settings" },
+      { id: "title", settings: { style: "classic", tagline: "An adventure begins", newGame: "Begin the adventure" } },
+      {
+        id: "creator",
+        settings: {
+          title: "Your hero",
+          intro: "Every legend starts somewhere. Who sets out today?",
+          lookIdeas: ["Scarred knuckles, a patched cloak, eyes that never stop counting exits", "Silver braid, ink on the fingers, a staff taller than you", "Broad and bearded, a laugh like a rockslide"],
+          choices: [
+            { name: "Race", options: [opt("Human", "Stubborn and everywhere; no door is closed to you for long."), opt("Elf", "Long memory, sharp eyes, old grudges."), opt("Dwarf", "Stone-steady and hard to kill."), opt("Halfling", "Small, quick, lucky, underestimated.")] },
+            { name: "Class", options: [opt("Warrior", "Steel and stubbornness. You stand in front."), opt("Mage", "Spells that cost you; power that frightens others."), opt("Rogue", "Locks, shadows and a knife you never show."), opt("Cleric", "A god's favour, if you keep its rules.")] },
+          ],
+          stats: [
+            { name: "Strength", base: 5, max: 99 },
+            { name: "Agility", base: 5, max: 99 },
+            { name: "Intellect", base: 5, max: 99 },
+            { name: "Vitality", base: 5, max: 99 },
+          ],
+          points: 6,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "Set out", description: "", message: "I'm {name}. I step out of the inn with everything I own on my back." }],
+        },
+      },
+      { id: "hero" },
+      { id: "inventory" },
+      { id: "quests" },
+      { id: "map" },
+      { id: "combat" },
+      { id: "people", settings: { stages: [{ name: "Stranger", from: 0 }, { name: "Acquaintance", from: 20 }, { name: "Ally", from: 45 }, { name: "Companion", from: 70 }, { name: "Sworn", from: 90 }] } },
+      {
+        id: "events",
+        settings: {
+          scheduled: [
+            { name: "Market day", when: "Sat", from: "08:00", to: "14:00", where: "", text: "Stalls fill the square; prices are good and gossip is better." },
+            { name: "Harvest festival", when: "Day 12", from: "16:00", to: "23:00", where: "", text: "Bonfires, dancing and a strength contest; the whole valley comes." },
+          ],
+          random: [
+            { name: "Bandit ambush", chance: 10, where: "", part: "Evening", text: "Bandits block the road and want a toll in coin or blood." },
+            { name: "Travelling bard", chance: 15, where: "", part: "Evening", text: "A bard in the tavern sings of a treasure nobody has found." },
+          ],
+        },
+      },
+      { id: "journal", settings: { title: "Adventure log", button: "📖 Log" } },
+      { id: "menu", settings: { title: "Satchel", button: "🧭 Menu", only: true } },
+      { id: "notify", settings: { watch: [] } },
+    ],
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-dark-fantasy",
+    name: "Dark fantasy / survival",
+    description: "Hunger, thirst, cold and sanity that drain with the clock; a camp to rest at; scarce gear; contracts on the notice board; deadly roads and brutal fights.",
+    theme: { preset: "grimdark", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Monday", startClock: "17:30", startSeason: "Autumn", weathers: ["Overcast", "Rain", "Fog", "Sleet", "Storm"] } },
+      { id: "settings" },
+      { id: "title", settings: { style: "embers", tagline: "The fires are going out", newGame: "Endure" } },
+      {
+        id: "creator",
+        settings: {
+          title: "Who survived?",
+          intro: "The world is ending slowly. You are still here. Why?",
+          lookIdeas: ["Hollow cheeks, a soldier's posture, a cough that won't leave", "Shaved head, burn scars, prayer beads wound tight", "Mud to the knees, a hunter's hood, nothing wasted"],
+          choices: [
+            { name: "Origin", options: [opt("Deserter", "You ran from a war that was already lost. Some still hunt you."), opt("Plague survivor", "Your village burned with the sick inside. You walked out."), opt("Heretic", "The Church wants you on a pyre. You know why.")] },
+            { name: "Burden", options: [opt("Haunted", "You hear the dead at night. Some nights they are right."), opt("Oathbound", "You swore something. It keeps you alive and costs you."), opt("Wanted", "There is a price on your head and a face on the posters.")] },
+          ],
+          stats: [
+            { name: "Might", base: 4, max: 99 },
+            { name: "Cunning", base: 4, max: 99 },
+            { name: "Grit", base: 4, max: 99 },
+            { name: "Faith", base: 4, max: 99 },
+          ],
+          points: 5,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "Endure", description: "", message: "I'm {name}. The light is going, and I need a fire before dark." }],
+        },
+      },
+      {
+        id: "hero",
+        settings: {
+          title: "Survivor",
+          button: "🩸 Survivor",
+          resources: [
+            { name: "Health", base: 60, perLevel: 8, regen: 1 },
+            { name: "Stamina", base: 40, perLevel: 4, regen: 8 },
+          ],
+          stats: [
+            { name: "Might", start: 4 },
+            { name: "Cunning", start: 4 },
+            { name: "Grit", start: 4 },
+            { name: "Faith", start: 4 },
+          ],
+          xpBase: 120,
+          xpGrowth: 1.6,
+          maxLevel: 20,
+          pointsPerLevel: 2,
+          abilities: [
+            { name: "Desperate Strike", level: 1, cost: 8, resource: "Stamina", description: "All your weight behind one blow. Leaves you open." },
+            { name: "Bind Wounds", level: 2, cost: 10, resource: "Stamina", description: "Stop the bleeding with what you have. It will scar." },
+            { name: "Riposte", level: 4, cost: 12, resource: "Stamina", description: "Turn their attack back on them." },
+            { name: "Last Stand", level: 7, cost: 25, resource: "Stamina", description: "When death is close, you hit hardest." },
+          ],
+        },
+      },
+      {
+        id: "life",
+        settings: {
+          title: "Survival",
+          button: "🔥 Camp",
+          needs: [
+            { name: "Hunger", start: 30, perHour: 3, worse: "high", warn: 70, hint: "a real meal lowers it a lot, scraps a little" },
+            { name: "Thirst", start: 25, perHour: 5, worse: "high", warn: 65, hint: "clean water lowers it; foul water lowers it and risks sickness" },
+            { name: "Warmth", start: 60, perHour: 2, worse: "low", warn: 30, hint: "a fire, shelter and dry clothes raise it; rain, sleet and night lower it" },
+            { name: "Rest", start: 70, perHour: 3, worse: "low", warn: 25, hint: "sleep restores it; marching and fighting drain it" },
+            { name: "Sanity", start: 75, perHour: 0, worse: "low", warn: 30, hint: "horror, the dead and isolation lower it; prayer, company and a fire raise it" },
+          ],
+          job: { title: "", employer: "", salary: 0, days: "", from: "", to: "" },
+          bills: [],
+          skills: [],
+          home: "Camp",
+          rooms: [
+            { name: "Campfire", action: "cook" },
+            { name: "Bedroll", action: "sleep" },
+            { name: "Stream", action: "drink and fill the waterskin" },
+            { name: "Watch", action: "keep watch through the dark" },
+          ],
+          wakeAt: "06:00",
+          currency: "⚜ ",
+        },
+      },
+      {
+        id: "inventory",
+        settings: {
+          title: "Pack",
+          button: "🎒 Pack",
+          currency: "crowns",
+          startGold: 8,
+          capacity: 10,
+          slots: ["Weapon", "Armor", "Trinket"],
+          items: [
+            { name: "Rusty blade", kind: "weapon", slot: "", effect: "+2 attack, may snap", price: 10 },
+            { name: "Hatchet", kind: "weapon", slot: "", effect: "+3 attack, chops wood", price: 14 },
+            { name: "Padded jack", kind: "armor", slot: "", effect: "+2 defence", price: 12 },
+            { name: "Holy symbol", kind: "accessory", slot: "Trinket", effect: "Steadies the mind: Sanity loss halved", price: 30 },
+            { name: "Bandage", kind: "consumable", slot: "", effect: "Stops bleeding, heals 15", price: 3 },
+            { name: "Stale bread", kind: "consumable", slot: "", effect: "Hunger −30", price: 2 },
+            { name: "Waterskin", kind: "consumable", slot: "", effect: "Thirst −40; refill at a stream", price: 4 },
+            { name: "Torch", kind: "consumable", slot: "", effect: "Light for an hour; keeps some things away", price: 1 },
+            { name: "Tallow candle", kind: "consumable", slot: "", effect: "A little light and a little hope", price: 1 },
+            { name: "Wolf pelt", kind: "material", slot: "", effect: "Warmth if worn; sells to tanners", price: 6 },
+          ],
+          start: [
+            { name: "Rusty blade", count: 1 },
+            { name: "Padded jack", count: 1 },
+            { name: "Bandage", count: 2 },
+            { name: "Stale bread", count: 2 },
+            { name: "Waterskin", count: 1 },
+            { name: "Torch", count: 2 },
+          ],
+          merchants: [{ name: "Peddler", where: "", stock: "Bandage, Stale bread, Waterskin, Torch, Tallow candle, Holy symbol" }],
+          sellRate: 40,
+        },
+      },
+      {
+        id: "quests",
+        settings: {
+          title: "Contracts",
+          button: "📜 Contracts",
+          board: "Notice board",
+          start: [{ name: "Shelter", objective: "Find somewhere safe to spend the night", reward: "Another day", giver: "" }],
+          offers: [
+            { name: "The beast of Blackwood", objective: "Kill the thing taking sheep from the pens", reward: "30 crowns", giver: "The reeve" },
+            { name: "Burn the dead", objective: "Burn the plague bodies in the chapel cellar", reward: "12 crowns", giver: "Father Osk" },
+            { name: "A debt", objective: "Collect what the miller owes, by any means", reward: "A third of it", giver: "Hennick the moneylender" },
+          ],
+          ranks: [],
+        },
+      },
+      {
+        id: "map",
+        settings: {
+          title: "The Reach",
+          button: "🗺️ Map",
+          places: [
+            { name: "Ashford", region: "The Reach", description: "A walled hamlet that still opens its gate by day. Barely.", danger: 1, links: "Chapel of Saint Varn, Gallows Hill, The Mire", x: 46, y: 58 },
+            { name: "Chapel of Saint Varn", region: "The Reach", description: "Cracked bells, a priest who doesn't sleep, a cellar no one opens.", danger: 1, links: "Ashford, Ruined abbey", x: 74, y: 40 },
+            { name: "Gallows Hill", region: "The Reach", description: "Crows, ropes and a view of everything coming.", danger: 2, links: "Ashford, Blackwood", x: 22, y: 34 },
+            { name: "The Mire", region: "The Lowlands", description: "Black water and lights that move when you look away.", danger: 3, links: "Ashford", x: 40, y: 90 },
+            { name: "Blackwood", region: "The Wilds", description: "Trees too close together. Something walks on two legs and four.", danger: 3, links: "Gallows Hill", x: 12, y: 8 },
+            { name: "Ruined abbey", region: "The Wilds", description: "The monks left in a hurry. Their books did not.", danger: 3, links: "Chapel of Saint Varn", x: 88, y: 10 },
+          ],
+          start: "Ashford",
+          hours: 4,
+          fog: true,
+        },
+      },
+      { id: "combat", settings: { difficulty: "brutal" } },
+      { id: "people", settings: { stages: [{ name: "Stranger", from: 0 }, { name: "Wary", from: 20 }, { name: "Trusted", from: 50 }, { name: "Bound", from: 80 }] } },
+      {
+        id: "events",
+        settings: {
+          scheduled: [{ name: "Blood moon", when: "Day 7", from: "20:00", to: "", where: "", text: "The moon rises red. Doors are barred; what hunts tonight is bold." }],
+          random: [
+            { name: "Plague cart", chance: 12, where: "", part: "Morning", text: "A cart of the dead rattles past; someone on it is still moving." },
+            { name: "Howling", chance: 18, where: "", part: "Night", text: "Howling in the dark, closer than yesterday." },
+            { name: "Pilgrims", chance: 10, where: "", part: "Afternoon", text: "Flagellants on the road, singing, looking for sinners." },
+          ],
+        },
+      },
+      { id: "journal", settings: { title: "Chronicle", button: "🕯️ Chronicle" } },
+      { id: "menu", settings: { title: "Pack", button: "☰ Menu", only: true } },
+      { id: "notify", settings: { watch: [] } },
+    ],
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-isekai",
+    name: "Isekai / system",
+    description: "A System only you can see: a glowing status window with levels, skills and titles, an item box, guild quests and ranks, a world map, and fights with skill buttons.",
+    theme: { preset: "system", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Monday", startClock: "10:00", startSeason: "Spring", weathers: ["Clear", "Cloudy", "Rain", "Wind"] } },
+      { id: "settings" },
+      { id: "title", settings: { style: "system", tagline: "Another world is waiting", newGame: "Accept" } },
+      {
+        id: "creator",
+        settings: {
+          title: "Reincarnation",
+          intro: "You died. A calm voice asks who you were, and what you'll take with you.",
+          lookIdeas: ["Your old face, younger: messy hair, tired eyes that are suddenly bright", "A new body: silver hair, one gold eye, nobody's face you know", "Broad, tanned, a farmer's son's hands and a stranger's memories"],
+          choices: [
+            { name: "Past life", options: [opt("Office worker", "Overtime, convenience-store dinners, a truck you didn't see."), opt("Student", "Exams, games, a crosswalk on the way home."), opt("Nurse", "Night shifts. You know how bodies break and mend."), opt("Gamer", "You know how these worlds work. Mostly.")] },
+            { name: "Gift", options: [opt("Appraisal+", "You see what anything is, and what anyone hides."), opt("Endless Item Box", "A pocket of space with no bottom."), opt("Growth x2", "You level twice as fast as anyone here."), opt("Tongue of All", "Every language, beasts included.")] },
+          ],
+          stats: [
+            { name: "Strength", base: 5, max: 999 },
+            { name: "Agility", base: 5, max: 999 },
+            { name: "Intellect", base: 5, max: 999 },
+            { name: "Vitality", base: 5, max: 999 },
+            { name: "Luck", base: 5, max: 999 },
+          ],
+          points: 10,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "Wake up", description: "", message: "I'm {name}. I open my eyes in a meadow under two suns, and a blue window floats in front of me." }],
+        },
+      },
+      {
+        id: "hero",
+        settings: {
+          style: "system",
+          title: "Status",
+          button: "🟦 System",
+          titles: true,
+          resources: [
+            { name: "Health", base: 100, perLevel: 15, regen: 5 },
+            { name: "Mana", base: 50, perLevel: 10, regen: 5 },
+            { name: "Stamina", base: 60, perLevel: 6, regen: 10 },
+          ],
+          stats: [
+            { name: "Strength", start: 5 },
+            { name: "Agility", start: 5 },
+            { name: "Intellect", start: 5 },
+            { name: "Vitality", start: 5 },
+            { name: "Luck", start: 5 },
+          ],
+          xpBase: 80,
+          xpGrowth: 1.4,
+          maxLevel: 99,
+          pointsPerLevel: 5,
+          abilities: [
+            { name: "Appraisal", level: 1, cost: 0, resource: "", description: "See an item's or creature's name, level and nature." },
+            { name: "Item Box", level: 1, cost: 0, resource: "", description: "Store things in a pocket of space." },
+            { name: "Fireball", level: 3, cost: 15, resource: "Mana", description: "The classic. Hot." },
+            { name: "Haste", level: 6, cost: 20, resource: "Mana", description: "Everything slows down except you." },
+            { name: "Mana Burst", level: 10, cost: 40, resource: "Mana", description: "Raw mana, released all at once." },
+          ],
+        },
+      },
+      {
+        id: "inventory",
+        settings: {
+          title: "Item Box",
+          button: "📦 Item Box",
+          currency: "G",
+          startGold: 100,
+          capacity: 0,
+          start: [
+            { name: "Shortsword", count: 1 },
+            { name: "Leather armor", count: 1 },
+            { name: "Health potion", count: 3 },
+            { name: "Rations", count: 2 },
+          ],
+        },
+      },
+      {
+        id: "quests",
+        settings: {
+          board: "Adventurers' guild",
+          start: [{ name: "Welcome to another world", objective: "Reach the town and register at the adventurers' guild", reward: "A guild card, 50 XP", giver: "System" }],
+          offers: [
+            { name: "Slime extermination", objective: "Clear five slimes from the plains", reward: "30 G", giver: "Guild" },
+            { name: "Medicinal herbs", objective: "Bring back ten moonleaf from the forest edge", reward: "25 G", giver: "Apothecary" },
+            { name: "Escort the merchant", objective: "Guard a merchant's wagon to the capital", reward: "120 G", giver: "Merchant guild" },
+          ],
+        },
+      },
+      {
+        id: "map",
+        settings: {
+          places: [
+            { name: "Starting Meadow", region: "Lumia Plains", description: "Where you woke up. The grass hums with mana.", danger: 0, links: "Lumia", x: 14, y: 76 },
+            { name: "Lumia", region: "Lumia Plains", description: "A starter town with a guild hall, a fountain and suspiciously cheap potions.", danger: 0, links: "Starting Meadow, Slime Plains, Goblin Forest, Royal Road", x: 38, y: 60 },
+            { name: "Slime Plains", region: "Lumia Plains", description: "Bouncing slimes as far as the eye can see. Easy XP.", danger: 1, links: "Lumia", x: 30, y: 90 },
+            { name: "Goblin Forest", region: "Greenwood", description: "Goblins with traps and a chieftain who isn't stupid.", danger: 2, links: "Lumia, Demon Lord's Border", x: 26, y: 24 },
+            { name: "Royal Road", region: "The Kingdom", description: "A paved road, patrolled, mostly.", danger: 1, links: "Lumia, Royal Capital", x: 64, y: 54 },
+            { name: "Royal Capital", region: "The Kingdom", description: "Castle, academy, nobles who want heroes on a leash.", danger: 0, links: "Royal Road", x: 88, y: 34 },
+            { name: "Demon Lord's Border", region: "The Dark Lands", description: "The sky turns purple. Monsters here have names.", danger: 3, links: "Goblin Forest", x: 54, y: 6 },
+          ],
+          start: "Starting Meadow",
+          hours: 2,
+        },
+      },
+      { id: "combat", settings: { difficulty: "fair" } },
+      { id: "people", settings: { stages: [{ name: "Stranger", from: 0 }, { name: "Acquaintance", from: 20 }, { name: "Party member", from: 45 }, { name: "Trusted", from: 70 }, { name: "Devoted", from: 90 }] } },
+      {
+        id: "events",
+        settings: {
+          scheduled: [{ name: "Guild ranking day", when: "Day 10", from: "10:00", to: "16:00", where: "", text: "The guild posts the rankings; top parties get noble attention." }],
+          random: [
+            { name: "Hidden quest", chance: 10, where: "", part: "Afternoon", text: "[System: Hidden quest discovered.] Something nearby is more than it seems." },
+            { name: "Monster stampede", chance: 6, where: "", part: "Morning", text: "Monsters flee something worse toward the town." },
+          ],
+        },
+      },
+      { id: "journal", settings: { title: "Adventure log", button: "📖 Log" } },
+      { id: "menu", settings: { title: "Menu", button: "☰ Menu", only: true } },
+      { id: "notify", settings: { watch: [] } },
     ],
     modules: [],
     builtIn: true,

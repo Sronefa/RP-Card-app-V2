@@ -7,14 +7,19 @@
 import type { SillyTavernRegex } from "../../editor/trackers";
 import { varLabel, varPath, type EngineConfig, type EngineVar } from "../sheet";
 import { choicesModule } from "./choices";
-import { creatorModule } from "./creator";
+import { combatModule, noLinks, type CombatLinks } from "./combat";
+import { creatorModule, creatorSettings } from "./creator";
 import { eventsModule } from "./events";
+import { heroModule, heroSettings } from "./hero";
+import { inventoryModule, inventorySettings } from "./inventory";
 import { journalModule } from "./journal";
 import { lifeModule } from "./life";
+import { mapModule } from "./map";
 import { menuModule } from "./menu";
 import { notifyModule } from "./notify";
 import { peopleModule, valueKey } from "./people";
 import { phoneModule, phoneSettings } from "./phone";
+import { questsModule } from "./quests";
 import { routesModule } from "./routes";
 import { schoolModule } from "./school";
 import { settingsAppModule } from "./settingsApp";
@@ -71,6 +76,12 @@ export function resolveModule(m: EngineModule, all: EngineModule[] = []): Engine
   // then routes, then people.
   if (m.core === "routes") return routesModule(m.settings, m.enabled, sharedMoney(all), takenBy(m, all, ["routes", "people", "life"]));
   if (m.core === "people") return peopleModule(m.settings, m.enabled, takenBy(m, all, ["people", "life"]));
+  // The hero shares the creator's stats; the parts that look at the hero don't look back.
+  if (m.core === "hero") return heroModule(m.settings, m.enabled, takenBy(m, all, ["hero", "life", "routes", "people", "inventory", "quests", "combat"]));
+  if (m.core === "inventory") return inventoryModule(m.settings, m.enabled, phoneMoney(all), creatorBag(all));
+  if (m.core === "quests") return questsModule(m.settings, m.enabled, heroOf(all) ? `${heroOf(all)!.group}.XP` : "");
+  if (m.core === "map") return mapModule(m.settings, m.enabled);
+  if (m.core === "combat") return combatModule(m.settings, m.enabled, combatLinks(all));
   return m;
 }
 
@@ -80,12 +91,54 @@ function takenBy(m: EngineModule, all: EngineModule[], skip: string[]): Set<stri
 }
 
 /** The phone's own money, when the card has a phone that keeps it: other parts pay from it. */
-function sharedMoney(all: EngineModule[]): string {
+function phoneMoney(all: EngineModule[]): string {
   const phone = all.find((o) => o.core === "phone" && o.enabled);
   if (!phone) return "";
   const s = phoneSettings(phone.settings);
   if (s.moneyPath) return s.moneyPath;
   return s.apps.includes("wallet") || s.apps.includes("shop") ? "Phone.Money" : "";
+}
+
+/** The money other parts pay from: the phone's, else the inventory's gold. */
+function sharedMoney(all: EngineModule[]): string {
+  const phone = phoneMoney(all);
+  if (phone) return phone;
+  const inv = all.find((o) => o.core === "inventory" && o.enabled);
+  return inv ? inventorySettings(inv.settings).moneyPath || "Inventory.Gold" : "";
+}
+
+/** The creator's starting items, when it hands some out: the inventory keeps its bag there. */
+function creatorBag(all: EngineModule[]): string {
+  const creator = all.find((o) => o.core === "creator" && o.enabled);
+  if (!creator) return "";
+  const s = creatorSettings(creator.settings);
+  return s.pickItems > 0 && s.items.some((i) => i.trim()) ? `${s.group}.Items` : "";
+}
+
+const clean = (name: string) => name.replace(/[.[\]"'/~$]/g, " ").trim();
+
+function heroOf(all: EngineModule[]) {
+  const hero = all.find((o) => o.core === "hero" && o.enabled);
+  return hero ? heroSettings(hero.settings) : null;
+}
+
+/** What the combat HUD shows of the hero and the bag. */
+function combatLinks(all: EngineModule[]): CombatLinks {
+  const hero = heroOf(all);
+  const inv = all.find((o) => o.core === "inventory" && o.enabled);
+  const links = noLinks();
+  if (hero) {
+    links.group = hero.group;
+    links.resources = hero.resources.map((r) => clean(r.name)).filter(Boolean);
+    links.abilities = hero.abilities.filter((a) => a.name.trim()).map((a) => ({ name: a.name.trim(), cost: a.cost, resource: clean(a.resource) }));
+    links.known = `${hero.group}.Abilities`;
+    links.xp = `${hero.group}.XP`;
+  }
+  if (inv) {
+    links.bag = creatorBag(all) || "Inventory.Items";
+    links.consumables = inventorySettings(inv.settings).items.filter((i) => i.kind === "consumable" && i.name.trim()).map((i) => i.name.trim());
+  }
+  return links;
 }
 
 /** The card's modules, resolved. Cards from before modules get the core ones. */

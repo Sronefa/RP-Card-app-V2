@@ -10,7 +10,7 @@ const engine = (fields: Partial<EngineConfig> = {}): EngineConfig => ({ ...newEn
 
 describe("the card theme", () => {
   it("has light and dark tokens for every preset", () => {
-    expect(PRESET_IDS).toEqual(["parchment", "cyberpunk", "novel", "dating", "phone", "academy"]);
+    expect(PRESET_IDS).toEqual(["parchment", "cyberpunk", "novel", "dating", "phone", "academy", "grimdark", "system"]);
     for (const id of PRESET_IDS) {
       expect(PRESETS[id].light.accent).toMatch(/^#/);
       expect(PRESETS[id].dark.accent).toMatch(/^#/);

@@ -136,7 +136,7 @@ interface UiKit {
   appBar(title: string, o?: { back?: boolean; close?: boolean }): string;
 }
 
-type IconName = "heart" | "star" | "coin" | "clock" | "sun" | "moon" | "cloud" | "rain" | "snow" | "fog" | "storm" | "gear" | "back" | "close" | "phone" | "bag" | "map" | "chat" | "user" | "chart" | "calendar" | "news" | "wallet" | "camera" | "note" | "spark" | "home" | "send" | "people" | "lock" | "check" | "plus" | "book" | "gift";
+type IconName = "heart" | "star" | "coin" | "clock" | "sun" | "moon" | "cloud" | "rain" | "snow" | "fog" | "storm" | "gear" | "back" | "close" | "phone" | "bag" | "map" | "chat" | "user" | "chart" | "calendar" | "news" | "wallet" | "camera" | "note" | "spark" | "home" | "send" | "people" | "lock" | "check" | "plus" | "book" | "gift" | "sword" | "shield" | "flask" | "skull" | "fire" | "scroll" | "compass";
 ```
 
 ## A screen script
@@ -236,7 +236,7 @@ Every builder returns an HTML string; put several together and set `root.innerHT
 - `CF.ui.button("Use", { primary: true, icon: "bag" })`. It can also take `send`/`payload`/`text`/`now`, `open: "moduleId"`, `close: true` or `back: true`.
 - `CF.ui.tabs([{ id: "bag", label: "Bag", html: "…" }, { id: "quests", label: "Quests", html: "…" }], "bag")`: tab switching works by itself.
 - `CF.ui.appBar("Inventory", { back: true })`: the title bar of an app screen.
-- `CF.ui.icon("coin")`: an inline SVG icon from the set: heart, star, coin, clock, sun, moon, cloud, rain, snow, fog, storm, gear, back, close, phone, bag, map, chat, user, chart, calendar, news, wallet, camera, note, spark, home, send, people, lock, check, plus, book, gift.
+- `CF.ui.icon("coin")`: an inline SVG icon from the set: heart, star, coin, clock, sun, moon, cloud, rain, snow, fog, storm, gear, back, close, phone, bag, map, chat, user, chart, calendar, news, wallet, camera, note, spark, home, send, people, lock, check, plus, book, gift, sword, shield, flask, skull, fire, scroll, compass.
 - `app.toast("Saved")`: a short message at the top.
 - `app.modal('<h2>Sure?</h2><button class="cf-btn" data-cf-close>Close</button>')`: a dialog; `data-cf-close` inside it closes it.
 
@@ -257,7 +257,7 @@ Use these in your CSS instead of fixed colours, so the screen follows the card t
 
 A module's `script` file runs once when the chat opens, inside the card's Tavern Helper script, as the body of `function (CF, settings, hooks) { … }`. Tavern Helper's functions are globals there (`getVariables`, `injectPrompts`, `eventOn`, `generate`…).
 
-`hooks.afterUpdate(function (stat, before, info) { … return stat; })` runs after every update the model writes, and on the starting values (with `before` null). `info.messageId` is the message being updated and `info.latest` is true when it is the newest one: only then show banners or start side calls, since older messages are updated again on a swipe or an edit. Change `stat` and return it to keep derived values consistent: roll a counter over, clamp a total, work out a label from a number. The in-game time module does its day roll, weekday and timers this way. Keep hooks quick and never throw: a failing hook is logged and skipped.
+`hooks.afterUpdate(function (stat, before, info) { … return stat; })` runs after every update the model writes, and on the starting values (with `before` null). `info.messageId` is the message being updated, `info.role` is "user" or "assistant" (the player's own messages get a state too, so count turns on the assistant's), and `info.latest` is true when it is the newest one: only then show banners or start side calls, since older messages are updated again on a swipe or an edit. Change `stat` and return it to keep derived values consistent: roll a counter over, clamp a total, work out a label from a number. The in-game time module does its day roll, weekday and timers this way. Keep hooks quick and never throw: a failing hook is logged and skipped.
 
 ## Card images
 
