@@ -55,9 +55,23 @@ export interface EngineVar {
   pinned?: boolean;
 }
 
+/** A tab of the expanded status panel: the groups of values it shows ("" is the values without a group). */
+export interface PanelTab {
+  label: string;
+  groups: string[];
+}
+
+/** A button on the newest status panel: a prewritten message, or a slash command when it starts with "/". */
+export interface PanelAction {
+  label: string;
+  text: string;
+  /** Send it at once; otherwise it waits in the input box for the player to add to it. */
+  now: boolean;
+}
+
 export interface EngineConfig {
   vars: EngineVar[];
-  panel: { enabled: boolean; title: string; accent: string };
+  panel: { enabled: boolean; title: string; accent: string; tabs?: PanelTab[]; actions?: PanelAction[] };
   /** A short reminder of the format near the end of the prompt. */
   reminder: boolean;
   /** Ids CardForge wrote, so they are replaced and not duplicated. */

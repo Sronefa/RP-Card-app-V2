@@ -117,28 +117,53 @@ function cfRead(path, messageId) {
   return path ? cfGet(stat, cfPath(path)) : stat;
 }
 
-/** A change the player made by hand, on the latest state. It's logged so the AI keeps it. */
-async function cfPlayerSet(path, value, note) {
+/** Hidden values ("$" keys) never reach the model, so changing them needs no note to it. */
+function cfHiddenPath(keys) {
+  return keys.some(function (k) {
+    return String(k).charAt(0) === "$";
+  });
+}
+
+/**
+ * Changes the player made by hand, on the latest state, in one write: [[path, value], ...]. They're
+ * logged in one line (with `note`) so the AI keeps them; hidden values aren't logged.
+ */
+async function cfPlayerSetMany(changes, note) {
   var id = cfLatestId();
   if (id < 0) throw new Error("There is no game state yet.");
   var data = cfClone(cfMessageData(id));
-  var keys = Array.isArray(path) ? path.map(String) : cfPath(path);
-  var before = cfGet(data.stat_data, keys);
-  cfSet(data.stat_data, keys, value);
+  var done = changes.map(function (change) {
+    var keys = Array.isArray(change[0]) ? change[0].map(String) : cfPath(change[0]);
+    var before = cfGet(data.stat_data, keys);
+    cfSet(data.stat_data, keys, change[1]);
+    return { keys: keys, before: before };
+  });
   var schema = cfSchemaOrNull();
   if (schema) {
     var checked = schema.safeParse(data.stat_data);
     if (checked.success) data.stat_data = checked.data;
   }
-  var after = cfGet(data.stat_data, keys);
-  var log = Array.isArray(data.stat_data._PlayerEdits) ? data.stat_data._PlayerEdits.slice() : [];
-  log.push(keys.join(".") + ": " + JSON.stringify(before) + " → " + JSON.stringify(after) + (note ? " (" + note + ")" : ""));
-  data.stat_data._PlayerEdits = log.slice(-5);
   data.delta_data = Object.assign({}, data.delta_data);
-  data.delta_data[keys.join(".")] = [before, after];
+  var lines = [];
+  var results = done.map(function (d) {
+    var after = cfGet(data.stat_data, d.keys);
+    data.delta_data[d.keys.join(".")] = [d.before, after];
+    if (!cfHiddenPath(d.keys)) lines.push(d.keys.join(".") + ": " + JSON.stringify(d.before) + " → " + JSON.stringify(after));
+    return after;
+  });
+  if (lines.length) {
+    var log = Array.isArray(data.stat_data._PlayerEdits) ? data.stat_data._PlayerEdits.slice() : [];
+    log.push(lines.join("; ") + (note ? " (" + note + ")" : ""));
+    data.stat_data._PlayerEdits = log.slice(-5);
+  }
   await cfWrite(id, data);
   await eventEmit("cf:state", id);
-  return after;
+  return results;
+}
+
+/** A change the player made by hand, on the latest state. It's logged so the AI keeps it. */
+async function cfPlayerSet(path, value, note) {
+  return (await cfPlayerSetMany([[path, value]], note))[0];
 }
 
 /** Puts every value back to the start, on the latest state, and tells the model. */
@@ -173,19 +198,26 @@ function cfActionText(app, payload, text) {
   return '<action app="' + cfAttr(app) + '">' + body + "</action>" + (text ? "\n" + text : "");
 }
 
-/** Writes an action into SillyTavern's input box; with `now`, sends it too. */
-async function cfSend(app, payload, text, options) {
-  var line = cfActionText(app, payload, text);
+/** Adds text to SillyTavern's input box, after what the player typed; with `now`, sends it too. */
+async function cfWriteInput(text, options) {
   var doc = cfHost().document;
   var box = doc.getElementById("send_textarea");
   if (!box) throw new Error("SillyTavern's input box isn't on the page.");
-  box.value = box.value.trim() ? box.value.replace(/\s+$/, "") + "\n" + line : line;
+  if (text) box.value = box.value.trim() ? box.value.replace(/\s+$/, "") + "\n" + text : text;
   box.dispatchEvent(new Event("input", { bubbles: true }));
-  await eventEmit("cf:action", { app: app, payload: payload, text: text || "" });
   if (options && options.now) {
     var button = doc.getElementById("send_but");
     if (button) button.click();
   }
+  return text;
+}
+
+/** Writes an action into SillyTavern's input box; with `now`, sends it too. */
+async function cfSend(app, payload, text, options) {
+  var line = cfActionText(app, payload, text);
+  await cfWriteInput(line);
+  await eventEmit("cf:action", { app: app, payload: payload, text: text || "" });
+  if (options && options.now) await cfWriteInput("", { now: true });
   return line;
 }
 
@@ -213,6 +245,17 @@ var CF_ICONS = {
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 9a7 7 0 0 1 14 0",
   chart: "M4 20V10m6 10V4m6 16v-7m4 7H2",
   calendar: "M4 6h16v14H4zm0 4h16M8 3v4m8-4v4",
+  news: "M5 4h12v16H6a2 2 0 0 1-2-2V8h3m2-1h6m-6 4h6m-6 4h4",
+  wallet: "M4 7h15a1 1 0 0 1 1 1v11H5a1 1 0 0 1-1-1V6a2 2 0 0 1 2-2h11v3m-1 6h2",
+  camera: "M4 8h3l2-3h6l2 3h3v11H4zm8 2.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z",
+  note: "M6 3h9l4 4v14H6zm9 0v4h4M9 12h7m-7 4h5",
+  spark: "M12 3v5m0 8v5M3 12h5m8 0h5M6 6l3 3m6 6 3 3m0-12-3 3m-6 6-3 3",
+  home: "M4 11l8-7 8 7v9h-5v-6H9v6H4z",
+  send: "M4 12l16-8-6 16-2-7z",
+  people: "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm-6 9a6 6 0 0 1 12 0m1-9a3 3 0 1 0 0-6m2 15a5 5 0 0 0-3-4.6",
+  lock: "M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z",
+  check: "M5 12l5 5 9-10",
+  plus: "M12 5v14M5 12h14",
 };
 
 function cfEsc(value) {
@@ -390,7 +433,11 @@ function cfFrame(win, options) {
       return cfData(messageId).delta_data || {};
     },
     set: cfPlayerSet,
+    /** Several changes in one write and one log line: [[path, value], ...]. */
+    setMany: cfPlayerSetMany,
     send: cfSend,
+    /** Adds plain text to the input box; with { now: true } sends it. */
+    write: cfWriteInput,
     open: cfOpen,
     close: cfClose,
     /** Runs `fn` when the state changes (updates, swipes, the player's edits). */
@@ -602,6 +649,68 @@ function cfAsset(file) {
   return "/user/images/" + encodeURIComponent(CF_CONFIG.charName || "") + "/" + encodeURIComponent(name);
 }
 
+// ---------------------------------------------------------------- older panels freeze
+
+// A live iframe per reply is heavy on phones. Panels older than the player's "panels kept live"
+// become still copies: the same look, drawn in a shadow root, with no script and no iframe.
+function cfStillCss(css) {
+  return css
+    .replace(/(^|[\s,}])(?::root|html)(?=[\s,{.:])/g, "$1:host")
+    .replace(/(^|[\s,}])body(?=[\s,{.:])/g, "$1.cf-body");
+}
+
+function cfFreeze(frame, id) {
+  var fdoc;
+  try {
+    fdoc = frame.contentDocument;
+  } catch (e) {
+    return false;
+  }
+  var panel = fdoc && fdoc.getElementById("cf-panel");
+  // Only a panel that has drawn: a blank copy would be worse than a live one.
+  if (!panel || !fdoc.getElementById("cf-stats") || !fdoc.getElementById("cf-stats").children.length) return false;
+  var doc = frame.ownerDocument;
+  var still = doc.createElement("div");
+  still.className = "cf-still";
+  still.setAttribute("data-cf-still", String(id));
+  var css = Array.prototype.map.call(fdoc.querySelectorAll("style"), function (s) { return s.textContent; }).join("\n");
+  var body = fdoc.body.cloneNode(true);
+  Array.prototype.forEach.call(body.querySelectorAll(CF_SCRIPT_TAG + ", button, iframe"), function (el) {
+    if (el.tagName === "BUTTON") el.setAttribute("disabled", "");
+    else el.remove();
+  });
+  var shadow = still.attachShadow({ mode: "open" });
+  shadow.innerHTML = "<style>" + cfStillCss(css) + " :host { display: block; }</style>" + '<div class="cf cf-body">' + body.innerHTML + "</div>";
+  frame.replaceWith(still);
+  return true;
+}
+
+function cfFreezePanels() {
+  var keep = Number(cfSettings().livePanels);
+  if (!keep || keep < 0) return 0;
+  var doc = cfHost().document;
+  var latest = getLastMessageId();
+  var n = 0;
+  Array.prototype.forEach.call(doc.querySelectorAll(".mes[mesid] iframe"), function (frame) {
+    var id = Number(frame.closest(".mes[mesid]").getAttribute("mesid"));
+    if (id > latest - keep) return;
+    if (cfFreeze(frame, id)) n++;
+  });
+  return n;
+}
+
+var cfFreezeTimer = null;
+function cfFreezeSoon() {
+  clearTimeout(cfFreezeTimer);
+  cfFreezeTimer = setTimeout(function () {
+    try {
+      cfFreezePanels();
+    } catch (e) {
+      console.warn("[CardForge] Couldn't freeze old panels.", e);
+    }
+  }, 1500);
+}
+
 // ---------------------------------------------------------------- hooks and start
 
 /** Modules that keep derived values (the clock, routines) change the state after each update. */
@@ -630,6 +739,7 @@ var CardForgeApi = {
   settings: cfSettings,
   setSettings: cfSetSettings,
   themeCss: cfThemeCss,
+  freezePanels: cfFreezePanels,
   modules: function () {
     return cfModules().map(function (m) {
       return { id: m.id, name: m.name, slot: m.slot, button: m.button || "" };
@@ -639,9 +749,10 @@ var CardForgeApi = {
     get: cfRead,
     latestId: cfLatestId,
     set: cfPlayerSet,
+    setMany: cfPlayerSetMany,
     reset: cfPlayerReset,
   },
-  act: { send: cfSend, text: cfActionText },
+  act: { send: cfSend, text: cfActionText, write: cfWriteInput },
   bus: {
     on: function (name, fn) {
       eventOn("cf:" + name, fn);
@@ -694,4 +805,8 @@ function cfCoreStart() {
     }
   });
   cfStartHub();
+  [tavern_events.CHARACTER_MESSAGE_RENDERED, tavern_events.USER_MESSAGE_RENDERED, tavern_events.CHAT_CHANGED, CF_EVENTS.VARIABLE_UPDATE_ENDED, "cf:settings"].forEach(function (event) {
+    eventOn(event, cfFreezeSoon);
+  });
+  cfFreezeSoon();
 }

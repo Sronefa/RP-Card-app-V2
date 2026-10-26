@@ -74,6 +74,20 @@ describe("knowledge", () => {
   it("reads examples, the core modules among them", () => {
     expect(readExample("inventory-app")).toContain('<file name="js">');
     expect(readExample("time")).toBeTruthy();
+    const phone = readExample("phone")!;
+    expect(phone).toContain('<file name="settings.json">');
+    expect(phone).not.toContain('"catalog"');
+    expect(readExample("creator")).toContain('"points"');
+  });
+
+  it("adds a built-in screen with starting settings, once", () => {
+    const { config } = replay(engine(), [call("add_built_in", { screen: "phone", settings: { apps: ["messages", "map"], button: "☎ Phone" } })]);
+    const phone = config.modules!.find((m) => m.id === "phone")!;
+    expect(phone.core).toBe("phone");
+    expect(phone.button).toBe("☎ Phone");
+    expect(phone.vars.map((v) => v.name)).toEqual(["Texts", "Read", "Location"]);
+    expect(() => applyOp(config, call("add_built_in", { screen: "phone" }))).toThrow(/already has/);
+    expect(() => applyOp(config, call("add_built_in", { screen: "radio" }))).toThrow(/must be/);
   });
 });
 

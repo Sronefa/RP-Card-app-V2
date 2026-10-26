@@ -15,6 +15,12 @@ A module is one package the engine merges into the card. It can have values, lor
 
 Core modules (`time`, `settings`) are written by CardForge. You can read them as examples and change their options with `set_module_settings`, but not their files.
 
+Built-in screens work the same way, but a card only has them once added (`add_built_in`, or the Modules tab):
+- **creator**: the character creator, an inline block for the first message (`<cf-module id="creator"/>`). Its settings list the choices, stats and point budget, starting items and routes. Begin writes the character with `setMany` and sends the route's opening message.
+- **phone**: a hub screen with a lock screen, home screen and apps (messages, contacts, social, news, wallet, map, calendar, shop, notes, photos, settings and a card-specific "system" app). The author picks and orders the apps. Its actions go through the input box as `<action app="phone">{"app":"messages",…}</action>`. With `inline` on, the model may also put `<cf-module id="phone"/>` in a message. A hub module of your own tagged `phone-app` shows on its home screen as an app.
+
+Read them with read_example("creator") and read_example("phone"); the settings file shows every option.
+
 ## Slots: where a screen shows
 
 - **panel**: a section at the top of the status panel under each reply. It gets the state of that reply, so old panels show old values. It is best for short live readouts: the clock, a relationship meter, a mood. Keep it to a few lines; it repeats under every reply.

@@ -107,6 +107,17 @@ export const WRITE_TOOLS: ToolDef[] = [
     ),
   ),
   tool(
+    "add_built_in",
+    "Add one of CardForge's built-in screens: the character creator (shows in the first message) or the phone (a hub screen with a lock screen, home screen and apps). Its code is CardForge's; change it with set_module_settings.",
+    obj(
+      {
+        screen: { type: "string", enum: ["creator", "phone"], description: "Which screen" },
+        settings: { type: "object", description: "Options to start with (read_example shows them)" },
+      },
+      ["screen"],
+    ),
+  ),
+  tool(
     "set_module",
     "Change a module's manifest: name, slot, button, description, requires, tags or whether it's on.",
     obj(
@@ -125,7 +136,7 @@ export const WRITE_TOOLS: ToolDef[] = [
   ),
   tool(
     "set_module_settings",
-    "Merge options into a module's settings. This is the only way to change a core module (time, settings app).",
+    "Merge options into a module's settings. This is the only way to change a core or built-in module (time, settings app, creator, phone).",
     obj({ module: moduleId, settings: { type: "object", description: "Options to merge in" } }, ["module", "settings"]),
   ),
   tool("delete_module", "Remove a module.", obj({ module: moduleId }, ["module"])),
@@ -597,6 +608,8 @@ export function describeCall(call: ToolCall): string {
       return `Read the ${s(i.id)} example`;
     case "create_module":
       return `Created ${s(i.id)}`;
+    case "add_built_in":
+      return `Added the built-in ${s(i.screen) === "creator" ? "character creator" : s(i.screen)}`;
     case "write_file":
       return `Wrote ${s(i.module)}/${s(i.file)}`;
     case "patch_file":
