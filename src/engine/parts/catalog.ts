@@ -9,6 +9,7 @@ import type { CardAsset, CardDataV3 } from "../../card";
 import { worldMeta } from "../../editor/world";
 import { newId } from "../../lib/id";
 import { coreModules, modulesOf } from "../modules/compile";
+import { caseModule, caseSettings, defaultCaseSettings } from "../modules/casefile";
 import { choicesModule } from "../modules/choices";
 import { combatModule } from "../modules/combat";
 import { creatorModule, creatorSettings, CREATOR_TAG } from "../modules/creator";
@@ -27,6 +28,7 @@ import { questsModule } from "../modules/quests";
 import { routesModule, routesSettings } from "../modules/routes";
 import { schoolModule } from "../modules/school";
 import { settingsAppModule } from "../modules/settingsApp";
+import { shipModule } from "../modules/ship";
 import { timeModule } from "../modules/time";
 import { titleModule, titleSettings, TITLE_TAG } from "../modules/title";
 import type { EngineModule } from "../modules/types";
@@ -213,6 +215,25 @@ export function fillMap(raw: Settings, data: CardDataV3): Settings {
   });
   const places = mergeByName(own, added);
   return { ...raw, places, start: places.some((p) => p.name === s.start) ? s.start : hub };
+}
+
+/**
+ * The world's people as the suspects. Two or more replace the part's example suspects (an author's
+ * own rows are kept), with their portraits, and the example case goes with them: its truth names
+ * people who aren't in this card.
+ */
+export function fillCase(raw: Settings, data: CardDataV3): Settings {
+  const s = caseSettings(raw);
+  const world = worldOf(data, "npc");
+  if (world.length < 2) return raw;
+  const base = defaultCaseSettings();
+  const examples = new Set(base.suspects.map((x) => x.name));
+  const own = s.suspects.filter((x) => !examples.has(x.name));
+  const added = world.map((f) => ({ name: f.name.trim(), description: [f.role, f.look].filter(Boolean).join(". "), avatar: portraitFor(data, f.name) }));
+  const out: Settings = { ...raw, suspects: mergeByName(own, added) };
+  if (s.truth === base.truth) Object.assign(out, { truth: "", question: s.question === base.question ? "" : s.question, caseName: s.caseName === base.caseName ? "" : s.caseName });
+  if (JSON.stringify(s.clues) === JSON.stringify(base.clues)) out.clues = [];
+  return out;
 }
 
 // ---------------------------------------------------------------- the built-in parts
@@ -530,6 +551,54 @@ export const BUILT_IN_PARTS: Part[] = [
     sample: {
       Combat: { Active: true, Enemies: { "Wolf 1": 14, "Wolf 2": 30 }, $Max: { "Wolf 1": 30, "Wolf 2": 30 }, _Round: 2, Log: ["You slash Wolf 1: −16", "Wolf 2 bites you: −8"] },
       Player: { Health: 84, _MaxHealth: 136, Stamina: 31, _MaxStamina: 65, Abilities: ["Power Strike"] },
+    },
+  },
+  {
+    id: "ship",
+    name: "Ship",
+    summary: "Hull, shields and fuel; reactor power the player routes between systems; damaged systems to repair; the crew; a cargo hold; the alert level. Jumps on the map burn fuel.",
+    tags: ["ship", "scifi", "space", "screen"],
+    requires: [],
+    source: "built-in",
+    make: (s) => shipModule(s),
+    tailor: "Name the ship and its class, set the hull, shields and tanks, write the systems and what power does for each, and sign on the crew.",
+    generic: (s) => ({ ...s, crew: [] }),
+    sample: {
+      Ship: {
+        Hull: 72,
+        _MaxHull: 100,
+        Shields: 25,
+        _MaxShields: 60,
+        Fuel: 9,
+        _MaxFuel: 20,
+        _Power: { Engines: 3, Shields: 2, Weapons: 2, Sensors: 1, "Life support": 0 },
+        Damaged: ["Sensors"],
+        Alert: "Yellow",
+        Crew: ["Juno Reyes — Pilot", "Okafor — Engineer", "Doc Lin — Medic"],
+        Cargo: { "Ration packs": 4, "Spare parts": 2, "Unmarked crates": 6 },
+      },
+    },
+  },
+  {
+    id: "case",
+    name: "Case file",
+    summary: "The question, the clues and where they turned up, the suspects, an evidence board with red string, questioning and accusing; a dread meter that unsettles the screen.",
+    tags: ["mystery", "horror", "clues", "screen"],
+    requires: [],
+    source: "built-in",
+    make: (s) => caseModule(s),
+    tailor: "Write the question and the truth behind it (only the model sees it), list the suspects, give the opening clue, and name or drop the dread meter.",
+    fill: fillCase,
+    generic: (s) => ({ ...s, suspects: [], clues: [], truth: "", question: "", caseName: "" }),
+    sample: {
+      Case: {
+        Clues: ["Mara's last letter — Your desk", "Fresh scratches on the nursery door — Upstairs hall", "A tray with two cups — The kitchen"],
+        Suspects: ["Elias Vell — Mara's brother", "Mrs. Harrow — The caretaker", "Father Doyle — The parish priest"],
+        _Links: ["A tray with two cups → Elias Vell", "Fresh scratches on the nursery door → Mrs. Harrow"],
+        _Theory: "",
+        Solved: false,
+        Dread: 38,
+      },
     },
   },
 ];
@@ -1180,6 +1249,414 @@ export const BUILT_IN_KITS: Kit[] = [
       { id: "journal", settings: { title: "Adventure log", button: "📖 Log" } },
       { id: "menu", settings: { title: "Menu", button: "☰ Menu", only: true } },
       { id: "notify", settings: { watch: [] } },
+    ],
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-cyberpunk",
+    name: "Cyberpunk",
+    description: "Chrome and neon: a neural HUD with health, RAM and quickhacks, cyberware slots and a ripperdoc, gigs from a fixer with street cred, a sprawl to move through, a phone full of messages, and fights.",
+    theme: { preset: "cyberpunk", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Friday", startClock: "22:00", startSeason: "Autumn", weathers: ["Acid rain", "Smog", "Neon haze", "Clear", "Storm"] } },
+      { id: "settings" },
+      { id: "title", settings: { style: "glitch", tagline: "The city never sleeps. Neither do you", newGame: "Jack in" } },
+      {
+        id: "creator",
+        settings: {
+          title: "Who are you on the street?",
+          intro: "Everyone in this city is selling something. What are you selling, and who did you used to be?",
+          lookIdeas: ["Shaved sides, chrome jaw, a jacket with somebody else's blood on it", "Corpo-sharp suit gone shabby, one optic implant glowing amber", "Braids threaded with fibre-optics, fingerless gloves, a deck on your back"],
+          choices: [
+            { name: "Lifepath", options: [opt("Street kid", "You grew up in the Stacks. You know every alley and owe half of them."), opt("Ex-corpo", "You had a badge, a salary and a conscience. You kept one."), opt("Nomad", "Family, the open road and a car you'd die for. The city is new.")] },
+            { name: "Role", options: [opt("Netrunner", "You ride the Net. Doors open when you think at them."), opt("Solo", "A gun for hire, chromed for the job."), opt("Fixer", "You know who wants what, and what it costs."), opt("Techie", "If it's broken, you fix it. If it works, you improve it.")] },
+          ],
+          stats: [
+            { name: "Body", base: 4, max: 20 },
+            { name: "Reflexes", base: 4, max: 20 },
+            { name: "Tech", base: 4, max: 20 },
+            { name: "Cool", base: 4, max: 20 },
+          ],
+          points: 6,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "Jack in", description: "", message: "I'm {name}. Rain on neon, a message from my fixer blinking on my phone, and a debt I can't pay." }],
+        },
+      },
+      {
+        id: "hero",
+        settings: {
+          title: "Neural HUD",
+          button: "🧠 HUD",
+          resources: [
+            { name: "Health", base: 80, perLevel: 8, regen: 3 },
+            { name: "RAM", base: 6, perLevel: 1, regen: 6 },
+          ],
+          stats: [
+            { name: "Body", start: 4 },
+            { name: "Reflexes", start: 4 },
+            { name: "Tech", start: 4 },
+            { name: "Cool", start: 4 },
+          ],
+          xpBase: 100,
+          xpGrowth: 1.5,
+          maxLevel: 30,
+          pointsPerLevel: 2,
+          abilities: [
+            { name: "Ping", level: 1, cost: 1, resource: "RAM", description: "Light up every device and camera around you." },
+            { name: "Zap", level: 1, cost: 3, resource: "RAM", description: "A jolt through the target's cyberware." },
+            { name: "Breach", level: 3, cost: 4, resource: "RAM", description: "Open a door, a camera or a turret to your will." },
+            { name: "Overheat", level: 5, cost: 5, resource: "RAM", description: "Cook their chrome from the inside." },
+            { name: "Flatline", level: 9, cost: 8, resource: "RAM", description: "Their brain goes quiet. Permanently." },
+          ],
+        },
+      },
+      {
+        id: "inventory",
+        settings: {
+          title: "Gear",
+          button: "🎒 Gear",
+          currency: "€$",
+          startGold: 300,
+          capacity: 16,
+          slots: ["Weapon", "Armor", "Cyberdeck", "Optics", "Arms"],
+          items: [
+            { name: "Street pistol", kind: "weapon", slot: "", effect: "+3 damage, loud", price: 120 },
+            { name: "Smart SMG", kind: "weapon", slot: "", effect: "+4 damage, bullets that bend", price: 600 },
+            { name: "Armored jacket", kind: "armor", slot: "", effect: "+3 armor, still looks good", price: 250 },
+            { name: "Cheap cyberdeck", kind: "accessory", slot: "Cyberdeck", effect: "Quickhacks cost 1 less RAM", price: 400 },
+            { name: "Optic implant", kind: "accessory", slot: "Optics", effect: "Zoom, threat scan, see in the dark", price: 500 },
+            { name: "Blade arms", kind: "accessory", slot: "Arms", effect: "+5 damage up close; they unfold from the forearms", price: 1500 },
+            { name: "MedPatch", kind: "consumable", slot: "", effect: "Heals 30 health", price: 40 },
+            { name: "RAM booster", kind: "consumable", slot: "", effect: "+4 RAM now, a headache later", price: 60 },
+            { name: "Synth noodles", kind: "consumable", slot: "", effect: "A hot meal, nearly food", price: 8 },
+            { name: "Data shard", kind: "key", slot: "", effect: "Somebody's secrets. Worth something to someone", price: 0 },
+          ],
+          start: [
+            { name: "Street pistol", count: 1 },
+            { name: "Armored jacket", count: 1 },
+            { name: "Cheap cyberdeck", count: 1 },
+            { name: "MedPatch", count: 2 },
+          ],
+          merchants: [
+            { name: "Ripperdoc", where: "Chrome Market", stock: "Optic implant, Blade arms, Cheap cyberdeck, MedPatch, RAM booster" },
+            { name: "Arms dealer", where: "Rustline Docks", stock: "Street pistol, Smart SMG, Armored jacket" },
+          ],
+          sellRate: 50,
+        },
+      },
+      {
+        id: "quests",
+        settings: {
+          title: "Gigs",
+          button: "💾 Gigs",
+          board: "Fixer's list",
+          start: [{ name: "The debt", objective: "Pay Vex the 2,000 you owe before Day 7", reward: "Keeping your kneecaps", giver: "Vex" }],
+          offers: [
+            { name: "Extraction", objective: "Get a scared lab tech out of Glasswater Plaza alive", reward: "1,500 €$", giver: "Mama Sol" },
+            { name: "Lost shard", objective: "Recover a data shard from a gang safehouse in the Undercity", reward: "900 €$", giver: "Mama Sol" },
+            { name: "Quiet job", objective: "Wipe a cop's file from the precinct's servers", reward: "1,200 €$", giver: "Anonymous" },
+          ],
+          ranks: [
+            { name: "Nobody", from: 0 },
+            { name: "Street rat", from: 40 },
+            { name: "Known", from: 120 },
+            { name: "Respected", from: 300 },
+            { name: "Legend", from: 700 },
+          ],
+        },
+      },
+      {
+        id: "map",
+        settings: {
+          title: "The Sprawl",
+          button: "🗺️ Map",
+          places: [
+            { name: "Neon Row", region: "Downtown", description: "Clubs, noodle bars and holograms twenty storeys tall. Everyone is watching everyone.", danger: 1, links: "Glasswater Plaza, The Stacks, Chrome Market", x: 46, y: 46 },
+            { name: "Glasswater Plaza", region: "Corporate district", description: "Clean glass towers, drones and private security that shoots first.", danger: 1, links: "Neon Row", x: 78, y: 22 },
+            { name: "The Stacks", region: "Megablocks", description: "Fifty floors of people living on top of each other. Home, for now.", danger: 1, links: "Neon Row, Rustline Docks", x: 18, y: 36 },
+            { name: "Chrome Market", region: "Downtown", description: "Stalls selling anything that fits in a body, legal or not.", danger: 1, links: "Neon Row, The Undercity", x: 56, y: 72 },
+            { name: "Rustline Docks", region: "Waterfront", description: "Containers, smugglers and an arms dealer who doesn't ask.", danger: 2, links: "The Stacks, Badlands Gate", x: 10, y: 74 },
+            { name: "The Undercity", region: "Below", description: "Old metro tunnels where gangs and worse live in the dark.", danger: 3, links: "Chrome Market", x: 70, y: 94 },
+            { name: "Badlands Gate", region: "City limits", description: "The wall, the checkpoint and the dust beyond.", danger: 2, links: "Rustline Docks", x: 4, y: 98 },
+          ],
+          start: "The Stacks",
+          hours: 1,
+          fog: false,
+          verb: "Go",
+          go: "I head to {place}.",
+        },
+      },
+      { id: "combat", settings: { difficulty: "fair" } },
+      { id: "phone", settings: { apps: ["messages", "contacts", "social", "news", "system", "photos", "settings"], system: { name: "Darknet", description: "Anonymous boards: jobs nobody signs, rumours, people selling what they shouldn't. Posts here reach the story." } } },
+      { id: "people", settings: { stages: [{ name: "Stranger", from: 0 }, { name: "Contact", from: 20 }, { name: "Friend", from: 45 }, { name: "Ride or die", from: 75 }] } },
+      {
+        id: "events",
+        settings: {
+          scheduled: [{ name: "Blackout", when: "Day 5", from: "23:00", to: "", where: "", text: "The grid goes down citywide. In the dark, the gangs come out to shop." }],
+          random: [
+            { name: "Gang war", chance: 10, where: "", part: "Night", text: "Two gangs open fire over a corner; the street empties in seconds." },
+            { name: "Chrome rampage", chance: 6, where: "", part: "Evening", text: "Someone with too much chrome and too little mind is tearing a block apart." },
+            { name: "Corp sweep", chance: 10, where: "", part: "Afternoon", text: "Corporate security sweeps the district looking for a face. Maybe yours." },
+          ],
+        },
+      },
+      { id: "journal", settings: { title: "Datalog", button: "📼 Datalog" } },
+      { id: "menu", settings: { title: "Menu", button: "☰ Menu", only: true } },
+      { id: "notify", settings: { watch: [{ path: "Phone.Texts", title: "Messages", icon: "chat" }, { path: "Phone.News", title: "News", icon: "news" }] } },
+    ],
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-scifi",
+    name: "Sci-fi / space",
+    description: "A ship to captain: hull, shields and fuel, reactor power to route, a crew and a cargo hold; a star chart where every jump burns fuel; contracts from the job board; an officer's sheet; firefights.",
+    theme: { preset: "starship", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Monday", startClock: "06:00", startSeason: "Spring", weathers: ["Clear void", "Ion storm", "Solar flare", "Debris field", "Nebula"] } },
+      { id: "settings" },
+      { id: "title", settings: { style: "stars", tagline: "The stars are waiting", newGame: "Launch" } },
+      {
+        id: "creator",
+        settings: {
+          title: "Crew file",
+          intro: "The ship is yours, the debt is yours, and the galaxy doesn't care. Who's in the captain's chair?",
+          lookIdeas: ["Grey at the temples, a flight jacket with three patches torn off", "Station-pale, bright prosthetic hand, eyes that read everything twice", "Tall and calm, a colony accent, a sidearm worn like an old friend"],
+          choices: [
+            { name: "Origin", options: [opt("Core worlder", "Money, schools and manners. The frontier eats people like you."), opt("Spacer", "Born on a ship. Gravity feels like an insult."), opt("Colonist", "Dirt under your nails and a world that needed you."), opt("Synthetic", "Built, not born. Some people mind.")] },
+            { name: "Specialty", options: [opt("Pilot", "You fly what can't be flown."), opt("Engineer", "Engines talk to you. You talk back."), opt("Medic", "You've patched people up in vacuum."), opt("Marine", "You were trained to board ships and come back.")] },
+          ],
+          stats: [
+            { name: "Piloting", base: 4, max: 20 },
+            { name: "Engineering", base: 4, max: 20 },
+            { name: "Combat", base: 4, max: 20 },
+            { name: "Charm", base: 4, max: 20 },
+          ],
+          points: 6,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "Launch", description: "", message: "I'm {name}, captain of the Wayfarer. Docking clamps release, and Haven Station falls away behind us." }],
+        },
+      },
+      {
+        id: "hero",
+        settings: {
+          title: "Officer",
+          button: "🎖️ Officer",
+          resources: [
+            { name: "Health", base: 90, perLevel: 8, regen: 3 },
+            { name: "Focus", base: 30, perLevel: 4, regen: 6 },
+          ],
+          stats: [
+            { name: "Piloting", start: 4 },
+            { name: "Engineering", start: 4 },
+            { name: "Combat", start: 4 },
+            { name: "Charm", start: 4 },
+          ],
+          xpBase: 100,
+          xpGrowth: 1.5,
+          maxLevel: 30,
+          pointsPerLevel: 2,
+          abilities: [
+            { name: "Tactical scan", level: 1, cost: 5, resource: "Focus", description: "Read a room, a ship or a fight before it starts." },
+            { name: "Patch job", level: 1, cost: 8, resource: "Focus", description: "Make it work for now. It won't last." },
+            { name: "Evasive maneuvers", level: 3, cost: 12, resource: "Focus", description: "Throw the ship around; everything misses, for a moment." },
+            { name: "Called shot", level: 5, cost: 15, resource: "Focus", description: "One shot, exactly where it hurts." },
+            { name: "Rally the crew", level: 8, cost: 20, resource: "Focus", description: "A few words, and everyone does their best work." },
+          ],
+        },
+      },
+      { id: "ship" },
+      {
+        id: "inventory",
+        settings: {
+          title: "Locker",
+          button: "🧰 Locker",
+          currency: "cr",
+          startGold: 500,
+          capacity: 12,
+          slots: ["Weapon", "Armor", "Tool"],
+          items: [
+            { name: "Blaster pistol", kind: "weapon", slot: "", effect: "+3 damage, reliable", price: 300 },
+            { name: "Pulse rifle", kind: "weapon", slot: "", effect: "+5 damage, burns through armor", price: 900 },
+            { name: "Vac suit", kind: "armor", slot: "", effect: "+2 armor; air for 6 hours in vacuum", price: 400 },
+            { name: "Multitool", kind: "accessory", slot: "Tool", effect: "Opens panels, splices wires, cuts small locks", price: 120 },
+            { name: "Medkit", kind: "consumable", slot: "", effect: "Heals 35 health", price: 60 },
+            { name: "Stim", kind: "consumable", slot: "", effect: "+15 Focus now, a crash later", price: 45 },
+            { name: "Ration bar", kind: "consumable", slot: "", effect: "A meal. Technically", price: 5 },
+            { name: "Encrypted chip", kind: "key", slot: "", effect: "Locked data someone wants badly", price: 0 },
+          ],
+          start: [
+            { name: "Blaster pistol", count: 1 },
+            { name: "Vac suit", count: 1 },
+            { name: "Multitool", count: 1 },
+            { name: "Medkit", count: 2 },
+            { name: "Ration bar", count: 3 },
+          ],
+          merchants: [{ name: "Quartermaster", where: "Haven Station", stock: "Blaster pistol, Pulse rifle, Vac suit, Multitool, Medkit, Stim, Ration bar" }],
+          sellRate: 50,
+        },
+      },
+      {
+        id: "quests",
+        settings: {
+          title: "Contracts",
+          button: "📡 Contracts",
+          board: "Job board",
+          start: [{ name: "Make the payment", objective: "Pay the shipyard 5,000 cr on the Wayfarer before Day 10", reward: "Keeping the ship", giver: "Haven shipyard" }],
+          offers: [
+            { name: "Medical run", objective: "Get vaccines to the colony on Ashfall before the outbreak spreads", reward: "2,500 cr", giver: "Colonial health office" },
+            { name: "No questions asked", objective: "Haul sealed crates through the Drift; don't scan them", reward: "4,000 cr", giver: "A woman with no name" },
+            { name: "Salvage rights", objective: "Strip a derelict in the Kestrel Belt before the scavengers do", reward: "Half of the haul", giver: "Kestrel mining guild" },
+          ],
+          ranks: [
+            { name: "Unknown", from: 0 },
+            { name: "Reliable", from: 50 },
+            { name: "Trusted", from: 150 },
+            { name: "Renowned", from: 350 },
+            { name: "Legendary", from: 700 },
+          ],
+        },
+      },
+      {
+        id: "map",
+        settings: {
+          title: "Star chart",
+          button: "🌌 Star chart",
+          places: [
+            { name: "Haven Station", region: "Tycho sector", description: "A ring station of docks, bars and brokers. Home port.", danger: 0, links: "Vega Prime, Kestrel Belt, Tycho Gate", x: 40, y: 56 },
+            { name: "Vega Prime", region: "The Core", description: "A shining capital world. Customs inspect everything twice.", danger: 0, links: "Haven Station", x: 82, y: 70 },
+            { name: "Kestrel Belt", region: "Tycho sector", description: "Asteroid mines, claim-jumpers and rocks that move when you're not looking.", danger: 1, links: "Haven Station, The Drift", x: 18, y: 82 },
+            { name: "Tycho Gate", region: "Tycho sector", description: "An ancient relay nobody built. Ships go through; most come back.", danger: 1, links: "Haven Station, Outer Reach", x: 56, y: 22 },
+            { name: "The Drift", region: "Nebula", description: "A nebula that blinds sensors. Pirates love it.", danger: 2, links: "Kestrel Belt, Ashfall", x: 8, y: 40 },
+            { name: "Ashfall", region: "Nebula", description: "A colony that stopped answering six weeks ago.", danger: 3, links: "The Drift", x: 22, y: 6 },
+            { name: "Outer Reach", region: "Frontier", description: "The last charted stars. Beyond them, only rumours.", danger: 2, links: "Tycho Gate", x: 90, y: 8 },
+          ],
+          start: "Haven Station",
+          hours: 8,
+          fog: true,
+          verb: "Jump",
+          go: "Plot a jump to {place}.",
+        },
+      },
+      { id: "combat", settings: { difficulty: "fair" } },
+      { id: "people", settings: { stages: [{ name: "Stranger", from: 0 }, { name: "Shipmate", from: 25 }, { name: "Trusted", from: 55 }, { name: "Family", from: 85 }] } },
+      {
+        id: "events",
+        settings: {
+          scheduled: [{ name: "Payment due", when: "Day 10", from: "09:00", to: "", where: "", text: "The shipyard's collectors come for the Wayfarer's payment." }],
+          random: [
+            { name: "Distress beacon", chance: 12, where: "", part: "Night", text: "A faint distress call on an old frequency. It could be a trap." },
+            { name: "Pirate hail", chance: 8, where: "", part: "Afternoon", text: "A pirate ship hails: cut the engines and share the cargo." },
+            { name: "Ion storm", chance: 10, where: "", part: "Morning", text: "An ion storm rolls in; sensors go blind and systems spark." },
+          ],
+        },
+      },
+      { id: "journal", settings: { title: "Captain's log", button: "📓 Log" } },
+      { id: "menu", settings: { title: "Bridge", button: "☰ Menu", only: true } },
+      { id: "notify", settings: { watch: [] } },
+    ],
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-horror",
+    name: "Horror / mystery",
+    description: "A case to crack: clues, suspects and a red-string evidence board, questioning and accusing; dread that rises and warps the screen; a small town at night; a VHS-static title; a phone with no one to call.",
+    theme: { preset: "dread", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Friday", startClock: "21:00", startSeason: "Autumn", weathers: ["Fog", "Rain", "Overcast", "Storm", "Still"] } },
+      { id: "settings" },
+      { id: "title", settings: { style: "static", tagline: "Some doors should stay closed", newGame: "Play tape" } },
+      {
+        id: "creator",
+        settings: {
+          title: "Who came to Blackwater?",
+          intro: "A letter brought you here. Who are you, and what do you carry with you?",
+          lookIdeas: ["Rumpled trench coat, a notebook full of other people's secrets", "Clerical collar, hands that shake until they pray", "Thin and watchful, dark circles, a camera always ready"],
+          choices: [
+            { name: "Occupation", options: [opt("Detective", "A badge, a gun and a habit of not letting go."), opt("Journalist", "You get the story. It's the rest you're bad at."), opt("Priest", "Faith, Latin and doubts you never confess."), opt("Medium", "You hear things. You wish you didn't.")] },
+            { name: "Burden", options: [opt("Insomnia", "You haven't slept properly in a year. Things look different at 3am."), opt("Grief", "Someone you lost looks a lot like Mara."), opt("A debt", "Someone in this town knows what you did.")] },
+          ],
+          stats: [
+            { name: "Nerve", base: 3, max: 10 },
+            { name: "Wits", base: 3, max: 10 },
+            { name: "Body", base: 3, max: 10 },
+            { name: "Intuition", base: 3, max: 10 },
+          ],
+          points: 4,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "Open the letter", description: "", message: "I'm {name}. I read Mara's letter one more time in the rain outside the Raven Inn, then fold it away." }],
+        },
+      },
+      { id: "case", settings: { dread: "Dread" } },
+      {
+        id: "inventory",
+        settings: {
+          title: "Pockets",
+          button: "🔦 Pockets",
+          currency: "$",
+          startGold: 60,
+          capacity: 8,
+          slots: ["Hand"],
+          items: [
+            { name: "Flashlight", kind: "accessory", slot: "Hand", effect: "Light. The batteries are older than you'd like", price: 15 },
+            { name: "Revolver", kind: "weapon", slot: "Hand", effect: "Six shots. They might not be enough", price: 200 },
+            { name: "Lighter", kind: "other", slot: "", effect: "A flame, a cigarette, a way to burn things", price: 3 },
+            { name: "Holy water", kind: "consumable", slot: "", effect: "It helps. Sometimes", price: 0 },
+            { name: "Painkillers", kind: "consumable", slot: "", effect: "Dulls the pain and, a little, the fear", price: 6 },
+            { name: "Spare batteries", kind: "consumable", slot: "", effect: "Another hour of light", price: 4 },
+            { name: "Old brass key", kind: "key", slot: "", effect: "It doesn't fit any door you've found yet", price: 0 },
+          ],
+          start: [
+            { name: "Flashlight", count: 1 },
+            { name: "Lighter", count: 1 },
+            { name: "Painkillers", count: 1 },
+          ],
+          merchants: [{ name: "General store", where: "Main Street", stock: "Flashlight, Spare batteries, Painkillers, Lighter" }],
+          sellRate: 40,
+        },
+      },
+      {
+        id: "map",
+        settings: {
+          title: "Blackwater",
+          button: "🗺️ Town",
+          places: [
+            { name: "Raven Inn", region: "Blackwater", description: "Your room, a bar that empties at nine and a landlady who locks the doors.", danger: 0, links: "Main Street, Harbor road", x: 44, y: 60 },
+            { name: "Main Street", region: "Blackwater", description: "A general store, a diner and a police station with one tired officer.", danger: 0, links: "Raven Inn, St. Brigid's Church", x: 70, y: 48 },
+            { name: "St. Brigid's Church", region: "Blackwater", description: "Candles always lit. The confessional is never empty, but no one goes in.", danger: 1, links: "Main Street, Old cemetery", x: 88, y: 24 },
+            { name: "Old cemetery", region: "Hill", description: "Leaning stones, a family crypt and fresh earth where there shouldn't be.", danger: 2, links: "St. Brigid's Church, Vell House", x: 64, y: 8 },
+            { name: "Vell House", region: "Hill", description: "Three storeys, boarded windows and a light upstairs that no one admits to.", danger: 2, links: "Old cemetery, Blackwater woods", x: 30, y: 14 },
+            { name: "Blackwater woods", region: "Outskirts", description: "Pines so close the fog gets lost. Something follows at a distance.", danger: 3, links: "Vell House, Harbor road", x: 8, y: 40 },
+            { name: "Harbor road", region: "Outskirts", description: "The road out of town, and a lighthouse that hasn't worked in years.", danger: 1, links: "Raven Inn, Blackwater woods", x: 22, y: 90 },
+          ],
+          start: "Raven Inn",
+          hours: 1,
+          fog: false,
+          verb: "Go",
+          go: "I head to {place}.",
+        },
+      },
+      { id: "phone", settings: { apps: ["messages", "contacts", "photos", "news", "settings"] } },
+      { id: "people", settings: { stages: [{ name: "Stranger", from: 0 }, { name: "Wary", from: 20 }, { name: "Ally", from: 50 }, { name: "Confidant", from: 80 }] } },
+      {
+        id: "events",
+        settings: {
+          scheduled: [{ name: "The anniversary", when: "Day 3", from: "23:00", to: "03:00", where: "", text: "A year since Mara's mother died in the house. The town stays indoors; the house does not stay quiet." }],
+          random: [
+            { name: "Power cut", chance: 14, where: "", part: "Night", text: "The lights die all at once. In the quiet, something moves." },
+            { name: "Knocking", chance: 12, where: "", part: "Night", text: "Three knocks at the door. No one is there. Then three more." },
+            { name: "The photo", chance: 8, where: "", part: "Evening", text: "A photo on your phone you don't remember taking. Someone is standing behind you in it." },
+          ],
+        },
+      },
+      { id: "journal", settings: { title: "Notebook", button: "📓 Notebook" } },
+      { id: "menu", settings: { title: "Menu", button: "☰ Menu", only: true } },
+      { id: "notify", settings: { watch: [{ path: "Phone.Texts", title: "Messages", icon: "chat" }] } },
     ],
     modules: [],
     builtIn: true,

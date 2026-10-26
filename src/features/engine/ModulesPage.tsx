@@ -10,6 +10,7 @@ import { coreModules, moduleConflicts, resolveModule, modulePaths, modulesOf, ne
 import { creatorModule, creatorSettings } from "../../engine/modules/creator";
 import { eventsModule, eventsSettings } from "../../engine/modules/events";
 import { choicesModule, choicesSettings } from "../../engine/modules/choices";
+import { caseSettings } from "../../engine/modules/casefile";
 import { combatSettings } from "../../engine/modules/combat";
 import { heroSettings } from "../../engine/modules/hero";
 import { inventorySettings } from "../../engine/modules/inventory";
@@ -26,6 +27,7 @@ import { titleModule, titleSettings } from "../../engine/modules/title";
 import { addModules, modulePack, readPack } from "../../engine/modules/pack";
 import { phoneModule, phoneSettings } from "../../engine/modules/phone";
 import { settingsAppModule, settingsAppSettings, type SettingsAppSettings } from "../../engine/modules/settingsApp";
+import { shipSettings } from "../../engine/modules/ship";
 import { SEASONS, timeModule, timeSettings, WEEKDAYS, type Routine, type TimeSettings } from "../../engine/modules/time";
 import { SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../../engine/modules/types";
 import { scriptSource } from "../../engine/runtime";
@@ -37,6 +39,7 @@ import { EventsEditor, JournalEditor, MenuEditor, NotifyEditor, PeopleEditor, Ti
 import { PartsBrowser } from "./PartsBrowser";
 import { CombatEditor, HeroEditor, InventoryEditor, MapEditor, QuestsEditor } from "./RpgEditors";
 import { CreatorEditor, ListInput, PhoneEditor } from "./ScreenEditors";
+import { CaseEditor, ShipEditor } from "./StoryEditors";
 import { nameProblem, selectClass, summary, VarEditor } from "./VarEditor";
 
 type Save = (c: EngineConfig, key?: string) => void;
@@ -163,6 +166,10 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
                     <MapEditor settings={mapSettings(m.settings)} onChange={(s, key) => update(i, mapModule(raw(s), m.enabled), key)} />
                   ) : m.core === "combat" ? (
                     <CombatEditor settings={combatSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
+                  ) : m.core === "ship" ? (
+                    <ShipEditor settings={shipSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
+                  ) : m.core === "case" ? (
+                    <CaseEditor settings={caseSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
                   ) : (
                     <CustomEditor m={m} onChange={(next, key) => update(i, next, key)} />
                   )}

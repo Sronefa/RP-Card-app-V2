@@ -6,6 +6,7 @@
  */
 import type { SillyTavernRegex } from "../../editor/trackers";
 import { varLabel, varPath, type EngineConfig, type EngineVar } from "../sheet";
+import { caseModule } from "./casefile";
 import { choicesModule } from "./choices";
 import { combatModule, noLinks, type CombatLinks } from "./combat";
 import { creatorModule, creatorSettings } from "./creator";
@@ -23,6 +24,7 @@ import { questsModule } from "./quests";
 import { routesModule } from "./routes";
 import { schoolModule } from "./school";
 import { settingsAppModule } from "./settingsApp";
+import { shipModule } from "./ship";
 import { timeModule } from "./time";
 import { titleModule } from "./title";
 import type { EngineModule, ModuleRegex } from "./types";
@@ -82,6 +84,9 @@ export function resolveModule(m: EngineModule, all: EngineModule[] = []): Engine
   if (m.core === "quests") return questsModule(m.settings, m.enabled, heroOf(all) ? `${heroOf(all)!.group}.XP` : "");
   if (m.core === "map") return mapModule(m.settings, m.enabled);
   if (m.core === "combat") return combatModule(m.settings, m.enabled, combatLinks(all));
+  // Jumps on the star chart burn the ship's fuel.
+  if (m.core === "ship") return shipModule(m.settings, m.enabled, all.some((o) => o.core === "map" && o.enabled));
+  if (m.core === "case") return caseModule(m.settings, m.enabled);
   return m;
 }
 

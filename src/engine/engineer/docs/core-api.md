@@ -136,7 +136,7 @@ interface UiKit {
   appBar(title: string, o?: { back?: boolean; close?: boolean }): string;
 }
 
-type IconName = "heart" | "star" | "coin" | "clock" | "sun" | "moon" | "cloud" | "rain" | "snow" | "fog" | "storm" | "gear" | "back" | "close" | "phone" | "bag" | "map" | "chat" | "user" | "chart" | "calendar" | "news" | "wallet" | "camera" | "note" | "spark" | "home" | "send" | "people" | "lock" | "check" | "plus" | "book" | "gift" | "sword" | "shield" | "flask" | "skull" | "fire" | "scroll" | "compass";
+type IconName = "heart" | "star" | "coin" | "clock" | "sun" | "moon" | "cloud" | "rain" | "snow" | "fog" | "storm" | "gear" | "back" | "close" | "phone" | "bag" | "map" | "chat" | "user" | "chart" | "calendar" | "news" | "wallet" | "camera" | "note" | "spark" | "home" | "send" | "people" | "lock" | "check" | "plus" | "book" | "gift" | "sword" | "shield" | "flask" | "skull" | "fire" | "scroll" | "compass" | "bolt" | "rocket" | "eye" | "search" | "chip";
 ```
 
 ## A screen script
@@ -236,7 +236,7 @@ Every builder returns an HTML string; put several together and set `root.innerHT
 - `CF.ui.button("Use", { primary: true, icon: "bag" })`. It can also take `send`/`payload`/`text`/`now`, `open: "moduleId"`, `close: true` or `back: true`.
 - `CF.ui.tabs([{ id: "bag", label: "Bag", html: "…" }, { id: "quests", label: "Quests", html: "…" }], "bag")`: tab switching works by itself.
 - `CF.ui.appBar("Inventory", { back: true })`: the title bar of an app screen.
-- `CF.ui.icon("coin")`: an inline SVG icon from the set: heart, star, coin, clock, sun, moon, cloud, rain, snow, fog, storm, gear, back, close, phone, bag, map, chat, user, chart, calendar, news, wallet, camera, note, spark, home, send, people, lock, check, plus, book, gift, sword, shield, flask, skull, fire, scroll, compass.
+- `CF.ui.icon("coin")`: an inline SVG icon from the set: heart, star, coin, clock, sun, moon, cloud, rain, snow, fog, storm, gear, back, close, phone, bag, map, chat, user, chart, calendar, news, wallet, camera, note, spark, home, send, people, lock, check, plus, book, gift, sword, shield, flask, skull, fire, scroll, compass, bolt, rocket, eye, search, chip.
 - `app.toast("Saved")`: a short message at the top.
 - `app.modal('<h2>Sure?</h2><button class="cf-btn" data-cf-close>Close</button>')`: a dialog; `data-cf-close` inside it closes it.
 

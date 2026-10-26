@@ -52,7 +52,7 @@ const day = (d: number) => ({ op: "replace", path: "/Time/Day", value: d });
 
 describe("the kits", () => {
   it("each installs cleanly, with its theme and a title screen", () => {
-    for (const id of ["kit-modern-life", "kit-school", "kit-dating", "kit-fantasy", "kit-dark-fantasy", "kit-isekai"]) {
+    for (const id of ["kit-modern-life", "kit-school", "kit-dating", "kit-fantasy", "kit-dark-fantasy", "kit-isekai", "kit-cyberpunk", "kit-scifi", "kit-horror"]) {
       const out = install(kit(id));
       expect(moduleConflicts(out.config).map((c) => c.message), id).toEqual([]);
       expect(out.config.theme, id).toEqual(kit(id).theme);
@@ -61,6 +61,8 @@ describe("the kits", () => {
     expect(install(kit("kit-school")).config.theme?.preset).toBe("academy");
     expect(install(kit("kit-dark-fantasy")).config.theme?.preset).toBe("grimdark");
     expect(install(kit("kit-isekai")).config.theme?.preset).toBe("system");
+    expect(install(kit("kit-scifi")).config.theme?.preset).toBe("starship");
+    expect(install(kit("kit-horror")).config.theme?.preset).toBe("dread");
   });
 
   it("lets the hero take over the engine's starter health", () => {
@@ -96,6 +98,47 @@ describe("the kits", () => {
     const { config } = install(kit("kit-isekai"));
     expect(paths(config)).toEqual(expect.arrayContaining(["Player.Titles", "Player.Title", "Player.Luck"]));
     expect(modulesOf(config).find((m) => m.id === "hero")!.rules[1].content).toContain("[System: Level up!");
+  });
+
+  it("cyberpunk runs quickhacks on RAM, wears cyberware and keeps its own eddies beside the phone", () => {
+    const { config } = install(kit("kit-cyberpunk"));
+    const all = paths(config);
+    expect(all).toEqual(expect.arrayContaining(["Player.RAM", "Player._MaxRAM", "Player.Cool", "Equipped.Cyberdeck", "Equipped.Optics", "Inventory.Gold", "Quests._Rank", "Phone.Texts"]));
+    expect(all).not.toContain("Phone.Money");
+    const map = modulesOf(config).find((m) => m.id === "map")!;
+    expect(map.settings).toMatchObject({ verb: "Go", start: "The Stacks" });
+    expect(map.js).toContain("S.go.split");
+  });
+
+  it("sci-fi links the ship's fuel to the star chart's jumps", () => {
+    const { config } = install(kit("kit-scifi"));
+    const all = paths(config);
+    expect(all).toEqual(expect.arrayContaining(["Ship.Hull", "Ship.Shields", "Ship.Fuel", "Ship._Power", "Ship.Damaged", "Ship.Crew", "Ship.Cargo", "Ship.Alert", "Player.Focus", "Player.Piloting"]));
+    const ship = modulesOf(config).find((m) => m.id === "ship")!;
+    expect(ship.settings.live).toMatchObject({ chart: true, jumpFuel: 2 });
+    expect(ship.vars.find((v) => v.name === "Fuel")!.rule).toContain("burns 2 for each jump");
+    const alone = applyKit({ ...newEngine(), modules: [] }, card(), { ...kit("kit-scifi"), parts: kit("kit-scifi").parts.filter((p) => p.id !== "map") }, BUILT_IN_PARTS);
+    expect(modulesOf(alone.config).find((m) => m.id === "ship")!.settings.live).toMatchObject({ chart: false });
+  });
+
+  it("horror keeps the truth for the model and a dread meter; the world's people become suspects", () => {
+    const { config } = install(kit("kit-horror"));
+    expect(paths(config)).toEqual(expect.arrayContaining(["Case.Clues", "Case.Suspects", "Case._Links", "Case._Theory", "Case.Solved", "Case.Dread", "Player.Nerve"]));
+    const rules = modulesOf(config).find((m) => m.id === "case")!.rules;
+    expect(rules[1]).toMatchObject({ constant: true });
+    expect(rules[1].content).toContain("walled-up nursery");
+    const data = card();
+    const book = data.character_book!;
+    const more = worldEntry(book as never, "npc", { name: "Silas", role: "lighthouse keeper", look: "" });
+    data.character_book = { ...book, entries: [...book.entries, { ...more, id: 9 }] };
+    const out = applyKit({ ...newEngine(), modules: [] }, data, kit("kit-horror"), BUILT_IN_PARTS);
+    const c = modulesOf(out.config).find((m) => m.id === "case")!;
+    expect(c.settings.suspects).toEqual([
+      { name: "Rhea", description: "barista. Green apron, quick smile", avatar: "Rhea.webp" },
+      { name: "Silas", description: "lighthouse keeper", avatar: "" },
+    ]);
+    expect(c.settings).toMatchObject({ truth: "", question: "", clues: [] });
+    expect(c.rules[1].content).not.toContain("nursery");
   });
 
   it("puts the world's places on the map, replacing the example ones", () => {
@@ -208,6 +251,30 @@ describe("the kit parts in a chat", () => {
     const s = await turn([clock("19:30")]);
     expect(s.Needs).toMatchObject({ Hunger: 36, Thirst: 35, Warmth: 56, Rest: 64, Sanity: 75 });
     expect(s.Inventory.Gold).toBe(8);
+  });
+
+  it("the ship caps its power, recharges shields by the power they get and burns fuel per jump", async () => {
+    const { turn } = await play(install(kit("kit-scifi")).config);
+    let s = await turn([{ op: "replace", path: "/Map/Location", value: "Kestrel Belt" }, clock("14:00")]);
+    expect(s.Ship).toMatchObject({ Fuel: 18, Hull: 100, Shields: 60, _MaxFuel: 20, _Power: { Engines: 2, Shields: 2, Weapons: 2, Sensors: 1, "Life support": 1 } });
+    s = await turn([{ op: "delta", path: "/Ship/Shields", value: -40 }, { op: "delta", path: "/Ship/Hull", value: -75 }, { op: "insert", path: "/Ship/Damaged/-", value: "Engines" }]);
+    expect(s.Ship).toMatchObject({ Shields: 20, Hull: 25, Damaged: ["Engines"] });
+    s = await turn([clock("16:00")]);
+    expect(s.Ship.Shields).toBe(40);
+    // A jump the story already paid for isn't charged twice.
+    s = await turn([{ op: "replace", path: "/Map/Location", value: "The Drift" }, { op: "delta", path: "/Ship/Fuel", value: -5 }]);
+    expect(s.Ship.Fuel).toBe(13);
+    s = await turn([{ op: "delta", path: "/Ship/Hull", value: 500 }]);
+    expect(s.Ship.Hull).toBe(100);
+  });
+
+  it("the case keeps dread between 0 and 100", async () => {
+    const { turn } = await play(install(kit("kit-horror")).config);
+    let s = await turn([{ op: "delta", path: "/Case/Dread", value: 140 }, { op: "insert", path: "/Case/Clues/-", value: "A tray with two cups — The kitchen" }]);
+    expect(s.Case.Dread).toBe(100);
+    expect(s.Case.Clues).toEqual(["Mara's last letter — Your desk", "A tray with two cups — The kitchen"]);
+    s = await turn([{ op: "delta", path: "/Case/Dread", value: -300 }]);
+    expect(s.Case.Dread).toBe(0);
   });
 
   it("routes keep unlocked pictures and endings with the character", async () => {

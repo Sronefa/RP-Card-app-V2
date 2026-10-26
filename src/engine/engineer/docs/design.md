@@ -30,6 +30,8 @@ Engine screens should feel like a polished mobile game, not a web form. Aim for 
   - **Academy**: navy and crest gold on crisp paper, serif headings.
   - **Grimdark**: ash, iron and old blood; dark, worn, small corners.
   - **System window**: glowing blue status windows over deep navy, thin bright borders.
+  - **Starship console**: amber readouts and cyan scans on space black, monospace headings, clean panels.
+  - **Dread**: near-black and bone white, typewriter headings, blood red as the only colour; tiny corners.
   Match the preset's character in your own CSS: no glows on parchment, no serif on the HUD.
 
 ## Theme tokens (set_theme)

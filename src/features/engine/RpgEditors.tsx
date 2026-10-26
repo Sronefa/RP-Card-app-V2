@@ -304,6 +304,12 @@ export function MapEditor({ settings, onChange }: { settings: MapSettings; onCha
         <Labelled label="Hours a road takes">
           <TextInput inputMode="numeric" value={settings.hours} onChange={(e) => set({ hours: Number(e.target.value) || 0 }, "hours")} />
         </Labelled>
+        <Labelled label="Travel button">
+          <TextInput value={settings.verb} placeholder="Travel, Jump, Go" onChange={(e) => set({ verb: e.target.value }, "verb")} />
+        </Labelled>
+        <Labelled label="Message on setting out">
+          <TextInput value={settings.go} placeholder="I set out for {place}." onChange={(e) => set({ go: e.target.value }, "go")} />
+        </Labelled>
         <Labelled label="Map picture file" className="col-span-2">
           <TextInput value={settings.art} placeholder="Empty for the theme's own" onChange={(e) => set({ art: e.target.value }, "art")} />
         </Labelled>
