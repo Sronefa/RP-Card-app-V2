@@ -252,7 +252,15 @@ function done() {
     (settings.stats.length ? CF.ui.grid(settings.stats.map(function (s) { return { label: s.name, value: st[s.name] == null ? s.base : st[s.name] }; })) : "") +
     (items.length ? '<p class="cf-small cf-muted">Carrying: ' + esc(items.join(", ")) + "</p>" : "") + "</div>";
 }
+// With a title screen, the creator waits for New game.
+function waiting() {
+  return CF.modules().some(function (m) { return m.id === "title"; }) && CF.state.get("Game.$Started") !== true;
+}
 function render() {
+  if (waiting() && !created()) {
+    root.innerHTML = "";
+    return;
+  }
   if (created()) {
     root.innerHTML = '<div class="cc">' + done() + "</div>";
     return;
@@ -337,7 +345,7 @@ root.addEventListener("click", function (e) {
   if (t.closest("[data-begin]") && !busy) start();
 });
 render();
-app.onState(function () { if (created()) render(); });
+app.onState(function () { if (created() || !waiting()) render(); });
 `;
 
 const CSS = String.raw`

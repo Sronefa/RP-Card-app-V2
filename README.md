@@ -163,4 +163,5 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 21. UI engineer: a co-writer task that builds engine screens with docs, editable skills and examples, tests them on a hidden sandbox page (screenshots, console, clicks, scripted turns, lint) and hands over one proposal with a diff (done)
 22. The first three screens: a status panel with tabs, sliding meters and action buttons (older panels turn into still pictures), the character creator, and the phone with its lock screen, home screen and 12 apps (done)
 23. Playtest and side calls: a mini chat with your real roleplay model and the full engine (swipe, edit, rewind), saved game states to restart from, flagging a reply to the engineer, auto-play with a second model as {{user}}, and a side-call mode that keeps the state with a cheap silent call, with its cost a turn (done)
-24–27. Immersive Engine v1: parts browser, kits
+24. Parts browser and shared parts: a library of finished parts (search by tag, live preview, filled from the card when added) and the engineer's list_parts, read_part and install_part; the shared parts (title screen, menu, people, events, journal, notifications); and your own kits, a theme plus parts (done)
+25–27. Immersive Engine v1: kits

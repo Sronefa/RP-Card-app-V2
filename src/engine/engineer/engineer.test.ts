@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ToolCall } from "../../ai/types";
 import { diffLines } from "../../lib/diff";
+import { newCard } from "../../card";
+import { newModule } from "../modules/compile";
 import { newEngine, newVar, type EngineConfig } from "../sheet";
 import { BUILT_IN_SKILLS, readDoc, readExample, searchDocs, skillsWith, DOCS } from "./knowledge";
 import { actionNames, lintConfig, screenFindings, statePaths } from "./lint";
@@ -160,6 +162,24 @@ describe("engineer tools", () => {
     expect(c.ops).toHaveLength(1);
     const values = await runEngineerTool(c, call("read_values", {}));
     expect(values.content).toContain("Player.Gold (number");
+  });
+
+  it("lists, reads and installs parts, filled from the card, and the proposal replays the same", async () => {
+    const c = { ...ctx(), data: { ...newCard().data, name: "Port Noir", scenario: "Rain over the docks." }, library: [{ ...newModule("Tarot"), description: "Draw a card." }] };
+    const list = await runEngineerTool(c, call("list_parts", { query: "draw" }));
+    expect(list.content).toContain("tarot: Tarot");
+    expect((await runEngineerTool(c, call("list_parts", { tag: "shared" }))).content).toContain("people: People");
+    const read = await runEngineerTool(c, call("read_part", { id: "title" }));
+    expect(read.content).toContain("title: Port Noir");
+    expect(read.content).toContain("To tailor:");
+    const installed = await runEngineerTool(c, call("install_part", { id: "events", settings: { notify: false } }));
+    expect(installed.content).toContain("Installed Events (events)");
+    expect(installed.content).toContain("Tailor it to this card");
+    expect(c.draft.modules!.find((m) => m.id === "events")!.settings.notify).toBe(false);
+    const title = await runEngineerTool(c, call("install_part", { id: "title" }));
+    expect(title.content).toContain("Put it in the first message");
+    expect((await runEngineerTool(c, call("install_part", { id: "title" }))).isError).toBe(true);
+    expect(replay(engine(), c.ops).config.modules!.map((m) => m.id)).toEqual(c.draft.modules!.map((m) => m.id));
   });
 
   it("says so when there's no preview to render", async () => {

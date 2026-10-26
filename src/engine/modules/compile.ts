@@ -7,9 +7,15 @@
 import type { SillyTavernRegex } from "../../editor/trackers";
 import { varLabel, varPath, type EngineConfig, type EngineVar } from "../sheet";
 import { creatorModule } from "./creator";
+import { eventsModule } from "./events";
+import { journalModule } from "./journal";
+import { menuModule } from "./menu";
+import { notifyModule } from "./notify";
+import { peopleModule, valueKey } from "./people";
 import { phoneModule } from "./phone";
 import { settingsAppModule } from "./settingsApp";
 import { timeModule } from "./time";
+import { titleModule } from "./title";
 import type { EngineModule, ModuleRegex } from "./types";
 
 /** The core modules every engine card starts with. */
@@ -48,6 +54,16 @@ export function resolveModule(m: EngineModule, all: EngineModule[] = []): Engine
   if (m.core === "phone") {
     const extra = all.filter((o) => o.enabled && o.slot === "overlay" && o.tags.includes(PHONE_APP_TAG)).map((o) => ({ id: o.id, name: o.name }));
     return phoneModule(m.settings, m.enabled, extra);
+  }
+  if (m.core === "title") return titleModule(m.settings, m.enabled);
+  if (m.core === "menu") return menuModule(m.settings, m.enabled);
+  if (m.core === "events") return eventsModule(m.settings, m.enabled);
+  if (m.core === "journal") return journalModule(m.settings, m.enabled);
+  if (m.core === "notify") return notifyModule(m.settings, m.enabled);
+  if (m.core === "people") {
+    // Values another module keeps (the phone's affection) are shared, not doubled.
+    const taken = new Set(all.filter((o) => o !== m && o.enabled && o.core !== "people").flatMap((o) => resolveModule(o).vars.map(valueKey)));
+    return peopleModule(m.settings, m.enabled, taken);
   }
   return m;
 }

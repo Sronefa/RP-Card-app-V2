@@ -6,8 +6,14 @@
 import { useEffect, useState } from "react";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { toast } from "../../components/toast";
-import { BUILT_IN_SCREENS, coreModules, moduleConflicts, modulePaths, modulesOf, newModule } from "../../engine/modules/compile";
+import { coreModules, moduleConflicts, resolveModule, modulePaths, modulesOf, newModule } from "../../engine/modules/compile";
 import { creatorModule, creatorSettings } from "../../engine/modules/creator";
+import { eventsModule, eventsSettings } from "../../engine/modules/events";
+import { journalModule, journalSettings } from "../../engine/modules/journal";
+import { menuModule, menuSettings } from "../../engine/modules/menu";
+import { notifyModule, notifySettings } from "../../engine/modules/notify";
+import { peopleSettings } from "../../engine/modules/people";
+import { titleModule, titleSettings } from "../../engine/modules/title";
 import { addModules, modulePack, readPack } from "../../engine/modules/pack";
 import { phoneModule, phoneSettings } from "../../engine/modules/phone";
 import { settingsAppModule, settingsAppSettings, type SettingsAppSettings } from "../../engine/modules/settingsApp";
@@ -17,6 +23,8 @@ import { scriptSource } from "../../engine/runtime";
 import { newVar, settingsSource, type EngineConfig, type EngineVar } from "../../engine/sheet";
 import { pickFiles, safeFileName, saveFile } from "../../lib/files";
 import { loadModuleLibrary, removeFromModuleLibrary, saveModulesToLibrary } from "./moduleLibrary";
+import { EventsEditor, JournalEditor, MenuEditor, NotifyEditor, PeopleEditor, TitleEditor } from "./PartEditors";
+import { PartsBrowser } from "./PartsBrowser";
 import { CreatorEditor, ListInput, PhoneEditor } from "./ScreenEditors";
 import { nameProblem, selectClass, summary, VarEditor } from "./VarEditor";
 
@@ -28,6 +36,8 @@ async function exportPack(modules: EngineModule[], name: string) {
   const bytes = new TextEncoder().encode(JSON.stringify(modulePack(modules), null, 2));
   if (await saveFile(`${safeFileName(name, "modules")}.cfmodules.json`, bytes, PACK_FILE)) toast(`Saved ${modules.length === 1 ? modules[0].name : `${modules.length} modules`}`);
 }
+
+const raw = <T,>(s: T) => s as unknown as Record<string, unknown>;
 
 const kb = (n: number) => `${Math.round(n / 102.4) / 10} KB`;
 
@@ -61,7 +71,6 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
     }
   };
   const missingCore = coreModules().filter((c) => !modules.some((m) => m.core === c.core));
-  const screens = BUILT_IN_SCREENS.filter((b) => !modules.some((m) => m.core === b.core));
 
   return (
     <div className="flex flex-col gap-4">
@@ -113,6 +122,18 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
                     <CreatorEditor settings={creatorSettings(m.settings)} onChange={(s, key) => update(i, creatorModule(s as unknown as Record<string, unknown>, m.enabled), key)} />
                   ) : m.core === "phone" ? (
                     <PhoneEditor settings={phoneSettings(m.settings)} onChange={(s, key) => update(i, phoneModule(s as unknown as Record<string, unknown>, m.enabled), key)} />
+                  ) : m.core === "title" ? (
+                    <TitleEditor settings={titleSettings(m.settings)} onChange={(s, key) => update(i, titleModule(raw(s), m.enabled), key)} />
+                  ) : m.core === "menu" ? (
+                    <MenuEditor settings={menuSettings(m.settings)} onChange={(s, key) => update(i, menuModule(raw(s), m.enabled), key)} />
+                  ) : m.core === "people" ? (
+                    <PeopleEditor settings={peopleSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
+                  ) : m.core === "events" ? (
+                    <EventsEditor settings={eventsSettings(m.settings)} onChange={(s, key) => update(i, eventsModule(raw(s), m.enabled), key)} />
+                  ) : m.core === "journal" ? (
+                    <JournalEditor settings={journalSettings(m.settings)} onChange={(s, key) => update(i, journalModule(raw(s), m.enabled), key)} />
+                  ) : m.core === "notify" ? (
+                    <NotifyEditor settings={notifySettings(m.settings)} onChange={(s, key) => update(i, notifyModule(raw(s), m.enabled), key)} />
                   ) : (
                     <CustomEditor m={m} onChange={(next, key) => update(i, next, key)} />
                   )}
@@ -137,33 +158,6 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
           );
         })}
       </ul>
-      {screens.length > 0 && (
-        <section className="flex flex-col gap-2" aria-label="Built-in screens">
-          <h2 className="text-sm font-medium">Built-in screens</h2>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {screens.map((b) => {
-              const m = b.make();
-              return (
-                <li key={b.core} className="flex items-center gap-2 rounded-xl border border-border p-3">
-                  <div className="min-w-0 flex-1 text-sm">
-                    <div className="font-medium">{m.name}</div>
-                    <div className="text-xs text-ink-muted">{b.help}</div>
-                  </div>
-                  <Button
-                    aria-label={`Add the ${m.name.toLowerCase()}`}
-                    onClick={() => {
-                      const next = add([m]);
-                      setOpen(`${next.length - 1}`);
-                    }}
-                  >
-                    Add
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={create}>
           New module
@@ -180,6 +174,7 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
         ))}
       </div>
       <p className="text-xs text-ink-muted">The card's engine script is {kb(size)} with these modules.</p>
+      <PartsBrowser config={config} onAdded={(i) => setOpen(`${i}`)} />
       {library && (
         <LibraryDialog
           onClose={() => setLibrary(false)}

@@ -3,13 +3,12 @@
  * can fill their lists from the card's world pages (NPCs, places and items).
  */
 import { useState } from "react";
-import type { CardDataV3 } from "../../card";
 import { AutoTextarea, Button, TextInput } from "../../components/ui";
 import { toast } from "../../components/toast";
 import { useEditor } from "../../editor/store";
-import { worldMeta } from "../../editor/world";
-import { CREATOR_TAG, type CreatorSettings } from "../../engine/modules/creator";
-import { PHONE_APP_IDS, PHONE_APPS, type PhoneAppId, type PhoneSettings } from "../../engine/modules/phone";
+import { CREATOR_TAG, creatorSettings, type CreatorSettings } from "../../engine/modules/creator";
+import { PHONE_APP_IDS, PHONE_APPS, phoneSettings, type PhoneAppId, type PhoneSettings } from "../../engine/modules/phone";
+import { fillCreator, fillPhone, worldOf } from "../../engine/parts/catalog";
 
 type Change<T> = (s: T, key?: string) => void;
 
@@ -49,7 +48,7 @@ interface Field<T> {
 }
 
 /** Rows of a few fields each, with Remove on each row and Add under them. */
-function Rows<T>({ label, rows, fields, blank, onChange }: { label: string; rows: T[]; fields: Field<T>[]; blank: T; onChange: (rows: T[], key: string) => void }) {
+export function Rows<T>({ label, rows, fields, blank, onChange }: { label: string; rows: T[]; fields: Field<T>[]; blank: T; onChange: (rows: T[], key: string) => void }) {
   const set = (i: number, key: keyof T & string, value: string) =>
     onChange(
       rows.map((r, j) => (j === i ? { ...r, [key]: fields.find((f) => f.key === key)?.type === "number" ? Number(value) || 0 : value } : r)),
@@ -83,7 +82,7 @@ function Rows<T>({ label, rows, fields, blank, onChange }: { label: string; rows
   );
 }
 
-function Check({ checked, onChange, children }: { checked: boolean; onChange: (on: boolean) => void; children: React.ReactNode }) {
+export function Check({ checked, onChange, children }: { checked: boolean; onChange: (on: boolean) => void; children: React.ReactNode }) {
   return (
     <label className="flex min-h-8 items-center gap-2">
       <input type="checkbox" className="size-4" checked={checked} onChange={(e) => onChange(e.target.checked)} />
@@ -92,7 +91,7 @@ function Check({ checked, onChange, children }: { checked: boolean; onChange: (o
   );
 }
 
-function Labelled({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+export function Labelled({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (
     <label className={`flex flex-col gap-1 ${className}`}>
       {label}
@@ -101,35 +100,14 @@ function Labelled({ label, children, className = "" }: { label: string; children
   );
 }
 
-/** The card's world pages of one kind, as their fields. */
-function world(data: CardDataV3, kind: "npc" | "location" | "item") {
-  return (data.character_book?.entries ?? [])
-    .map(worldMeta)
-    .filter((m) => m?.kind === kind && m.fields.name?.trim())
-    .map((m) => m!.fields);
-}
-
-const firstNumber = (s = "") => Number(/\d+(?:\.\d+)?/.exec(s)?.[0] ?? 0);
-
-/** Adds rows by name, skipping names already there. */
-function merge<T extends { name: string }>(rows: T[], incoming: T[]): T[] {
-  const have = new Set(rows.map((r) => r.name.trim().toLowerCase()));
-  return [...rows, ...incoming.filter((r) => !have.has(r.name.trim().toLowerCase()))];
-}
-
 export function CreatorEditor({ settings, onChange }: { settings: CreatorSettings; onChange: Change<CreatorSettings> }) {
   const data = useEditor((s) => s.record!.card.data);
   const set = (patch: Partial<CreatorSettings>, key: string) => onChange({ ...settings, ...patch }, key);
   const shown = data.first_mes.includes(CREATOR_TAG);
-  const places = world(data, "location");
-  const items = world(data, "item").filter((f) => (f.type ?? "item").toLowerCase() !== "service");
   const fromWorld = () => {
-    const choices = places.length && !settings.choices.some((c) => c.name === "Start")
-      ? [...settings.choices, { name: "Start", options: places.map((p) => ({ name: p.name.trim(), description: p.mood || "" })) }]
-      : settings.choices;
-    const more = items.map((i) => i.name.trim()).filter((n) => !settings.items.includes(n));
-    set({ choices, items: [...settings.items, ...more] }, "world");
-    toast(places.length || items.length ? "Added the world's places and items" : "The world has no places or items yet");
+    const filled = creatorSettings(fillCreator(settings as unknown as Record<string, unknown>, data));
+    set({ choices: filled.choices, items: filled.items }, "world");
+    toast(worldOf(data, "location").length || worldOf(data, "item").length ? "Added the world's places and items" : "The world has no places or items yet");
   };
   const setChoice = (i: number, patch: Partial<CreatorSettings["choices"][number]>, key: string) =>
     set({ choices: settings.choices.map((c, j) => (j === i ? { ...c, ...patch } : c)) }, `choice.${i}.${key}`);
@@ -270,11 +248,10 @@ export function PhoneEditor({ settings, onChange }: { settings: PhoneSettings; o
     set({ apps }, "apps");
   };
   const fromWorld = () => {
-    const npcs = world(data, "npc").map((f) => ({ name: f.name.trim(), role: f.role ?? "", avatar: "" }));
-    const places = world(data, "location").map((f) => ({ name: f.name.trim(), description: f.mood ?? "" }));
-    const shop = world(data, "item").map((f) => ({ name: f.name.trim(), price: firstNumber(f.price), description: f.effect ?? "" }));
-    set({ contacts: merge(settings.contacts, npcs), places: merge(settings.places, places), shop: merge(settings.shop, shop) }, "world");
-    toast(npcs.length + places.length + shop.length ? "Added the world's NPCs, places and items" : "The world has no NPCs, places or items yet");
+    const filled = phoneSettings(fillPhone(settings as unknown as Record<string, unknown>, data));
+    set({ contacts: filled.contacts, places: filled.places, shop: filled.shop }, "world");
+    const found = worldOf(data, "npc").length + worldOf(data, "location").length + worldOf(data, "item").length;
+    toast(found ? "Added the world's NPCs, places and items" : "The world has no NPCs, places or items yet");
   };
 
   return (

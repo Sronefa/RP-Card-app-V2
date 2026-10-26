@@ -47,7 +47,11 @@ export class EnginePreview {
   /** The sandbox chat as it last reported it. */
   chat: SandboxMessage[] = [];
 
-  constructor(private host: HTMLElement = document.body) {
+  /** `visible` puts the page in `host` for the user to see and use, instead of hidden off to the side. */
+  constructor(
+    private host: HTMLElement = document.body,
+    private visible = false,
+  ) {
     window.addEventListener("message", this.onMessage);
   }
 
@@ -103,11 +107,17 @@ export class EnginePreview {
     this.device = opts.device;
     const { width, height } = PREVIEW_DEVICES[opts.device];
     const frame = document.createElement("iframe");
-    frame.title = "UI engineer preview";
-    frame.setAttribute("aria-hidden", "true");
-    frame.tabIndex = -1;
-    // On screen but invisible: browsers slow down pages they think nobody can see.
-    frame.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:${height}px;border:0;opacity:0;pointer-events:none;z-index:-1;`;
+    if (this.visible) {
+      frame.title = "Preview";
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      frame.style.cssText = "display:block;width:100%;height:100%;border:0;";
+    } else {
+      frame.title = "UI engineer preview";
+      frame.setAttribute("aria-hidden", "true");
+      frame.tabIndex = -1;
+      // On screen but invisible: browsers slow down pages they think nobody can see.
+      frame.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:${height}px;border:0;opacity:0;pointer-events:none;z-index:-1;`;
+    }
     const ready = new Promise<void>((resolve, reject) => {
       this.ready = { resolve, reject };
       setTimeout(() => reject(new Error("The preview page didn't start in time.")), READY_MS);
