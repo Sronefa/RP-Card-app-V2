@@ -95,9 +95,46 @@ describe("Claude provider", () => {
       role: "user",
       content: [
         { type: "tool_result", tool_use_id: "toolu_1", content: "shown", is_error: false },
-        { type: "text", text: "next" },
+        // The end of the conversation is cached for the next call.
+        { type: "text", text: "next", cache_control: { type: "ephemeral" } },
       ],
     });
+  });
+
+  it("sends screenshots with tool results and asks for thinking at the chosen effort", async () => {
+    fetchMock.fn.mockResolvedValue(claudeStream("claude-opus-5-5", [{ type: "text", text: "" }], [{ index: 0, delta: { type: "text_delta", text: "ok" } }], "end_turn"));
+    await provider.complete({
+      model: "claude-opus-5-5",
+      system: "s",
+      useTools: true,
+      tools: CARD_TOOLS,
+      effort: "max",
+      maxTokens: 64000,
+      messages: [
+        { role: "user", text: "go" },
+        { role: "assistant", text: "", toolCalls: [{ id: "toolu_1", name: "render", input: {} }] },
+        { role: "tool", results: [{ id: "toolu_1", content: "Rendered.", images: [{ mediaType: "image/png", data: "AAAA" }] }] },
+      ],
+    });
+    const body = JSON.parse(fetchMock.fn.mock.calls[0][1].body);
+    expect(body.thinking).toEqual({ type: "adaptive" });
+    expect(body.output_config).toEqual({ effort: "max" });
+    expect(body.max_tokens).toBe(64000);
+    expect(body.messages[2].content[0].content).toEqual([
+      { type: "text", text: "Rendered." },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
+    ]);
+  });
+
+  it("asks again without thinking when the model doesn't take it", async () => {
+    fetchMock.fn
+      .mockResolvedValueOnce(new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "output_config.effort is not supported on this model" } }), { status: 400, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(claudeStream("claude-haiku-4-5", [{ type: "text", text: "" }], [{ index: 0, delta: { type: "text_delta", text: "ok" } }], "end_turn"));
+    const result = await provider.complete({ model: "claude-haiku-4-5", system: "s", useTools: true, tools: [], effort: "high", messages: [{ role: "user", text: "hi" }] });
+    expect(result.text).toBe("ok");
+    const retry = JSON.parse(fetchMock.fn.mock.calls[1][1].body);
+    expect(retry.thinking).toBeUndefined();
+    expect(retry.output_config).toBeUndefined();
   });
 
   it("leaves out the tool list for calls without tools", async () => {

@@ -6,7 +6,7 @@ import { create } from "zustand";
 import { getSetting, putSetting } from "../db/db";
 import { newId } from "../lib/id";
 import { openaiProvider } from "./openai";
-import type { ModeId, ModelChoice, Provider, ProviderConfig } from "./types";
+import type { Effort, ModeId, ModelChoice, Provider, ProviderConfig } from "./types";
 
 export interface PromptPreset {
   id: string;
@@ -85,7 +85,23 @@ export interface AiSettings {
   imageStyles: ImageStyle[];
   /** Overused phrases the card checker flags; the built-in list until the user edits it. */
   slopPhrases?: string[];
+  /** How hard the UI engineer works; the defaults until the user changes them. */
+  engineer?: Partial<EngineerSettings>;
+  /** The user's changes to the UI engineer's skills. */
+  engineerSkills?: { edited: Record<string, string>; removed: string[] };
 }
+
+export interface EngineerSettings {
+  effort: Effort;
+  /** Most model calls in one turn. */
+  maxRounds: number;
+  /** The longest single reply. */
+  maxTokens: number;
+}
+
+export const DEFAULT_ENGINEER: EngineerSettings = { effort: "max", maxRounds: 40, maxTokens: 64000 };
+
+export const engineerSettings = (settings: AiSettings): EngineerSettings => ({ ...DEFAULT_ENGINEER, ...settings.engineer });
 
 const KEY = "ai";
 

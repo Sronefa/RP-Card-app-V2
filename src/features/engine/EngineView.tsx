@@ -21,13 +21,14 @@ import {
   type EngineVar,
 } from "../../engine/sheet";
 import { CardBar } from "../editor/CardBar";
+import { EngineerPage } from "./EngineerPage";
 import { NoCard } from "../editor/NoCard";
 import { LookPage, PanelPreview } from "./LookPage";
 import { ModulesPage } from "./ModulesPage";
 import { SandboxPage } from "./SandboxPage";
 import { nameProblem, summary, VarEditor } from "./VarEditor";
 
-const TABS = { vars: "Variables", modules: "Modules", look: "Look", test: "Test", sandbox: "Sandbox" } as const;
+const TABS = { vars: "Variables", modules: "Modules", look: "Look", engineer: "Engineer", test: "Test", sandbox: "Sandbox" } as const;
 type Tab = keyof typeof TABS;
 
 /** The Immersive Engine: a game state that updates itself after every reply, for Tavern Helper cards. */
@@ -91,7 +92,7 @@ function EngineBody() {
           </section>
         ) : (
           <>
-            <div role="tablist" aria-label="Engine" className="flex rounded-lg border border-border p-0.5">
+            <div role="tablist" aria-label="Engine" className="flex overflow-x-auto rounded-lg border border-border p-0.5">
               {(Object.keys(TABS) as Tab[]).map((t) => (
                 <button
                   key={t}
@@ -99,7 +100,7 @@ function EngineBody() {
                   role="tab"
                   aria-selected={tab === t}
                   onClick={() => setTab(t)}
-                  className={`min-h-9 flex-1 rounded-md px-2 text-sm ${tab === t ? "bg-accent/15 text-accent" : "text-ink-muted"}`}
+                  className={`min-h-9 flex-1 shrink-0 rounded-md px-2 text-sm whitespace-nowrap ${tab === t ? "bg-accent/15 text-accent" : "text-ink-muted"}`}
                 >
                   {TABS[t]}
                 </button>
@@ -111,6 +112,8 @@ function EngineBody() {
               <ModulesPage config={config} save={save} />
             ) : tab === "look" ? (
               <LookPage config={config} save={save} />
+            ) : tab === "engineer" ? (
+              <EngineerPage />
             ) : tab === "test" ? (
               <TestPage config={config} />
             ) : (

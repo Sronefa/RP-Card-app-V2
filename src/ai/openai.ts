@@ -8,14 +8,18 @@ import {
   type ChatMessage,
   type CompletionRequest,
   type CompletionResult,
+  type Effort,
   type Provider,
   type ProviderConfig,
   type StopReason,
   type ToolCall,
 } from "./types";
 
+type WirePart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+
 type WireMessage =
-  | { role: "system" | "user"; content: string }
+  | { role: "system"; content: string }
+  | { role: "user"; content: string | WirePart[] }
   | { role: "assistant"; content: string | null; tool_calls?: WireToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 
@@ -56,37 +60,64 @@ export function openaiProvider(config: ProviderConfig): Provider {
 
     async complete(request) {
       const fetch = await getFetch();
-      const body = {
-        model: request.model,
-        stream: true,
-        messages: toWire(request),
-        ...(request.useTools && request.tools.length
-          ? {
-              tools: request.tools.map((t) => ({
-                type: "function",
-                function: { name: t.name, description: t.description, parameters: t.parameters },
-              })),
-            }
-          : {}),
-      };
-      const res = await fetch(`${base}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: request.signal,
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        if (request.useTools && res.status >= 400 && res.status < 500 && /tool|function/i.test(text))
-          throw new ToolsUnsupportedError(text);
-        throw new HttpError(res.status, text);
+      let reasoning = !!request.effort;
+      for (;;) {
+        try {
+          return await completeOnce(fetch, request, reasoning);
+        } catch (e) {
+          // Endpoints that don't know reasoning_effort: ask again without it.
+          if (reasoning && e instanceof HttpError && e.status >= 400 && e.status < 500 && /reason|effort/i.test(e.body)) {
+            reasoning = false;
+            continue;
+          }
+          throw e;
+        }
       }
-      const result = await readStream(res, request.onText);
-      if (request.useTools) return result;
-      const { text, toolCalls } = extractJsonEdits(result.text);
-      return { ...result, text, toolCalls, raw: { kind: "openai", content: result.text } };
     },
   };
+
+  async function completeOnce(fetch: typeof globalThis.fetch, request: CompletionRequest, reasoning: boolean): Promise<CompletionResult> {
+    const body = {
+      model: request.model,
+      stream: true,
+      messages: toWire(request),
+      ...(reasoning && request.effort ? { reasoning_effort: REASONING[request.effort] } : {}),
+      ...(request.useTools && request.tools.length
+        ? {
+            tools: request.tools.map((t) => ({
+              type: "function",
+              function: { name: t.name, description: t.description, parameters: t.parameters },
+            })),
+          }
+        : {}),
+    };
+    const res = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: request.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      if (request.useTools && res.status >= 400 && res.status < 500 && /tool|function/i.test(text)) throw new ToolsUnsupportedError(text);
+      throw new HttpError(res.status, text);
+    }
+    const result = await readStream(res, request.onText);
+    if (request.useTools) return result;
+    const { text, toolCalls } = extractJsonEdits(result.text);
+    return { ...result, text, toolCalls, raw: { kind: "openai", content: result.text } };
+  }
+}
+
+/** OpenAI's reasoning levels stop at high. */
+const REASONING: Record<Effort, string> = { low: "low", medium: "medium", high: "high", xhigh: "high", max: "high" };
+
+/** Tool messages carry text only, so pictures from tool results follow as a user message. */
+function imagesMessage(m: Extract<ChatMessage, { role: "tool" }>): WireMessage[] {
+  const parts: WirePart[] = m.results.flatMap((r) =>
+    (r.images ?? []).map((i): WirePart => ({ type: "image_url", image_url: { url: `data:${i.mediaType};base64,${i.data}` } })),
+  );
+  return parts.length ? [{ role: "user", content: [{ type: "text", text: "The pictures from those tool results:" }, ...parts] }] : [];
 }
 
 function toWire(request: CompletionRequest): WireMessage[] {
@@ -99,8 +130,11 @@ function toWire(request: CompletionRequest): WireMessage[] {
 function wireMessage(m: ChatMessage, useTools: boolean): WireMessage[] {
   if (m.role === "user") return [{ role: "user", content: m.text }];
   if (m.role === "tool") {
-    if (!useTools) return [{ role: "user", content: resultsAsText(m) }];
-    return m.results.map((r) => ({ role: "tool", tool_call_id: r.id, content: r.isError ? `Error: ${r.content}` : r.content }));
+    if (!useTools) return [{ role: "user", content: resultsAsText(m) }, ...imagesMessage(m)];
+    return [
+      ...m.results.map((r): WireMessage => ({ role: "tool", tool_call_id: r.id, content: r.isError ? `Error: ${r.content}` : r.content })),
+      ...imagesMessage(m),
+    ];
   }
   // The reply as the model wrote it, JSON edit block included.
   const text = m.raw?.kind === "openai" && typeof m.raw.content === "string" ? m.raw.content : m.text;

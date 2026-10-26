@@ -168,6 +168,7 @@ export async function deleteCard(id: string) {
     tx.objectStore("cards").delete(id),
     tx.objectStore("chats").delete(id),
     tx.objectStore("chats").delete(loreChatKey(id)),
+    tx.objectStore("chats").delete(engineerChatKey(id)),
     tx.objectStore("interviews").delete(id),
     tx.done,
   ]);
@@ -240,6 +241,17 @@ export async function putSetting(key: string, value: unknown) {
 
 /** Key of a card's lorebook brainstorm chat. */
 export const loreChatKey = (cardId: string) => `lore:${cardId}`;
+/** Key of a card's UI engineer chat. */
+export const engineerChatKey = (cardId: string) => `engineer:${cardId}`;
+
+/** A chat of another shape, kept in the same store under its own key. */
+export async function getRecord<T extends { cardId: string }>(key: string): Promise<T | undefined> {
+  return (await (await db()).get("chats", key)) as unknown as T | undefined;
+}
+
+export async function saveRecord<T extends { cardId: string }>(record: T) {
+  await (await db()).put("chats", record as unknown as ChatRecord);
+}
 
 export async function getChat(key: string): Promise<ChatRecord | undefined> {
   return (await db()).get("chats", key);

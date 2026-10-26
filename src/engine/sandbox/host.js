@@ -1107,6 +1107,273 @@
     });
   }
 
+  // ---------------------------------------------------------------- pictures and checks for the UI engineer
+
+  // A picture of what the player sees: each document is drawn through an SVG foreignObject, with the
+  // iframes in it (panels, hub screens) drawn the same way first and put in as pictures.
+
+  function visibleFrames(doc) {
+    return Array.prototype.filter.call(doc.querySelectorAll("iframe"), function (el) {
+      var r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return false;
+      var style = doc.defaultView.getComputedStyle(el);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+  }
+
+  function frameWindow(el) {
+    try {
+      return el.contentWindow && el.contentWindow.document ? el.contentWindow : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function snapshotMarkup(win, pictures) {
+    var doc = win.document;
+    var originals = doc.documentElement.querySelectorAll("*");
+    var clone = doc.documentElement.cloneNode(true);
+    var copies = clone.querySelectorAll("*");
+    for (var i = originals.length - 1; i >= 0; i--) {
+      var o = originals[i];
+      var c = copies[i];
+      if (!c) continue;
+      var tag = o.tagName;
+      if (tag === "SCRIPT" || tag === "NOSCRIPT") {
+        c.remove();
+        continue;
+      }
+      if (tag === "IFRAME") {
+        // The frame's own picture goes in its place, with its computed style, so whatever sits
+        // above it (a close button) stays above it.
+        var img = doc.createElement(pictures.has(o) ? "img" : "div");
+        var cs = win.getComputedStyle(o);
+        for (var k = 0; k < cs.length; k++) img.style.setProperty(cs[k], cs.getPropertyValue(cs[k]));
+        if (pictures.has(o)) img.setAttribute("src", pictures.get(o));
+        c.replaceWith(img);
+        continue;
+      }
+      if (tag === "INPUT") {
+        if (o.type === "checkbox" || o.type === "radio") {
+          if (o.checked) c.setAttribute("checked", "");
+          else c.removeAttribute("checked");
+        } else c.setAttribute("value", o.value);
+      } else if (tag === "TEXTAREA") c.textContent = o.value;
+      else if (tag === "SELECT") {
+        Array.prototype.forEach.call(c.options, function (opt, n) {
+          if (n === o.selectedIndex) opt.setAttribute("selected", "");
+          else opt.removeAttribute("selected");
+        });
+      } else if (tag === "CANVAS") {
+        try {
+          var img = doc.createElement("img");
+          img.src = o.toDataURL();
+          img.setAttribute("style", "width:" + o.clientWidth + "px;height:" + o.clientHeight + "px;");
+          c.replaceWith(img);
+          continue;
+        } catch (e) {}
+      }
+      if (o.scrollTop || o.scrollLeft) {
+        c.style.overflow = "hidden";
+        Array.prototype.forEach.call(c.children, function (child) {
+          child.style.translate = -o.scrollLeft + "px " + -o.scrollTop + "px";
+        });
+      }
+    }
+    var body = clone.querySelector("body");
+    if (body && (win.scrollX || win.scrollY)) body.style.translate = -win.scrollX + "px " + -win.scrollY + "px";
+    clone.style.width = win.innerWidth + "px";
+    clone.style.height = win.innerHeight + "px";
+    clone.style.overflow = "hidden";
+    return new XMLSerializer().serializeToString(clone);
+  }
+
+  function loadImage(src) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { reject(new Error("The page couldn't be drawn.")); };
+      img.src = src;
+    });
+  }
+
+  async function snapshot(win) {
+    var w = Math.max(1, Math.round(win.innerWidth));
+    var h = Math.max(1, Math.round(win.innerHeight));
+    var pictures = new Map();
+    var list = visibleFrames(win.document);
+    for (var i = 0; i < list.length; i++) {
+      var child = frameWindow(list[i]);
+      if (child) pictures.set(list[i], (await snapshot(child)).toDataURL("image/png"));
+    }
+    var canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    var ctx = canvas.getContext("2d");
+    var svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '"><foreignObject x="0" y="0" width="' + w + '" height="' + h + '">' +
+      snapshotMarkup(win, pictures) +
+      "</foreignObject></svg>";
+    try {
+      ctx.drawImage(await loadImage("data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)), 0, 0);
+    } catch (e) {
+      ctx.fillStyle = "#888";
+      ctx.fillText("(not drawn)", 4, 12);
+    }
+    return canvas;
+  }
+
+  async function capture() {
+    // Let pending layout and animations settle first.
+    await new Promise(function (resolve) { setTimeout(resolve, 350); });
+    var canvas = await snapshot(window);
+    var data = canvas.toDataURL("image/png");
+    return { image: data.slice(data.indexOf(",") + 1), width: canvas.width, height: canvas.height };
+  }
+
+  /** Every document the player can see, with a name for reports. */
+  function screens() {
+    var out = [{ name: "chat page", win: window }];
+    (function walk(doc, prefix) {
+      visibleFrames(doc).forEach(function (el) {
+        var win = frameWindow(el);
+        if (!win) return;
+        var name = el.id && /^TH-message--/.test(el.id)
+          ? "message " + el.id.split("--")[1] + (/<div id="cf-panel"/.test(win.document.documentElement.outerHTML) ? " (status panel)" : " (inline block)")
+          : el.title ? "hub screen: " + el.title : prefix + "frame";
+        out.push({ name: name, win: win });
+        walk(win.document, name + " › ");
+      });
+    })(document, "");
+    return out;
+  }
+
+  function describe(el) {
+    var text = el.tagName.toLowerCase();
+    if (el.id) text += "#" + el.id;
+    var cls = typeof el.className === "string" ? el.className.trim().split(/\s+/).filter(Boolean).slice(0, 3) : [];
+    if (cls.length) text += "." + cls.join(".");
+    return text;
+  }
+
+  function parseColor(value) {
+    var m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+%?))?/.exec(value || "");
+    if (!m) return null;
+    var a = m[4] === undefined ? 1 : /%$/.test(m[4]) ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
+    return [Number(m[1]), Number(m[2]), Number(m[3]), a];
+  }
+
+  function luminance(c) {
+    var v = c.slice(0, 3).map(function (x) {
+      x /= 255;
+      return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+
+  function blend(top, bottom) {
+    var a = top[3];
+    return [top[0] * a + bottom[0] * (1 - a), top[1] * a + bottom[1] * (1 - a), top[2] * a + bottom[2] * (1 - a), 1];
+  }
+
+  /** The colour behind an element, or null when an image or gradient makes it unknowable. */
+  function backdrop(el, fallback) {
+    var layers = [];
+    for (var node = el; node && node.nodeType === 1; node = node.parentElement) {
+      var style = node.ownerDocument.defaultView.getComputedStyle(node);
+      if (style.backgroundImage && style.backgroundImage !== "none" && !/gradient/.test(style.backgroundImage)) return null;
+      var c = parseColor(style.backgroundColor);
+      if (c && c[3] > 0) {
+        layers.push(c);
+        if (c[3] >= 1) break;
+      }
+    }
+    var color = fallback;
+    for (var i = layers.length - 1; i >= 0; i--) color = blend(layers[i], color);
+    return color;
+  }
+
+  function inspectScreen(screen, base) {
+    var win = screen.win;
+    var doc = win.document;
+    var vw = doc.documentElement.clientWidth;
+    var report = { screen: screen.name, width: vw, height: doc.documentElement.scrollHeight, overflow: [], contrast: [], smallTargets: [], outline: [] };
+    if (doc.documentElement.scrollWidth > vw + 1)
+      Array.prototype.forEach.call(doc.body ? doc.body.querySelectorAll("*") : [], function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.right > vw + 1 && r.width > 0 && report.overflow.length < 5) report.overflow.push(describe(el) + " reaches " + Math.round(r.right) + "px of " + vw + "px");
+      });
+    var page = parseColor(win.getComputedStyle(doc.body || doc.documentElement).backgroundColor);
+    var fallback = page && page[3] >= 1 ? page : base;
+    var seen = 0;
+    Array.prototype.forEach.call(doc.body ? doc.body.querySelectorAll("*") : [], function (el) {
+      var style = win.getComputedStyle(el);
+      var r = el.getBoundingClientRect();
+      var shown = r.width > 0 && r.height > 0 && style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0.05;
+      if (!shown) return;
+      var own = Array.prototype.some.call(el.childNodes, function (n) { return n.nodeType === 3 && n.textContent.trim(); });
+      if (own && report.contrast.length < 8) {
+        var fg = parseColor(style.color);
+        var bg = backdrop(el, fallback);
+        if (fg && bg) {
+          var c = blend(fg, bg);
+          var l1 = luminance(c), l2 = luminance(bg);
+          var ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+          var size = parseFloat(style.fontSize);
+          var large = size >= 24 || (size >= 18.6 && Number(style.fontWeight) >= 700);
+          if (ratio < (large ? 3 : 4.5))
+            report.contrast.push(describe(el) + ' "' + el.textContent.trim().slice(0, 30) + '" ' + ratio.toFixed(2) + ":1");
+        }
+      }
+      var tag = el.tagName;
+      if ((tag === "BUTTON" || tag === "A" || el.getAttribute("role") === "button" || tag === "SELECT" || (tag === "INPUT" && el.type !== "hidden")) && (r.width < 30 || r.height < 30) && report.smallTargets.length < 6)
+        report.smallTargets.push(describe(el) + " " + Math.round(r.width) + "×" + Math.round(r.height) + "px");
+      if (seen < 60 && (own || tag === "BUTTON" || tag === "INPUT" || tag === "IMG" || tag === "SELECT")) {
+        seen++;
+        var label = own ? el.textContent.trim().replace(/\s+/g, " ").slice(0, 50) : el.getAttribute("aria-label") || el.getAttribute("alt") || el.value || "";
+        report.outline.push(describe(el) + (label ? ' "' + label + '"' : "") + " " + Math.round(r.width) + "×" + Math.round(r.height) + " at " + Math.round(r.left) + "," + Math.round(r.top));
+      }
+    });
+    return report;
+  }
+
+  function inspect() {
+    var base = parseColor(getComputedStyle(document.body).backgroundColor) || [28, 28, 31, 1];
+    return { screens: screens().map(function (s) { return inspectScreen(s, base); }) };
+  }
+
+  function findScreen(where) {
+    var list = screens();
+    if (!where || where === "chat") return list[0];
+    if (where === "overlay") return list.filter(function (s) { return /^hub screen/.test(s.name); }).pop();
+    if (where === "panel") return list.filter(function (s) { return /status panel/.test(s.name); }).pop();
+    var m = /^message[: ]?(\d+)$/.exec(where);
+    if (m) return list.filter(function (s) { return s.name.indexOf("message " + m[1] + " ") === 0; })[0];
+    return list.filter(function (s) { return s.name.indexOf(where) >= 0; })[0];
+  }
+
+  async function click(command) {
+    var screen = findScreen(command.screen);
+    if (!screen) throw new Error("There's no '" + (command.screen || "chat") + "' on screen. Screens: " + screens().map(function (s) { return s.name; }).join(", ") + ".");
+    var doc = screen.win.document;
+    var target = null;
+    if (command.selector) target = doc.querySelector(command.selector);
+    else if (command.text) {
+      var want = String(command.text).trim().toLowerCase();
+      var all = Array.prototype.filter.call(doc.querySelectorAll("button, a, [role=button], [role=tab], [data-cf-send], [data-cf-open], [data-cf-tab], [data-item], label, summary, li"), function (el) {
+        return el.getBoundingClientRect().width > 0 && el.textContent.trim().toLowerCase().indexOf(want) >= 0;
+      });
+      all.sort(function (a, b) { return a.textContent.length - b.textContent.length; });
+      target = all[0] || null;
+    }
+    if (!target) throw new Error("Nothing on the " + screen.name + " matches " + (command.selector ? "'" + command.selector + "'" : '"' + command.text + '"') + ".");
+    var before = input().value;
+    log("UI engineer", "clicked", describe(target) + ' "' + target.textContent.trim().slice(0, 40) + '" on the ' + screen.name);
+    target.click();
+    await new Promise(function (resolve) { setTimeout(resolve, 400); });
+    return { clicked: describe(target), screen: screen.name, input: input().value !== before ? input().value : "" };
+  }
+
   // ---------------------------------------------------------------- commands from CardForge
 
   /** Waits until the scripts' own async work (their update queues) has settled. */
@@ -1202,6 +1469,20 @@
       case "view":
         document.documentElement.style.fontSize = command.textScale * 100 + "%";
         return;
+      case "open":
+        if (!window.CardForge) throw new Error("The engine core isn't running, so there's nothing to open.");
+        window.CardForge.open(command.module);
+        await new Promise(function (resolve) { setTimeout(resolve, 300); });
+        return;
+      case "close":
+        if (window.CardForge) window.CardForge.close();
+        return;
+      case "capture":
+        return capture();
+      case "inspect":
+        return inspect();
+      case "click":
+        return click(command);
       case "scenario": {
         for (var i = 0; i < command.turns.length; i++) {
           var turn = command.turns[i];
@@ -1217,10 +1498,16 @@
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent || !e.data || !e.data.cfCommand) return;
     var command = e.data.cfCommand;
+    var result;
+    var failed = "";
     queue = queue
       .then(function () { return run(command); })
-      .catch(function (err) { reportError(window, err && err.message ? err.message : err, 0, 0, err && err.stack); })
-      .then(function () { post({ kind: "done", id: command.requestId }); });
+      .then(function (value) { result = value; })
+      .catch(function (err) {
+        failed = err && err.message ? err.message : String(err);
+        reportError(window, failed, 0, 0, err && err.stack);
+      })
+      .then(function () { post({ kind: "done", id: command.requestId, result: result, failed: failed }); });
   });
 
   window.addEventListener("error", function (e) {

@@ -67,6 +67,35 @@ describe("OpenAI-compatible provider", () => {
     ]);
   });
 
+  it("sends tool pictures as a user message and asks for reasoning", async () => {
+    fetchMock.fn.mockResolvedValue(sseResponse([chunk({ content: "ok" }, "stop"), "[DONE]"]));
+    await provider.complete({
+      model: "m",
+      system: "s",
+      tools: CARD_TOOLS,
+      useTools: true,
+      effort: "max",
+      messages: [
+        { role: "user", text: "go" },
+        { role: "assistant", text: "", toolCalls: [{ id: "c1", name: "render", input: {} }] },
+        { role: "tool", results: [{ id: "c1", content: "Rendered.", images: [{ mediaType: "image/png", data: "AAAA" }] }] },
+      ],
+    });
+    const body = JSON.parse(fetchMock.fn.mock.calls[0][1].body);
+    expect(body.reasoning_effort).toBe("high");
+    expect(body.messages.at(-2)).toEqual({ role: "tool", tool_call_id: "c1", content: "Rendered." });
+    expect(body.messages.at(-1).content[1]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } });
+  });
+
+  it("asks again without reasoning when the endpoint doesn't know it", async () => {
+    fetchMock.fn
+      .mockResolvedValueOnce(new Response("unknown parameter: reasoning_effort", { status: 400 }))
+      .mockResolvedValueOnce(sseResponse([chunk({ content: "ok" }, "stop"), "[DONE]"]));
+    const result = await provider.complete({ model: "m", system: "s", tools: [], useTools: true, effort: "high", messages: [{ role: "user", text: "hi" }] });
+    expect(result.text).toBe("ok");
+    expect(JSON.parse(fetchMock.fn.mock.calls[1][1].body).reasoning_effort).toBeUndefined();
+  });
+
   it("reports models that reject tools", async () => {
     fetchMock.fn.mockResolvedValue(new Response('{"error":"tools are not supported for this model"}', { status: 400 }));
     await expect(

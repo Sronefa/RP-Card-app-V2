@@ -168,7 +168,7 @@ export function sandboxDocument({ data, libs, user, textScale }: SandboxOptions)
 /** A report from the sandbox. */
 export type SandboxReport =
   | { kind: "ready" }
-  | { kind: "done"; id?: number }
+  | { kind: "done"; id?: number; result?: unknown; failed?: string }
   | { kind: "state"; chat: SandboxMessage[]; chatVariables: Record<string, unknown>; schema: string[] }
   | { kind: "log"; source: string; action: string; detail: string }
   | { kind: "console"; level: "error" | "warn"; source: string; message: string }
@@ -194,7 +194,37 @@ export type SandboxCommand =
   | { type: "rewind"; id: number }
   | { type: "setVariables"; id: number; variables: Record<string, unknown> }
   | { type: "view"; textScale: number }
-  | { type: "scenario"; turns: { role: "user" | "assistant"; text: string }[] };
+  | { type: "scenario"; turns: { role: "user" | "assistant"; text: string }[] }
+  | { type: "open"; module: string }
+  | { type: "close" }
+  | { type: "capture" }
+  | { type: "inspect" }
+  | { type: "click"; screen?: string; selector?: string; text?: string };
+
+/** What capture returns: a PNG of everything the player sees, base64. */
+export interface SandboxCapture {
+  image: string;
+  width: number;
+  height: number;
+}
+
+/** What inspect returns for each document on screen. */
+export interface ScreenReport {
+  screen: string;
+  width: number;
+  height: number;
+  overflow: string[];
+  contrast: string[];
+  smallTargets: string[];
+  outline: string[];
+}
+
+export interface ClickResult {
+  clicked: string;
+  screen: string;
+  /** What the click wrote in the input box, if anything. */
+  input: string;
+}
 
 /**
  * The page as a data: URL. A data: page has an origin of its own, so it can't reach CardForge, while

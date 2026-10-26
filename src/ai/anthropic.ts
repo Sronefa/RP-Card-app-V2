@@ -49,14 +49,20 @@ export function anthropicProvider(config: ProviderConfig): Provider {
 
     async complete(request) {
       const c = await getClient();
-      let maxTokens = MAX_TOKENS;
+      let maxTokens = request.maxTokens ?? MAX_TOKENS;
+      let thinking = !!request.effort;
       for (let attempt = 0; ; attempt++) {
         try {
-          return await streamOnce(c, request, maxTokens);
+          return await streamOnce(c, request, maxTokens, thinking);
         } catch (e) {
           if (e instanceof Anthropic.APIError) {
             if (e instanceof Anthropic.BadRequestError && /max_tokens/i.test(e.message) && maxTokens > SMALL_MAX_TOKENS) {
               maxTokens = SMALL_MAX_TOKENS;
+              continue;
+            }
+            // An older model without adaptive thinking or effort: ask again without them.
+            if (e instanceof Anthropic.BadRequestError && thinking && /thinking|effort|output_config/i.test(e.message)) {
+              thinking = false;
               continue;
             }
             throw e;
@@ -70,7 +76,7 @@ export function anthropicProvider(config: ProviderConfig): Provider {
   };
 }
 
-async function streamOnce(client: Anthropic, request: CompletionRequest, maxTokens: number): Promise<CompletionResult> {
+async function streamOnce(client: Anthropic, request: CompletionRequest, maxTokens: number, thinking: boolean): Promise<CompletionResult> {
   const fallback = FALLBACK_MODELS.has(request.model);
   const stream = client.beta.messages.stream(
     {
@@ -78,7 +84,8 @@ async function streamOnce(client: Anthropic, request: CompletionRequest, maxToke
       max_tokens: maxTokens,
       // The system prompt doesn't change during a chat, so it is cached.
       system: [{ type: "text", text: request.system, cache_control: { type: "ephemeral" } }],
-      messages: toAnthropic(request.messages),
+      messages: cacheTail(toAnthropic(request.messages)),
+      ...(thinking && request.effort ? { thinking: { type: "adaptive" as const }, output_config: { effort: request.effort } } : {}),
       ...(request.tools.length
         ? {
             tools: request.tools.map((t) => ({
@@ -140,6 +147,19 @@ function toAnthropic(messages: ChatMessage[]): Anthropic.Beta.BetaMessageParam[]
   return out;
 }
 
+/**
+ * Marks the end of the conversation for caching, so the next call in a tool loop reads everything
+ * before it (docs, files, earlier results) from the cache.
+ */
+function cacheTail(messages: Anthropic.Beta.BetaMessageParam[]): Anthropic.Beta.BetaMessageParam[] {
+  const last = messages.at(-1);
+  if (!last || last.role !== "user") return messages;
+  const content = blocks(last.content);
+  const end = content.at(-1);
+  if (!end || (end.type !== "text" && end.type !== "tool_result")) return messages;
+  return [...messages.slice(0, -1), { ...last, content: [...content.slice(0, -1), { ...end, cache_control: { type: "ephemeral" } }] }];
+}
+
 const blocks = (content: Anthropic.Beta.BetaMessageParam["content"]): BlockParam[] =>
   typeof content === "string" ? [{ type: "text", text: content }] : ((content ?? []) as BlockParam[]);
 
@@ -148,7 +168,17 @@ function toParam(m: ChatMessage): Anthropic.Beta.BetaMessageParam {
   if (m.role === "tool")
     return {
       role: "user",
-      content: m.results.map((r) => ({ type: "tool_result", tool_use_id: r.id, content: r.content, is_error: r.isError })),
+      content: m.results.map((r) => ({
+        type: "tool_result",
+        tool_use_id: r.id,
+        content: r.images?.length
+          ? [
+              { type: "text" as const, text: r.content },
+              ...r.images.map((i) => ({ type: "image" as const, source: { type: "base64" as const, media_type: i.mediaType, data: i.data } })),
+            ]
+          : r.content,
+        is_error: r.isError,
+      })),
     };
   if (m.raw?.kind === "anthropic") return { role: "assistant", content: m.raw.content as BlockParam[] };
   // Turn written by another provider earlier in the chat.
