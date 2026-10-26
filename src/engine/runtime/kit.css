@@ -1,0 +1,64 @@
+/* CardForge engine UI kit: every engine screen styles itself from the card theme's variables. */
+.cf, .cf * { box-sizing: border-box; }
+.cf { font-family: var(--cf-font); color: var(--cf-text); font-size: calc(14px * var(--cf-scale, 1)); line-height: 1.45; -webkit-text-size-adjust: 100%; }
+.cf h1, .cf h2, .cf h3 { font-family: var(--cf-heading); margin: 0; line-height: 1.2; }
+.cf h1 { font-size: 1.3em; } .cf h2 { font-size: 1.12em; } .cf h3 { font-size: 1em; }
+.cf p { margin: 0; }
+.cf-card { background-color: var(--cf-surface); background-image: var(--cf-texture); border: 1px solid var(--cf-border); border-radius: var(--cf-radius); box-shadow: var(--cf-shadow); padding: 10px 12px; }
+.cf-stack { display: flex; flex-direction: column; gap: 8px; }
+.cf-row { display: flex; align-items: center; gap: 8px; }
+.cf-spread { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cf-muted { color: var(--cf-muted); }
+.cf-small { font-size: 0.85em; }
+.cf-label { font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cf-muted); }
+.cf-btn { font: inherit; color: var(--cf-text); background: var(--cf-surface2); border: 1px solid var(--cf-border); border-radius: var(--cf-radius); padding: 6px 12px; min-height: 36px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.cf-btn:hover { border-color: var(--cf-accent); }
+.cf-btn:focus-visible, .cf-tab:focus-visible, .cf-input:focus-visible { outline: 2px solid var(--cf-accent2); outline-offset: 1px; }
+.cf-btn.primary { background: var(--cf-accent); border-color: var(--cf-accent); color: #fff; }
+.cf-btn.ghost { background: transparent; border-color: transparent; }
+.cf-btn[disabled] { opacity: 0.45; cursor: default; }
+.cf-input, .cf select.cf-input { font: inherit; color: var(--cf-text); background: var(--cf-bg); border: 1px solid var(--cf-border); border-radius: var(--cf-radius); padding: 6px 8px; min-height: 36px; width: 100%; }
+.cf-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8em; border-radius: 999px; padding: 1px 8px; background: color-mix(in srgb, var(--cf-accent) 18%, transparent); }
+.cf-delta { font-size: 0.75em; border-radius: 999px; padding: 0 6px; background: color-mix(in srgb, var(--cf-accent) 22%, transparent); }
+.cf-delta.up { background: color-mix(in srgb, var(--cf-good) 28%, transparent); }
+.cf-delta.down { background: color-mix(in srgb, var(--cf-bad) 28%, transparent); }
+/* Meter */
+.cf-meter { display: flex; flex-direction: column; gap: 3px; }
+.cf-meter-head { display: flex; align-items: baseline; gap: 6px; }
+.cf-meter-value { margin-left: auto; font-variant-numeric: tabular-nums; }
+.cf-meter-track { height: 7px; border-radius: 999px; background: color-mix(in srgb, var(--cf-muted) 25%, transparent); overflow: hidden; }
+.cf-meter-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--cf-accent), var(--cf-accent2)); transition: width 0.5s ease; }
+.cf-meter.flash .cf-meter-fill { animation: cf-flash 0.9s ease; }
+@keyframes cf-flash { 0%, 100% { filter: none; } 40% { filter: brightness(1.6); } }
+/* Stat grid */
+.cf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.cf-stat { background: var(--cf-surface2); border-radius: var(--cf-radius); padding: 6px 8px; display: flex; flex-direction: column; }
+.cf-stat b { font-size: 1.1em; font-variant-numeric: tabular-nums; }
+/* Tabs */
+.cf-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--cf-border); overflow-x: auto; scrollbar-width: none; }
+.cf-tab { font: inherit; color: var(--cf-muted); background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 10px; min-height: 34px; cursor: pointer; white-space: nowrap; }
+.cf-tab[aria-selected="true"] { color: var(--cf-accent); border-bottom-color: var(--cf-accent); }
+.cf-tabpanel[hidden] { display: none; }
+/* Lists */
+.cf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.cf-item { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid color-mix(in srgb, var(--cf-border) 60%, transparent); }
+.cf-item:last-child { border-bottom: 0; }
+/* Avatar and icons */
+.cf-avatar { width: 36px; height: 36px; border-radius: 50%; flex: none; background: var(--cf-surface2) center / cover no-repeat; display: grid; place-items: center; font-weight: 600; color: var(--cf-accent); overflow: hidden; }
+.cf-icon { width: 1.1em; height: 1.1em; flex: none; vertical-align: -0.15em; }
+/* Chat bubbles */
+.cf-bubbles { display: flex; flex-direction: column; gap: 6px; }
+.cf-bubble { max-width: 80%; padding: 6px 10px; border-radius: 16px; background: var(--cf-surface2); align-self: flex-start; }
+.cf-bubble.me { align-self: flex-end; background: var(--cf-accent); color: #fff; }
+/* App shell */
+.cf-app { display: flex; flex-direction: column; min-height: 100%; background-color: var(--cf-bg); background-image: var(--cf-texture); }
+.cf-appbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--cf-border); background: var(--cf-surface); position: sticky; top: 0; z-index: 1; }
+.cf-appbar h1 { flex: 1; font-size: 1.05em; }
+.cf-appbody { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+/* Modal and toast */
+.cf-modal-back { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); display: grid; place-items: center; padding: 16px; z-index: 20; }
+.cf-modal { max-width: 420px; width: 100%; }
+.cf-toasts { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 30; pointer-events: none; }
+.cf-toast { background: var(--cf-surface); color: var(--cf-text); border: 1px solid var(--cf-border); border-left: 4px solid var(--cf-accent); border-radius: var(--cf-radius); box-shadow: var(--cf-shadow); padding: 6px 12px; animation: cf-in 0.25s ease; }
+@keyframes cf-in { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .cf-meter-fill, .cf-toast, .cf-meter.flash .cf-meter-fill { transition: none; animation: none; } }

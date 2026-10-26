@@ -15,8 +15,12 @@ import type { CardDataV3, Lorebook, LorebookEntry } from "../card";
 import { emptyBook, newEntry, withStPosition } from "../editor/lorebook";
 import { stageRanges, type SillyTavernRegex, type TrackerConfig } from "../editor/trackers";
 import { newId } from "../lib/id";
-import { ENGINE_VERSION, runtime, scriptSource, type StateSchema } from "./runtime";
+import { coreModules, effectiveConfig, enabledModules, moduleRegex, moduleRuntime } from "./modules/compile";
+import type { EngineModule } from "./modules/types";
 import { panelHtml } from "./panel";
+import { ENGINE_VERSION, runtime, scriptSource, type StateSchema } from "./runtime";
+import kitCss from "./runtime/kit.css?raw";
+import { newTheme, themeBundle, themeVars, type CardTheme } from "./theme";
 
 export type VarType = "number" | "text" | "toggle" | "choice" | "list" | "counts";
 
@@ -61,6 +65,10 @@ export interface EngineConfig {
   regexIds: string[];
   /** The sandbox's test turns, replayed after each change. */
   scenario?: ScenarioTurn[];
+  /** Installed modules, the core ones included. Missing on cards from before modules. */
+  modules?: EngineModule[];
+  /** The card theme. Missing on cards from before themes: the panel's accent on the phone preset. */
+  theme?: CardTheme;
 }
 
 export interface ScenarioTurn {
@@ -84,7 +92,12 @@ export const newEngine = (): EngineConfig => ({
   reminder: true,
   scriptId: newId(),
   regexIds: [],
+  modules: coreModules(),
+  theme: newTheme(),
 });
+
+/** The card theme, or the one a card from before themes gets. */
+export const themeOf = (config: EngineConfig): CardTheme => config.theme ?? newTheme(config.panel.accent);
 
 export const newVar = (fields: Partial<EngineVar> = {}): EngineVar => ({
   id: newId(),
@@ -272,22 +285,48 @@ export const REMINDER_TEXT =
 /** The starting values as YAML, for the `[initvar]` entry. */
 export const initvarText = (config: EngineConfig) => runtime.cfYaml(initialState(config));
 
-/** The card settings the engine core reads: starting values and schema. */
-export function settingsSource(config: EngineConfig): string {
-  const settings = { version: ENGINE_VERSION, initial: initialState(config), panel: config.panel.enabled };
-  return `var CF_CONFIG = ${JSON.stringify(settings)};\n${schemaSource(config)}`;
+/** JSON that can sit inside a script element. */
+const scriptJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+
+/** The card settings the engine core reads: starting values, schema, modules, theme and kit. */
+export function settingsSource(config: EngineConfig, charName = ""): string {
+  const full = effectiveConfig(config);
+  const theme = themeBundle(themeOf(config));
+  const settings = {
+    version: ENGINE_VERSION,
+    initial: initialState(full),
+    panel: config.panel.enabled,
+    panelTitle: config.panel.title || "Status",
+    panelDoc: config.panel.enabled ? panelHtml(config) : "",
+    statusButton: `📊 ${config.panel.title || "Status"}`,
+    theme: { preset: theme.preset, mode: theme.mode, light: themeVars(theme.light), dark: themeVars(theme.dark) },
+    kit: kitCss,
+    modules: moduleRuntime(config),
+    charName,
+  };
+  return `var CF_CONFIG = ${scriptJson(settings)};\n${schemaSource(full)}`;
+}
+
+/** The hub buttons above SillyTavern's input box. */
+export function hubButtons(config: EngineConfig): string[] {
+  return [
+    ...(config.panel.enabled ? [`📊 ${config.panel.title || "Status"}`] : []),
+    ...enabledModules(config)
+      .filter((m) => m.slot === "overlay" && m.button?.trim())
+      .map((m) => m.button!.trim()),
+  ];
 }
 
 /** Tavern Helper's card script, in its v4 storage format. */
-export function tavernHelperScript(config: EngineConfig) {
+export function tavernHelperScript(config: EngineConfig, charName = "") {
   return {
     type: "script",
     enabled: true,
     name: "CardForge engine",
     id: config.scriptId,
-    content: scriptSource(settingsSource(config)),
-    info: `CardForge engine ${ENGINE_VERSION}: keeps the game state up to date after each reply. Made with CardForge.`,
-    button: { enabled: true, buttons: [] },
+    content: scriptSource(settingsSource(config, charName)),
+    info: `CardForge engine ${ENGINE_VERSION}: keeps the game state up to date after each reply, and runs the card's screens. Made with CardForge.`,
+    button: { enabled: true, buttons: hubButtons(config).map((name) => ({ name, visible: true })) },
     data: {},
     export_with: { data: true, button: true },
   };
@@ -298,7 +337,9 @@ const UPDATE_BLOCK = "/<UpdateVariable>[\\s\\S]*?<\\/UpdateVariable>|<initvar>[\
 
 /** Regex scripts: hide update blocks, keep them out of the prompt, and show the panel. */
 export function engineRegex(config: EngineConfig): SillyTavernRegex[] {
-  const ids = [0, 1, 2, 3].map((i) => config.regexIds[i] ?? newId());
+  // Module regex ids start with "cf-" and are their own.
+  const own = config.regexIds.filter((id) => !id.startsWith("cf-"));
+  const ids = [0, 1, 2, 3].map((i) => own[i] ?? newId());
   const base = { trimStrings: [], disabled: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null };
   const scripts: SillyTavernRegex[] = [
     {
@@ -364,8 +405,9 @@ type ScriptTree = { id?: string } & Record<string, unknown>;
 export function applyEngine(data: CardDataV3, config: EngineConfig | undefined): CardDataV3 {
   const old = readEngine(data);
   const oldRegex = new Set(old?.regexIds ?? []);
-  const regex = config ? engineRegex(config) : [];
+  const regex = config ? [...engineRegex(config), ...moduleRegex(config)] : [];
   const saved = config ? { ...config, regexIds: regex.map((s) => s.id) } : undefined;
+  const full = saved && effectiveConfig(saved);
 
   const otherRegex = ((data.extensions.regex_scripts as SillyTavernRegex[] | undefined) ?? []).filter((s) => !oldRegex.has(s.id));
   const helper = { ...(data.extensions.tavern_helper as { scripts?: ScriptTree[]; variables?: Record<string, unknown> } | undefined) };
@@ -374,7 +416,7 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
   const book: Lorebook = data.character_book ?? emptyBook();
   const kept = book.entries.filter((e) => !isOurs(e));
   const ours: LorebookEntry[] = [];
-  if (saved && live(saved).length) {
+  if (saved && full && live(saved).length + enabledModules(saved).length > 0) {
     const draft = { ...book, entries: kept };
     const add = (e: LorebookEntry) => {
       ours.push(e);
@@ -385,7 +427,7 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
       newEntry(draft, {
         comment: "[initvar] Starting values",
         enabled: false,
-        content: initvarText(saved),
+        content: initvarText(full),
         extensions: mark,
       }),
     );
@@ -395,13 +437,25 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
           comment: "[mvu_update] Update rules",
           constant: true,
           insertion_order: 900,
-          content: rulesText(saved),
+          content: rulesText(full),
           extensions: mark,
         }),
         1,
       ),
     );
     add(atDepth(newEntry(draft, { comment: "Game state", constant: true, insertion_order: 950, content: STATE_TEXT, extensions: mark }), 1));
+    for (const m of enabledModules(saved))
+      for (const rule of m.rules) {
+        const entry = newEntry(draft, {
+          comment: `[${m.name}] ${rule.comment}`,
+          constant: rule.constant,
+          keys: rule.keys,
+          insertion_order: rule.order,
+          content: rule.content,
+          extensions: mark,
+        });
+        add(rule.depth === undefined ? withStPosition(entry, 1) : atDepth(entry, rule.depth));
+      }
     if (saved.reminder)
       add(
         atDepth(
@@ -422,7 +476,7 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
   if (allRegex.length) extensions.regex_scripts = allRegex;
   else delete extensions.regex_scripts;
 
-  const scripts = saved ? [...otherScripts, tavernHelperScript(saved)] : otherScripts;
+  const scripts = saved ? [...otherScripts, tavernHelperScript(saved, data.name)] : otherScripts;
   if (scripts.length || Object.keys(helper.variables ?? {}).length) extensions.tavern_helper = { ...helper, scripts, variables: helper.variables ?? {} };
   else delete extensions.tavern_helper;
 

@@ -10,7 +10,8 @@
  * the code block's text, which decodes them.
  */
 import type { EngineConfig } from "./sheet";
-import { varPath } from "./sheet";
+import { themeOf, varPath } from "./sheet";
+import { themeTokens } from "./theme";
 
 /** JSON that is safe inside a regex replacement. */
 const safeJson = (value: unknown) => JSON.stringify(value).replace(/\$/g, "\\u0024").replace(/\{\{/g, "{\\u007b");
@@ -34,7 +35,7 @@ export function panelFields(config: EngineConfig) {
 
 const SCRIPT = `
 (function () {
-  var root = document.getElementById("cf-panel");
+  var root = document.getElementById("cf-stats");
   // Text only, never attributes. No entity literals here: Tavern Helper reads this script back
   // from a code block, which turns them into the characters they stand for.
   function esc(s) {
@@ -80,12 +81,19 @@ const SCRIPT = `
     return '<div class="cf-f">' + head + "</div>";
   }
   var open = false;
-  function draw() {
-    var data = {};
+  var CF = null;
+  var app = null;
+  function data() {
+    if (app) return { stat_data: app.state(), delta_data: app.delta() };
     try {
-      data = Mvu.getMvuData({ type: "message", message_id: getCurrentMessageId() }) || {};
-    } catch (e) {}
-    var stat = data.stat_data;
+      return Mvu.getMvuData({ type: "message", message_id: getCurrentMessageId() }) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function draw() {
+    var d = data();
+    var stat = d.stat_data;
     if (!stat) {
       root.innerHTML = '<div class="cf-empty">No game state on this message yet.</div>';
       return;
@@ -99,26 +107,53 @@ const SCRIPT = `
       shown
         .map(function (f, i) {
           var group = f.group && (i === 0 || shown[i - 1].group !== f.group) ? '<div class="cf-g">' + esc(f.group) + "</div>" : "";
-          return group + row(f, stat, data.delta_data);
+          return group + row(f, stat, d.delta_data);
         })
         .join("");
     var button = document.getElementById("cf-more");
     if (button) button.onclick = function () { open = !open; draw(); };
   }
-  try {
-    var color = getComputedStyle(window.parent.document.body).color;
-    if (color) document.body.style.color = color;
-  } catch (e) {}
-  if (typeof waitGlobalInitialized === "function") waitGlobalInitialized("Mvu").then(draw);
-  else draw();
+  function core() {
+    try {
+      return window.CardForge || window.parent.CardForge || null;
+    } catch (e) {
+      return null;
+    }
+  }
+  // With the engine core: the card theme, module sections (like the clock) and live updates.
+  function start(found) {
+    CF = found;
+    app = CF.frame(window);
+    open = !app.settings().compact;
+    CF.mountSlot(window, "panel", document.getElementById("cf-slots"), { app: app });
+    draw();
+    app.onState(draw);
+    app.on("settings", function (s) { open = !s.compact; draw(); });
+  }
+  var tries = 0;
+  (function wait() {
+    var found = core();
+    if (found) return start(found);
+    if (typeof Mvu !== "undefined" || tries > 50) {
+      try {
+        var color = getComputedStyle(window.parent.document.body).color;
+        if (color) document.body.style.color = color;
+      } catch (e) {}
+      return draw();
+    }
+    tries++;
+    setTimeout(wait, 100);
+  })();
 })();
 `;
 
 const STYLE = `
 body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: transparent; }
-#cf-panel { border: 1px solid color-mix(in srgb, var(--cf-accent) 45%, transparent); background: color-mix(in srgb, var(--cf-accent) 9%, transparent); border-radius: 12px; padding: 8px 12px; }
+body.cf { font-family: var(--cf-font); font-size: calc(14px * var(--cf-scale, 1)); color: var(--cf-text); }
+#cf-panel { border: 1px solid var(--cf-border, color-mix(in srgb, var(--cf-accent) 45%, transparent)); background-color: var(--cf-surface, color-mix(in srgb, var(--cf-accent) 9%, transparent)); background-image: var(--cf-texture, none); border-radius: var(--cf-radius, 12px); box-shadow: var(--cf-shadow, none); padding: 8px 12px; }
+#cf-slots:empty { display: none; }
 .cf-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
-.cf-head b { color: var(--cf-accent); font-weight: 600; }
+.cf-head b { color: var(--cf-accent); font-weight: 600; font-family: var(--cf-heading, inherit); }
 .cf-head button { font: inherit; font-size: 12px; color: inherit; background: none; border: 1px solid color-mix(in srgb, var(--cf-accent) 45%, transparent); border-radius: 999px; padding: 4px 10px; min-height: 28px; cursor: pointer; }
 .cf-g { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; opacity: .6; margin-top: 6px; }
 .cf-f { padding: 3px 0; }
@@ -126,21 +161,22 @@ body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: transparent;
 .cf-l { opacity: .75; }
 .cf-v { margin-left: auto; text-align: right; }
 .cf-d { font-size: 11px; border-radius: 999px; padding: 0 6px; background: color-mix(in srgb, var(--cf-accent) 25%, transparent); }
-.cf-d.up { background: rgba(34, 197, 94, .25); }
-.cf-d.down { background: rgba(239, 68, 68, .25); }
+.cf-d.up { background: color-mix(in srgb, var(--cf-good, #22c55e) 28%, transparent); }
+.cf-d.down { background: color-mix(in srgb, var(--cf-bad, #ef4444) 28%, transparent); }
 .cf-bar { height: 6px; border-radius: 3px; background: rgba(127, 127, 127, .25); overflow: hidden; margin-top: 3px; }
-.cf-bar i { display: block; height: 6px; border-radius: 3px; background: var(--cf-accent); transition: width .4s; }
+.cf-bar i { display: block; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--cf-accent), var(--cf-accent2, var(--cf-accent))); transition: width .4s; }
 .cf-empty { opacity: .7; font-size: 13px; }
 `;
 
 /** The panel document. */
 export function panelHtml(config: EngineConfig): string {
-  const accent = /^#[0-9a-f]{3,8}$/i.test(config.panel.accent) ? config.panel.accent : "#a78bfa";
+  // Only the accent as a fallback: with the engine core, the card theme's variables take over.
+  const accent = themeTokens(themeOf(config)).accent;
   return [
     "<!DOCTYPE html>",
     '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<style>:root { --cf-accent: ${accent}; }${STYLE.replace(/\s*\n\s*/g, " ")}</style>`,
-    '</head><body><div id="cf-panel"></div>',
+    `<style>html { --cf-accent: ${accent}; }${STYLE.replace(/\s*\n\s*/g, " ")}</style>`,
+    '</head><body><div id="cf-panel"><div id="cf-slots"></div><div id="cf-stats"></div></div>',
     `<script>var FIELDS = ${safeJson(panelFields(config))}; var TITLE = ${safeJson(config.panel.title || "Status")};${SCRIPT}</script>`,
     "</body></html>",
   ].join("\n");

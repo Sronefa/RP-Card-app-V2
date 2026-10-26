@@ -159,4 +159,5 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 17. Quality of life: personas built from a card (done)
 18. Immersive Engine foundation: variable sheet, MVU-compatible updater, status panel (Tavern Helper) (done)
 19. Engine sandbox: offline fake SillyTavern with a mock Tavern Helper, state inspector, scenario runner (done)
-20–27. Immersive Engine v1: modules, UI engineer, screens, playtest, parts browser, kits
+20. Engine modules: module format, library and pack files, card theme with 5 presets, hub buttons, core modules for in-game time and the player settings app (done)
+21–27. Immersive Engine v1: UI engineer, screens, playtest, parts browser, kits
