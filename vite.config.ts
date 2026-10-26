@@ -3,12 +3,36 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+import { rolldown } from "rolldown";
+import type { Plugin } from "vite";
 
 const host = process.env.TAURI_DEV_HOST;
 
+/**
+ * `virtual:sandbox-libs`: lodash, YAML and Zod bundled into one script the engine sandbox runs
+ * inside its iframe, the way Tavern Helper offers them to the iframes it makes in SillyTavern.
+ */
+function sandboxLibs(): Plugin {
+  const id = "virtual:sandbox-libs";
+  const entry = fileURLToPath(new URL("./src/engine/sandbox/libs.js", import.meta.url));
+  return {
+    name: "cardforge-sandbox-libs",
+    resolveId: (source) => (source === id ? "\0" + id : undefined),
+    async load(resolved) {
+      if (resolved !== "\0" + id) return;
+      const bundle = await rolldown({ input: entry, logLevel: "silent" });
+      const { output } = await bundle.generate({ format: "iife", minify: true });
+      await bundle.close();
+      this.addWatchFile(entry);
+      return `export default ${JSON.stringify(output[0].code)};`;
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), sandboxLibs()],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

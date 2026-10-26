@@ -1,0 +1,1264 @@
+// CardForge sandbox: a small stand-in for SillyTavern with Tavern Helper, run inside a sandboxed
+// iframe that can't reach the network.
+//
+// It keeps a chat the way SillyTavern does (messages with swipes, variables per swipe), renders it
+// with the card's regex and Tavern Helper's rule for frontends (a code block holding an HTML
+// document becomes an iframe), and runs the card's Tavern Helper scripts in hidden iframes. Every
+// iframe gets the Tavern Helper functions, bound to that iframe, under the same names and with the
+// same behaviour as the real ones, so code that runs here runs in SillyTavern.
+//
+// It reports to CardForge (the parent window) by postMessage: the chat and its variables, the
+// action log, and errors. CardForge drives it with commands: send, reply, swipe, edit, rewind,
+// set variables, run a scenario.
+//
+// Reads `CF_SANDBOX` (the card, written by CardForge) and `CF_LIBS` (jQuery and Vue sources).
+// Never write the closing script tag literally in this file: it is inlined in a script element.
+(function () {
+  "use strict";
+  var config = window.CF_SANDBOX;
+  var card = config.card;
+  var USER = config.user || "You";
+  var CHAR = card.name || "Character";
+  var ST_VERSION = "1.16.0";
+
+  // ---------------------------------------------------------------- reporting to CardForge
+
+  function post(message) {
+    try {
+      window.parent.postMessage({ cfSandbox: JSON.parse(JSON.stringify(message)) }, "*");
+    } catch (e) {
+      window.parent.postMessage({ cfSandbox: { kind: "log", source: "sandbox", action: "unreportable", detail: String(e) } }, "*");
+    }
+  }
+
+  function short(value) {
+    var text;
+    try {
+      text = typeof value === "string" ? value : JSON.stringify(value);
+    } catch (e) {
+      text = String(value);
+    }
+    return text && text.length > 400 ? text.slice(0, 400) + "…" : text;
+  }
+
+  function log(source, action, detail) {
+    post({ kind: "log", source: source, action: action, detail: detail === undefined ? "" : short(detail) });
+  }
+
+  /** Frames by window, with their name and source, for error reports and cleanup. */
+  var frames = [];
+  function frameOf(win) {
+    for (var i = 0; i < frames.length; i++) if (frames[i].win === win) return frames[i];
+    return null;
+  }
+  function sourceName(win) {
+    if (!win || win === window) return "sandbox";
+    var frame = frameOf(win);
+    return frame ? frame.name : "iframe";
+  }
+
+  function reportError(win, message, line, column, stack) {
+    var frame = frameOf(win);
+    var code = "";
+    if (frame && line) code = (frame.source.split("\n")[line - 1] || "").trim().slice(0, 300);
+    post({
+      kind: "error",
+      source: sourceName(win),
+      message: String(message),
+      line: line || 0,
+      column: column || 0,
+      code: code,
+      stack: stack ? String(stack).split("\n").slice(0, 6).join("\n") : "",
+    });
+  }
+
+  var stateQueued = false;
+  function postState() {
+    if (stateQueued) return;
+    stateQueued = true;
+    setTimeout(function () {
+      stateQueued = false;
+      post({
+        kind: "state",
+        chat: chat.map(function (m, i) {
+          return {
+            id: i,
+            role: roleOf(m),
+            name: m.name,
+            message: m.mes,
+            swipe_id: m.swipe_id || 0,
+            swipes: (m.swipes || [m.mes]).length,
+            variables: (m.variables || [])[m.swipe_id || 0] || {},
+          };
+        }),
+        chatVariables: chatVariables,
+        schema: Object.keys(schemas),
+      });
+    }, 0);
+  }
+
+  // ---------------------------------------------------------------- chat model (SillyTavern's shape)
+
+  var chat = [];
+  var chatVariables = {};
+  var characterVariables = {};
+  var globalVariables = {};
+  var scriptVariables = {};
+  var schemas = {};
+  var globals = {};
+
+  function roleOf(m) {
+    return m.is_user ? "user" : m.is_system ? "system" : "assistant";
+  }
+
+  function newMessage(role, text, name) {
+    return {
+      name: name || (role === "user" ? USER : role === "system" ? "System" : CHAR),
+      is_user: role === "user",
+      is_system: role === "system",
+      mes: text,
+      swipes: [text],
+      swipe_id: 0,
+      variables: [{}],
+      extra: {},
+      data: {},
+    };
+  }
+
+  function setText(m, text) {
+    m.mes = text;
+    if (!m.swipes) m.swipes = [text];
+    m.swipes[m.swipe_id || 0] = text;
+  }
+
+  function messageIndex(id) {
+    var n = Number(id);
+    if (!Number.isInteger(n)) throw new Error("Message id must be a whole number, got '" + id + "'.");
+    if (n < 0) n += chat.length;
+    if (n < 0 || n >= chat.length) throw new Error("Message " + id + " is outside [" + -chat.length + ", " + chat.length + ").");
+    return n;
+  }
+
+  function varsOf(m) {
+    if (!m.variables) m.variables = [];
+    var swipe = m.swipe_id || 0;
+    if (!m.variables[swipe]) m.variables[swipe] = {};
+    return m.variables[swipe];
+  }
+
+  function clone(value) {
+    return value === undefined ? undefined : _.cloneDeep(value);
+  }
+
+  // ---------------------------------------------------------------- events (SillyTavern's eventSource)
+
+  var tavern_events = {
+    APP_READY: "app_ready",
+    MESSAGE_SWIPED: "message_swiped",
+    MESSAGE_SENT: "message_sent",
+    MESSAGE_RECEIVED: "message_received",
+    MESSAGE_EDITED: "message_edited",
+    MESSAGE_DELETED: "message_deleted",
+    MESSAGE_UPDATED: "message_updated",
+    CHAT_CHANGED: "chat_id_changed",
+    GENERATION_AFTER_COMMANDS: "GENERATION_AFTER_COMMANDS",
+    GENERATION_STARTED: "generation_started",
+    GENERATION_STOPPED: "generation_stopped",
+    GENERATION_ENDED: "generation_ended",
+    USER_MESSAGE_RENDERED: "user_message_rendered",
+    CHARACTER_MESSAGE_RENDERED: "character_message_rendered",
+    CHARACTER_FIRST_MESSAGE_SELECTED: "character_first_message_selected",
+    WORLD_INFO_ACTIVATED: "world_info_activated",
+    STREAM_TOKEN_RECEIVED: "stream_token_received",
+    CHAT_COMPLETION_PROMPT_READY: "chat_completion_prompt_ready",
+    SETTINGS_UPDATED: "settings_updated",
+  };
+  var iframe_events = {
+    MESSAGE_IFRAME_RENDER_STARTED: "message_iframe_render_started",
+    MESSAGE_IFRAME_RENDER_ENDED: "message_iframe_render_ended",
+    GENERATION_REQUESTED: "js_generation_requested",
+    GENERATION_STARTED: "js_generation_started",
+    STREAM_TOKEN_RECEIVED_FULLY: "js_stream_token_received_fully",
+    STREAM_TOKEN_RECEIVED_INCREMENTALLY: "js_stream_token_received_incrementally",
+    GENERATION_ENDED: "js_generation_ended",
+  };
+
+  /** listeners[event] = [{ fn, win, once }] */
+  var listeners = {};
+
+  function on(win, event, fn, once, first) {
+    if (typeof fn !== "function") throw new TypeError("eventOn needs a function for '" + event + "'.");
+    var list = (listeners[event] = listeners[event] || []);
+    if (list.some(function (l) { return l.fn === fn; })) return;
+    var entry = { fn: fn, win: win, once: !!once };
+    if (first) list.unshift(entry);
+    else list.push(entry);
+  }
+
+  function off(event, fn) {
+    if (!listeners[event]) return;
+    listeners[event] = listeners[event].filter(function (l) { return l.fn !== fn; });
+  }
+
+  /** Calls each listener in turn and waits for it, as SillyTavern's eventSource.emit does. */
+  async function emit(event) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    var list = (listeners[event] || []).slice();
+    for (var i = 0; i < list.length; i++) {
+      var l = list[i];
+      if (l.once) off(event, l.fn);
+      try {
+        await l.fn.apply(null, args);
+      } catch (e) {
+        reportError(l.win, "Listener for '" + event + "' failed: " + (e && e.message ? e.message : e), 0, 0, e && e.stack);
+      }
+    }
+  }
+
+  function clearFrameListeners(win) {
+    Object.keys(listeners).forEach(function (event) {
+      listeners[event] = listeners[event].filter(function (l) { return l.win !== win; });
+    });
+  }
+
+  // ---------------------------------------------------------------- the card's worldbook and regex
+
+  function substitute(text) {
+    return String(text)
+      .replace(/\{\{char\}\}/gi, CHAR)
+      .replace(/\{\{user\}\}/gi, USER)
+      .replace(/<USER>/g, USER)
+      .replace(/<BOT>/g, CHAR);
+  }
+
+  function parseRegex(source) {
+    var match = /^\/([\s\S]*)\/([a-z]*)$/.exec(source || "");
+    try {
+      return match ? new RegExp(match[1], match[2]) : new RegExp(source, "g");
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** Display-side regex, as SillyTavern runs it on a message before markdown. */
+  function runRegex(text, message, depth) {
+    (card.regex || []).forEach(function (script) {
+      if (script.disabled || script.promptOnly) return;
+      var placement = script.placement || [];
+      if (placement.indexOf(message.is_user ? 1 : 2) < 0) return;
+      if (typeof script.minDepth === "number" && script.minDepth >= 0 && depth < script.minDepth) return;
+      if (typeof script.maxDepth === "number" && script.maxDepth >= 0 && depth > script.maxDepth) return;
+      var re = parseRegex(script.findRegex);
+      if (!re) return;
+      text = text.replace(re, function () {
+        var args = Array.prototype.slice.call(arguments);
+        var named = typeof args[args.length - 1] === "object" ? args.pop() : null;
+        var groups = args.slice(0, -2);
+        var out = String(script.replaceString || "")
+          .replace(/\{\{match\}\}/gi, groups[0])
+          .replace(/\$(\d+)|\$<([^>]+)>/g, function (all, n, name) {
+            var value = n !== undefined ? groups[Number(n)] : named ? named[name] : "";
+            return value === undefined ? "" : value;
+          });
+        (script.trimStrings || []).forEach(function (t) {
+          if (t) out = out.split(substitute(t)).join("");
+        });
+        return substitute(out);
+      });
+    });
+    return text;
+  }
+
+  function worldbookEntries() {
+    return (card.book || []).map(function (e, i) {
+      return {
+        uid: i,
+        name: e.comment || "",
+        enabled: e.enabled !== false,
+        strategy: { type: e.constant ? "constant" : "selective", keys: e.keys || [], keys_secondary: { logic: "and_any", keys: e.secondary_keys || [] }, scan_depth: "same_as_global" },
+        position: { type: "at_depth", role: "system", depth: e.depth == null ? 4 : e.depth, order: e.insertion_order || 100 },
+        content: e.content || "",
+        probability: 100,
+        recursion: { prevent_incoming: false, prevent_outgoing: false, delay_until: null },
+        effect: { sticky: null, cooldown: null, delay: null },
+        extra: {},
+      };
+    });
+  }
+
+  // ---------------------------------------------------------------- rendering (SillyTavern + Tavern Helper)
+
+  function escapeHtml(text) {
+    var div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /** Tavern Helper's rule: a code block holding an HTML document is a frontend, shown in an iframe. */
+  function isFrontend(text) {
+    return ["html>", "<head>", "<body"].some(function (tag) { return text.indexOf(tag) >= 0; });
+  }
+
+  /** SillyTavern sanitizes message HTML: no scripts, no inline handlers, no iframes of its own. */
+  function sanitize(root) {
+    root.querySelectorAll("script, iframe, object, embed, link, meta, base").forEach(function (el) { el.remove(); });
+    root.querySelectorAll("*").forEach(function (el) {
+      Array.prototype.slice.call(el.attributes).forEach(function (a) {
+        if (/^on/i.test(a.name) || /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name);
+      });
+    });
+  }
+
+  /** The small part of SillyTavern's markdown that changes how a reply looks: emphasis and quotes. */
+  function markdown(root) {
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    var nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (node) {
+      if (node.parentElement && node.parentElement.closest("pre, code, style, textarea")) return;
+      var html = escapeHtml(node.nodeValue)
+        .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+        .replace(/(^|[\s(>])(&quot;|"|“)([^"”\n]+)("|”|&quot;)/g, '$1<q>$2$3$4</q>')
+        .replace(/\n/g, "<br>");
+      if (html === escapeHtml(node.nodeValue)) return;
+      var span = document.createElement("span");
+      span.innerHTML = html;
+      node.replaceWith.apply(node, Array.prototype.slice.call(span.childNodes));
+    });
+  }
+
+  function messageFrames(id) {
+    return frames.filter(function (f) { return f.messageId === id; });
+  }
+
+  function dropFrame(frame) {
+    try {
+      frame.win.dispatchEvent(new Event("pagehide"));
+    } catch (e) {}
+    clearFrameListeners(frame.win);
+    frames.splice(frames.indexOf(frame), 1);
+    if (frame.element && frame.element.parentNode) frame.element.remove();
+  }
+
+  var chatElement;
+
+  function renderMessage(id) {
+    var m = chat[id];
+    var block = chatElement.querySelector('.mes[mesid="' + id + '"]');
+    messageFrames(id).forEach(dropFrame);
+    if (!block) {
+      block = document.createElement("div");
+      block.className = "mes";
+      block.setAttribute("mesid", String(id));
+      block.innerHTML =
+        '<div class="mes_avatar"></div><div class="mes_block"><div class="ch_name"><span class="name_text"></span><small class="mesIDDisplay"></small><span class="swipes-counter"></span></div><div class="mes_text"></div></div>';
+      chatElement.appendChild(block);
+    }
+    block.classList.toggle("is_user", !!m.is_user);
+    block.setAttribute("is_user", String(!!m.is_user));
+    block.querySelector(".mes_avatar").textContent = (m.name || "?").slice(0, 1).toUpperCase();
+    block.querySelector(".name_text").textContent = m.name;
+    block.querySelector(".mesIDDisplay").textContent = "#" + id;
+    var swipes = (m.swipes || []).length;
+    block.querySelector(".swipes-counter").textContent = swipes > 1 ? (m.swipe_id || 0) + 1 + "/" + swipes : "";
+    var textElement = block.querySelector(".mes_text");
+    textElement.innerHTML = formatMessage(id);
+    textElement.querySelectorAll("pre[data-frontend]").forEach(function (pre, n) {
+      mountMessageFrame(id, n, pre);
+    });
+  }
+
+  /** The message as SillyTavern would display it, frontends left as marked code blocks. */
+  function formatMessage(id) {
+    var m = chat[id];
+    var depth = chat.length - 1 - id;
+    var text = runRegex(substitute(m.mes || ""), m, depth);
+    var parts = text.split(/(```[^\n`]*\n[\s\S]*?```)/g);
+    var holder = document.createElement("div");
+    var frontends = [];
+    holder.innerHTML = parts
+      .map(function (part) {
+        var fence = /^```[^\n`]*\n([\s\S]*?)```$/.exec(part);
+        if (!fence) return part;
+        if (isFrontend(fence[1])) {
+          frontends.push(fence[1]);
+          return '<pre data-frontend="' + (frontends.length - 1) + '"></pre>';
+        }
+        return "<pre><code>" + escapeHtml(fence[1]) + "</code></pre>";
+      })
+      .join("");
+    sanitize(holder);
+    markdown(holder);
+    holder.querySelectorAll("pre[data-frontend]").forEach(function (pre) {
+      pre.textContent = frontends[Number(pre.getAttribute("data-frontend"))];
+    });
+    return holder.innerHTML;
+  }
+
+  /** min-height in vh would grow an auto-height iframe forever; Tavern Helper maps it to the chat's height. */
+  function fixViewportHeight(content) {
+    return content.replace(/(min-height\s*:\s*)(\d+(?:\.\d+)?)vh/gi, function (all, prefix, value) {
+      return prefix + "calc(var(--TH-viewport-height) * " + Number(value) / 100 + ")";
+    });
+  }
+
+  var FRAME_HEAD =
+    '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    "<style>*,*::before,*::after{box-sizing:border-box;}html,body{margin:0!important;padding:0;overflow:hidden!important;max-width:100%!important;}</style>";
+
+  function frameDocument(kind, body) {
+    return (
+      "<!DOCTYPE html>\n<html>\n<head>\n" +
+      FRAME_HEAD +
+      "\n<script>parent.CF_INSTALL(window, " + JSON.stringify(kind) + ");<\/script>\n</head>\n<body>\n" +
+      body +
+      "\n</body>\n</html>\n"
+    );
+  }
+
+  function mountMessageFrame(id, n, pre) {
+    var content = pre.textContent;
+    var iframe = document.createElement("iframe");
+    var name = "TH-message--" + id + "--" + n;
+    iframe.name = name;
+    iframe.id = name;
+    iframe.className = "TH-render";
+    iframe.setAttribute("frameborder", "0");
+    iframe.style.width = "100%";
+    iframe.style.height = "60px";
+    var source = frameDocument("message", fixViewportHeight(content));
+    var frame = { name: name, kind: "message", messageId: id, element: iframe, source: source, win: null };
+    frames.push(frame);
+    iframe.addEventListener("load", function () {
+      emit(iframe_events.MESSAGE_IFRAME_RENDER_ENDED, name);
+    });
+    pre.replaceWith(iframe);
+    frame.win = iframe.contentWindow;
+    emit(iframe_events.MESSAGE_IFRAME_RENDER_STARTED, name);
+    iframe.srcdoc = source;
+  }
+
+  function renderAll() {
+    frames.filter(function (f) { return f.kind === "message"; }).forEach(dropFrame);
+    chatElement.innerHTML = "";
+    chat.forEach(function (m, i) { renderMessage(i); });
+    postState();
+  }
+
+  function renderFrom(id) {
+    for (var i = id; i < chat.length; i++) renderMessage(i);
+    chatElement.querySelectorAll(".mes").forEach(function (block) {
+      if (Number(block.getAttribute("mesid")) >= chat.length) {
+        messageFrames(Number(block.getAttribute("mesid"))).forEach(dropFrame);
+        block.remove();
+      }
+    });
+    postState();
+  }
+
+  // ---------------------------------------------------------------- script buttons and toasts
+
+  var buttons = {};
+  function renderButtons() {
+    var bar = document.getElementById("cf-buttons");
+    bar.innerHTML = "";
+    Object.keys(buttons).forEach(function (scriptId) {
+      buttons[scriptId].list.forEach(function (b) {
+        if (!b.visible) return;
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "menu_button";
+        button.textContent = b.name;
+        button.onclick = function () {
+          log(buttons[scriptId].name, "button", b.name);
+          emit(scriptId + "_" + b.name);
+        };
+        bar.appendChild(button);
+      });
+    });
+  }
+
+  function toast(type) {
+    return function (message, title) {
+      log("toastr", type, (title ? title + ": " : "") + message);
+      var box = document.getElementById("cf-toasts");
+      var el = document.createElement("div");
+      el.className = "cf-toast cf-toast-" + type;
+      el.textContent = (title ? title + " — " : "") + (message == null ? "" : message);
+      box.appendChild(el);
+      setTimeout(function () { el.remove(); }, 3500);
+      return el;
+    };
+  }
+  var toastr = {
+    success: toast("success"),
+    info: toast("info"),
+    warning: toast("warning"),
+    error: toast("error"),
+    clear: function () { document.getElementById("cf-toasts").innerHTML = ""; },
+    remove: function () {},
+    options: {},
+  };
+
+  // ---------------------------------------------------------------- slash commands and the input box
+
+  function input() {
+    return document.getElementById("send_textarea");
+  }
+
+  async function sendUser(text) {
+    chat.push(newMessage("user", text));
+    var id = chat.length - 1;
+    await emit(tavern_events.MESSAGE_SENT, id);
+    renderMessage(id);
+    await emit(tavern_events.USER_MESSAGE_RENDERED, id);
+    postState();
+    return id;
+  }
+
+  async function triggerSlash(command) {
+    var text = String(command || "").trim();
+    log("slash", "triggerSlash", text);
+    var parts = text.split("|").map(function (s) { return s.trim(); });
+    var result = "";
+    for (var i = 0; i < parts.length; i++) {
+      var match = /^\/(\w+)\s*([\s\S]*)$/.exec(parts[i]);
+      if (!match) continue;
+      var name = match[1].toLowerCase();
+      var arg = match[2].replace(/^(?:\w+=\S+\s+)*/, "");
+      if (name === "send") await sendUser(arg || result);
+      else if (name === "setinput") input().value = arg || result;
+      else if (name === "echo") toastr.info(arg || result);
+      else if (name === "pass") result = arg;
+      else if (name === "getvar") result = String(_.get(chatVariables, arg, ""));
+      else if (name === "setvar") {
+        var kv = /key=(\S+)\s+([\s\S]*)/.exec(match[2]);
+        if (kv) _.set(chatVariables, kv[1], kv[2]);
+      } else log("slash", "not run in the sandbox", "/" + name + (arg ? " " + arg : ""));
+    }
+    postState();
+    return result;
+  }
+
+  // ---------------------------------------------------------------- Tavern Helper, bound to one iframe
+
+  function nameOf(win) {
+    var frame = frameOf(win);
+    return frame ? frame.name : "";
+  }
+
+  function scriptIdOf(win) {
+    var frame = frameOf(win);
+    if (!frame || frame.kind !== "script") throw new Error("getScriptId only works inside a script iframe.");
+    return frame.scriptId;
+  }
+
+  function currentMessageId(win) {
+    var match = /^TH-message--(\d+)--\d+/.exec(nameOf(win));
+    if (!match) throw new Error("getCurrentMessageId only works inside a message iframe, not in '" + nameOf(win) + "'.");
+    return Number(match[1]);
+  }
+
+  function variableStore(win, option, create) {
+    option = option || { type: "chat" };
+    switch (option.type) {
+      case "message": {
+        var id = option.message_id === undefined || option.message_id === "latest" ? -1 : option.message_id;
+        var m;
+        if (id === -1) {
+          var visible = chat.filter(function (c) { return !c.is_system; });
+          m = visible[visible.length - 1];
+          if (!m) throw new Error("There are no messages yet.");
+        } else m = chat[messageIndex(id)];
+        return {
+          get: function () { return varsOf(m); },
+          set: function (v) { m.variables[m.swipe_id || 0] = v; },
+          message: chat.indexOf(m),
+        };
+      }
+      case "chat":
+        return { get: function () { return chatVariables; }, set: function (v) { chatVariables = v; } };
+      case "character":
+        return { get: function () { return characterVariables; }, set: function (v) { characterVariables = v; } };
+      case "global":
+      case "preset":
+        return { get: function () { return globalVariables; }, set: function (v) { globalVariables = v; } };
+      case "script": {
+        var sid = option.script_id || scriptIdOf(win);
+        if (!scriptVariables[sid]) scriptVariables[sid] = {};
+        return { get: function () { return scriptVariables[sid]; }, set: function (v) { scriptVariables[sid] = v; } };
+      }
+      case "extension": {
+        var key = "ext:" + option.extension_id;
+        return { get: function () { return scriptVariables[key] || {}; }, set: function (v) { scriptVariables[key] = v; } };
+      }
+      default:
+        throw new Error("Unknown variable type '" + option.type + "'.");
+    }
+  }
+
+  /** Changes made from a message iframe are the player's own edits: worth seeing in the action log. */
+  function written(win, option, variables) {
+    var frame = frameOf(win);
+    if (frame && frame.kind === "message") log(frame.name, "variables written (" + (option || { type: "chat" }).type + ")", variables);
+    postState();
+  }
+
+  function chatMessages(range, options) {
+    options = options || {};
+    var ids = [];
+    if (typeof range === "number") ids = [messageIndex(range)];
+    else {
+      var match = /^\s*(-?\d+)\s*(?:-\s*(-?\d+))?\s*$/.exec(String(range));
+      if (!match) throw new Error("Bad message range '" + range + "'.");
+      var start = messageIndex(Number(match[1]));
+      var end = match[2] === undefined ? start : messageIndex(Number(match[2]));
+      for (var i = Math.min(start, end); i <= Math.max(start, end); i++) ids.push(i);
+    }
+    return ids
+      .filter(function (i) {
+        var role = roleOf(chat[i]);
+        if (options.role && options.role !== "all" && options.role !== role) return false;
+        if (options.hide_state === "hidden" && !chat[i].is_hidden) return false;
+        if (options.hide_state === "unhidden" && chat[i].is_hidden) return false;
+        return true;
+      })
+      .map(function (i) {
+        var m = chat[i];
+        var base = { message_id: i, name: m.name, role: roleOf(m), is_hidden: !!m.is_hidden };
+        if (options.include_swipes) {
+          return Object.assign(base, {
+            swipe_id: m.swipe_id || 0,
+            swipes: clone(m.swipes || [m.mes]),
+            swipes_data: clone(m.variables || [{}]),
+            swipes_info: (m.swipes || [m.mes]).map(function () { return {}; }),
+          });
+        }
+        return Object.assign(base, { message: m.mes, data: clone(varsOf(m)), extra: clone(m.extra || {}) });
+      });
+  }
+
+  async function setChatMessages(changes, options) {
+    var refresh = (options || {}).refresh || "affected";
+    var touched = [];
+    (changes || []).forEach(function (change) {
+      var id = messageIndex(change.message_id);
+      var m = chat[id];
+      if (change.name !== undefined) m.name = change.name;
+      if (change.role !== undefined) {
+        m.is_user = change.role === "user";
+        m.is_system = change.role === "system";
+      }
+      if (change.is_hidden !== undefined) m.is_hidden = change.is_hidden;
+      if (change.swipes !== undefined) {
+        m.swipes = change.swipes.slice();
+        m.swipe_id = Math.min(change.swipe_id !== undefined ? change.swipe_id : m.swipe_id || 0, m.swipes.length - 1);
+        m.mes = m.swipes[m.swipe_id];
+        if (change.swipes_data) m.variables = clone(change.swipes_data);
+      } else if (change.swipe_id !== undefined) {
+        m.swipe_id = change.swipe_id;
+        m.mes = (m.swipes || [m.mes])[m.swipe_id];
+      }
+      if (change.message !== undefined) setText(m, change.message);
+      if (change.data !== undefined) m.variables[m.swipe_id || 0] = clone(change.data);
+      if (change.extra !== undefined) m.extra = clone(change.extra);
+      touched.push(id);
+    });
+    if (refresh === "all") renderAll();
+    else if (refresh === "affected") touched.forEach(renderMessage);
+    postState();
+  }
+
+  async function createChatMessages(messages, options) {
+    options = options || {};
+    var at = options.insert_before !== undefined ? options.insert_before : options.insert_at;
+    var index = at === undefined || at === "end" ? chat.length : messageIndex(at);
+    var created = (messages || []).map(function (m) {
+      var message = newMessage(m.role, m.message || "", m.name);
+      message.is_hidden = !!m.is_hidden;
+      if (m.data) message.variables = [clone(m.data)];
+      if (m.extra) message.extra = clone(m.extra);
+      return message;
+    });
+    chat.splice.apply(chat, [index, 0].concat(created));
+    if ((options.refresh || "affected") !== "none") renderFrom(index);
+    postState();
+  }
+
+  async function deleteChatMessages(ids, options) {
+    var sorted = (ids || []).map(messageIndex).sort(function (a, b) { return b - a; });
+    sorted.forEach(function (id) { chat.splice(id, 1); });
+    if (sorted.length) {
+      if ((options || {}).refresh !== "none") renderFrom(sorted[sorted.length - 1]);
+      await emit(tavern_events.MESSAGE_DELETED, chat.length);
+    }
+    postState();
+  }
+
+  function makeApi(win, kind) {
+    function emitFrom(event) {
+      return emit.apply(null, arguments);
+    }
+    function onFrom(event, fn) {
+      on(win, event, fn, false, false);
+      return { stop: function () { off(event, fn); } };
+    }
+    var api = {
+      // Variables
+      getVariables: function (option) {
+        return clone(variableStore(win, option).get());
+      },
+      replaceVariables: function (variables, option) {
+        variableStore(win, option).set(clone(variables));
+        written(win, option, variables);
+      },
+      updateVariablesWith: function (updater, option) {
+        var store = variableStore(win, option);
+        var result = updater(clone(store.get()));
+        function finish(value) {
+          store.set(clone(value));
+          written(win, option, value);
+          return value;
+        }
+        return result && typeof result.then === "function" ? result.then(finish) : finish(result);
+      },
+      insertOrAssignVariables: function (variables, option) {
+        var store = variableStore(win, option);
+        var next = _.merge(clone(store.get()), clone(variables));
+        store.set(next);
+        written(win, option, variables);
+        return clone(next);
+      },
+      insertVariables: function (variables, option) {
+        var store = variableStore(win, option);
+        var next = _.defaultsDeep(clone(store.get()), clone(variables));
+        store.set(next);
+        written(win, option, variables);
+        return clone(next);
+      },
+      deleteVariable: function (path, option) {
+        var store = variableStore(win, option);
+        var next = clone(store.get());
+        var occurred = _.unset(next, path) && true;
+        occurred = occurred && !_.has(next, path);
+        store.set(next);
+        written(win, option, { deleted: path });
+        return { variables: clone(next), delete_occurred: occurred };
+      },
+      registerVariableSchema: function (schema, option) {
+        schemas[(option || {}).type || "chat"] = schema;
+        log(sourceName(win), "registerVariableSchema", (option || {}).type);
+        postState();
+      },
+      getAllVariables: function () {
+        var isMessage = kind === "message";
+        var result = Object.assign({}, clone(globalVariables), clone(characterVariables));
+        if (!isMessage && frameOf(win) && frameOf(win).kind === "script") Object.assign(result, clone(scriptVariables[frameOf(win).scriptId] || {}));
+        Object.assign(result, clone(chatVariables));
+        if (isMessage) {
+          var upTo = currentMessageId(win);
+          chat.slice(0, upTo + 1).forEach(function (m) { Object.assign(result, clone((m.variables || [])[m.swipe_id || 0] || {})); });
+        }
+        return result;
+      },
+      // Chat messages
+      getChatMessages: chatMessages,
+      setChatMessages: setChatMessages,
+      createChatMessages: createChatMessages,
+      deleteChatMessages: deleteChatMessages,
+      rotateChatMessages: async function (begin, middle, end, options) {
+        var moved = chat.splice(begin, middle - begin);
+        chat.splice.apply(chat, [end - moved.length, 0].concat(moved));
+        if ((options || {}).refresh !== "none") renderAll();
+      },
+      getLastMessageId: function () {
+        return chat.length - 1;
+      },
+      getMessageId: function (name) {
+        var match = /^TH-message--(\d+)--\d+/.exec(name);
+        if (!match) throw new Error("Not a message iframe name: '" + name + "'.");
+        return Number(match[1]);
+      },
+      getCurrentMessageId: function () {
+        return currentMessageId(win);
+      },
+      getIframeName: function () {
+        return nameOf(win);
+      },
+      getScriptId: function () {
+        return scriptIdOf(win);
+      },
+      getScriptName: function () {
+        return frameOf(win) ? frameOf(win).scriptName : "";
+      },
+      getScriptInfo: function () {
+        return frameOf(win) ? frameOf(win).info || "" : "";
+      },
+      replaceScriptInfo: function (info) {
+        if (frameOf(win)) frameOf(win).info = info;
+      },
+      refreshOneMessage: async function (id) {
+        renderMessage(messageIndex(id));
+      },
+      formatAsDisplayedMessage: function (text, option) {
+        var role = option && option.message_id !== undefined && chat[option.message_id] ? roleOf(chat[option.message_id]) : "assistant";
+        chat.push(newMessage(role, text));
+        try {
+          return formatMessage(chat.length - 1);
+        } finally {
+          chat.pop();
+        }
+      },
+      retrieveDisplayedMessage: function (id) {
+        return jQuery('.mes[mesid="' + messageIndex(id) + '"] .mes_text', document);
+      },
+      reloadIframe: function () {
+        var frame = frameOf(win);
+        if (frame && frame.kind === "message") renderMessage(frame.messageId);
+        else if (frame) {
+          dropFrame(frame);
+          startScript(frame.script);
+        }
+      },
+      // Events
+      eventOn: onFrom,
+      eventOnce: function (event, fn) {
+        on(win, event, fn, true, false);
+        return { stop: function () { off(event, fn); } };
+      },
+      eventMakeFirst: function (event, fn) {
+        off(event, fn);
+        on(win, event, fn, false, true);
+      },
+      eventMakeLast: function (event, fn) {
+        off(event, fn);
+        on(win, event, fn, false, false);
+      },
+      eventEmit: emitFrom,
+      eventEmitAndWait: emitFrom,
+      eventRemoveListener: off,
+      eventClearEvent: function (event) {
+        delete listeners[event];
+      },
+      eventClearListener: function (fn) {
+        Object.keys(listeners).forEach(function (event) { off(event, fn); });
+      },
+      eventClearAll: function () {
+        clearFrameListeners(win);
+      },
+      getButtonEvent: function (name) {
+        return scriptIdOf(win) + "_" + name;
+      },
+      eventOnButton: function (name, fn) {
+        on(win, scriptIdOf(win) + "_" + name, fn, false, false);
+      },
+      getScriptButtons: function () {
+        var id = scriptIdOf(win);
+        return clone((buttons[id] || { list: [] }).list);
+      },
+      replaceScriptButtons: function (list) {
+        var id = scriptIdOf(win);
+        buttons[id] = { name: frameOf(win).scriptName, list: clone(list || []) };
+        renderButtons();
+      },
+      updateScriptButtonsWith: function (fn) {
+        var id = scriptIdOf(win);
+        var next = fn(clone((buttons[id] || { list: [] }).list));
+        buttons[id] = { name: frameOf(win).scriptName, list: clone(next || []) };
+        renderButtons();
+        return clone(next);
+      },
+      appendInexistentScriptButtons: function (list) {
+        var id = scriptIdOf(win);
+        var current = (buttons[id] || { list: [] }).list;
+        (list || []).forEach(function (b) {
+          if (!current.some(function (c) { return c.name === b.name; })) current.push(clone(b));
+        });
+        buttons[id] = { name: frameOf(win).scriptName, list: current };
+        renderButtons();
+      },
+      getAllEnabledScriptButtons: function () {
+        var out = {};
+        Object.keys(buttons).forEach(function (id) {
+          out[id] = buttons[id].list.filter(function (b) { return b.visible; }).map(function (b) { return { button_id: id + "_" + b.name, button_name: b.name }; });
+        });
+        return out;
+      },
+      // Globals shared between iframes
+      initializeGlobal: function (name, value) {
+        globals[name] = value;
+        _.set(window, name, value);
+        emit("global_" + name + "_initialized");
+      },
+      waitGlobalInitialized: function (name) {
+        function bind() {
+          Object.defineProperty(win, name, { get: function () { return _.get(window, name); }, configurable: true });
+        }
+        if (_.has(window, name)) {
+          bind();
+          return Promise.resolve();
+        }
+        return new Promise(function (resolve) {
+          on(win, "global_" + name + "_initialized", function () {
+            bind();
+            resolve();
+          }, true, false);
+        });
+      },
+      // SillyTavern
+      triggerSlash: triggerSlash,
+      substitudeMacros: substitute,
+      getCurrentCharacterName: function () {
+        return CHAR;
+      },
+      getCharacterNames: function () {
+        return [CHAR];
+      },
+      getCurrentPersonaName: function () {
+        return USER;
+      },
+      getCharAvatarPath: function () {
+        return card.avatar || "";
+      },
+      getCharWorldbookNames: function () {
+        return { primary: card.book && card.book.length ? CHAR : null, additional: [] };
+      },
+      getWorldbookNames: function () {
+        return card.book && card.book.length ? [CHAR] : [];
+      },
+      getWorldbook: async function (name) {
+        if (name !== CHAR) throw new Error("No worldbook named '" + name + "' in the sandbox.");
+        return worldbookEntries();
+      },
+      getTavernRegexes: function () {
+        return clone(card.regex || []).map(function (r) {
+          return { id: r.id, script_name: r.scriptName, enabled: !r.disabled, find_regex: r.findRegex, replace_string: r.replaceString };
+        });
+      },
+      isCharacterTavernRegexesEnabled: function () {
+        return true;
+      },
+      formatAsTavernRegexedString: function (text, source, destination, option) {
+        var m = newMessage(source === "user_input" ? "user" : "assistant", text);
+        return destination === "display" ? runRegex(text, m, (option && option.depth) || 0) : text;
+      },
+      generate: async function (config) {
+        log(sourceName(win), "generate", config);
+        await emit(iframe_events.GENERATION_REQUESTED, config);
+        return "[Sandbox: generate() isn't connected to a model here. Playtest runs it for real.]";
+      },
+      generateRaw: async function (config) {
+        log(sourceName(win), "generateRaw", config);
+        return "[Sandbox: generateRaw() isn't connected to a model here. Playtest runs it for real.]";
+      },
+      stopGenerationById: function () {
+        return false;
+      },
+      stopAllGeneration: function () {
+        return false;
+      },
+      injectPrompts: function (prompts, option) {
+        log(sourceName(win), "injectPrompts", { prompts: prompts, option: option });
+        return { uninject: function () {} };
+      },
+      uninjectPrompts: function (ids) {
+        log(sourceName(win), "uninjectPrompts", ids);
+      },
+      registerMacroLike: function (regex) {
+        log(sourceName(win), "registerMacroLike", String(regex));
+        return { unregister: function () {} };
+      },
+      unregisterMacroLike: function () {},
+      errorCatched: function (fn) {
+        return function () {
+          try {
+            var out = fn.apply(this, arguments);
+            if (out && typeof out.catch === "function") {
+              return out.catch(function (e) {
+                reportError(win, e && e.message ? e.message : e, 0, 0, e && e.stack);
+                throw e;
+              });
+            }
+            return out;
+          } catch (e) {
+            reportError(win, e && e.message ? e.message : e, 0, 0, e && e.stack);
+            throw e;
+          }
+        };
+      },
+      getTavernHelperVersion: function () {
+        return config.thVersion;
+      },
+      getTavernVersion: function () {
+        return ST_VERSION;
+      },
+      getTavernHelperExtensionId: function () {
+        return "JS-Slash-Runner";
+      },
+      tavern_events: tavern_events,
+      iframe_events: iframe_events,
+      toastr: toastr,
+    };
+    // The rest of Tavern Helper exists here too, but only says what it would have done.
+    (config.thFunctions || []).forEach(function (name) {
+      if (api[name]) return;
+      api[name] = function () {
+        log(sourceName(win), name + " (not run in the sandbox)", Array.prototype.slice.call(arguments));
+        return undefined;
+      };
+    });
+    return api;
+  }
+
+  /** Called by each iframe's first script: Tavern Helper's functions, the libraries, error capture. */
+  window.CF_INSTALL = function (win, kind) {
+    var frame = frameOf(win);
+    if (!frame) {
+      frame = frames.find(function (f) { return f.element && f.element.contentWindow === win; });
+      if (frame) frame.win = win;
+    }
+    win.eval(CF_LIBS.jquery);
+    if (kind === "message") win.eval(CF_LIBS.vue);
+    else {
+      // Scripts work on SillyTavern's page, as Tavern Helper sets them up.
+      win.$ = window.jQuery;
+      win.jQuery = window.jQuery;
+    }
+    win._ = window._;
+    win.YAML = window.YAML;
+    win.z = window.z;
+    win.toastr = toastr;
+    win.SillyTavern = {
+      getContext: function () {
+        return { chat: chat, name1: USER, name2: CHAR, characterId: 0, chatMetadata: { variables: chatVariables }, eventTypes: tavern_events };
+      },
+    };
+    Object.assign(win, makeApi(win, kind));
+    win.TavernHelper = makeApi(win, kind);
+    if (_.has(window, "Mvu")) {
+      Object.defineProperty(win, "Mvu", { get: function () { return window.Mvu; }, set: function () {}, configurable: true });
+    }
+    try {
+      win.document.documentElement.style.setProperty("--TH-viewport-height", window.innerHeight + "px");
+    } catch (e) {}
+    win.addEventListener("error", function (e) {
+      reportError(win, e.message, e.lineno, e.colno, e.error && e.error.stack);
+    });
+    win.addEventListener("unhandledrejection", function (e) {
+      var r = e.reason;
+      reportError(win, "Unhandled promise rejection: " + (r && r.message ? r.message : r), 0, 0, r && r.stack);
+    });
+    win.document.addEventListener("securitypolicyviolation", function (e) {
+      reportError(
+        win,
+        "Blocked a network request to " + (e.blockedURI || "an outside address") +
+          ". Engine cards can't rely on the web: in SillyTavern this would break whenever the player is offline or the site is down.",
+        e.lineNumber,
+        e.columnNumber,
+      );
+    });
+    ["error", "warn"].forEach(function (level) {
+      var original = win.console[level];
+      win.console[level] = function () {
+        var text = Array.prototype.slice.call(arguments).map(function (a) {
+          return a instanceof Error ? a.message : typeof a === "string" ? a : short(a);
+        }).join(" ");
+        post({ kind: "console", level: level, source: sourceName(win), message: text });
+        return original.apply(win.console, arguments);
+      };
+    });
+    if (kind === "message") {
+      // Fit the iframe to its content, as Tavern Helper does.
+      var resize = function () {
+        try {
+          var h = win.document.body.scrollHeight;
+          if (h > 0) frame.element.style.height = h + "px";
+        } catch (e) {}
+      };
+      win.addEventListener("DOMContentLoaded", function () {
+        resize();
+        new win.ResizeObserver(resize).observe(win.document.body);
+      });
+      win.addEventListener("load", resize);
+    }
+  };
+
+  // ---------------------------------------------------------------- the card's scripts
+
+  function startScript(script) {
+    var iframe = document.createElement("iframe");
+    var name = "TH-script--" + script.name + "--" + script.id;
+    iframe.name = name;
+    iframe.id = name;
+    var source = frameDocument("script", '<script type="module">\n' + script.content + "\n<\/script>");
+    var frame = { name: name, kind: "script", scriptId: script.id, scriptName: script.name, script: script, info: script.info, element: iframe, source: source, win: null };
+    frames.push(frame);
+    document.getElementById("cf-scripts").appendChild(iframe);
+    frame.win = iframe.contentWindow;
+    if (script.buttons && script.buttons.length) {
+      buttons[script.id] = { name: script.name, list: clone(script.buttons) };
+      renderButtons();
+    }
+    if (script.data) scriptVariables[script.id] = clone(script.data);
+    iframe.srcdoc = source;
+    return new Promise(function (resolve) {
+      iframe.addEventListener("load", function () { resolve(); });
+    });
+  }
+
+  // ---------------------------------------------------------------- commands from CardForge
+
+  /** Waits until the scripts' own async work (their update queues) has settled. */
+  function settle() {
+    return new Promise(function (resolve) { setTimeout(resolve, 30); });
+  }
+
+  async function reply(text) {
+    chat.push(newMessage("assistant", text));
+    var id = chat.length - 1;
+    await emit(tavern_events.GENERATION_ENDED, id);
+    await emit(tavern_events.MESSAGE_RECEIVED, id);
+    renderMessage(id);
+    await emit(tavern_events.CHARACTER_MESSAGE_RENDERED, id);
+    await settle();
+    postState();
+    return id;
+  }
+
+  async function swipe(text) {
+    var id = chat.length - 1;
+    if (id < 0) return;
+    var m = chat[id];
+    if (m.is_user) return reply(text);
+    m.swipes = m.swipes || [m.mes];
+    m.swipes.push(text);
+    m.swipe_id = m.swipes.length - 1;
+    m.mes = text;
+    m.variables = m.variables || [];
+    m.variables[m.swipe_id] = {};
+    await emit(tavern_events.MESSAGE_SWIPED, id);
+    await emit(tavern_events.MESSAGE_RECEIVED, id);
+    renderMessage(id);
+    await emit(tavern_events.CHARACTER_MESSAGE_RENDERED, id);
+    await settle();
+    postState();
+  }
+
+  async function swipeTo(id, swipeId) {
+    var m = chat[messageIndex(id)];
+    var swipes = m.swipes || [m.mes];
+    if (swipeId < 0 || swipeId >= swipes.length) return;
+    m.swipe_id = swipeId;
+    m.mes = swipes[swipeId];
+    if (!m.variables) m.variables = [];
+    if (!m.variables[swipeId]) m.variables[swipeId] = {};
+    await emit(tavern_events.MESSAGE_SWIPED, id);
+    if (id === 0) await emit(tavern_events.CHARACTER_FIRST_MESSAGE_SELECTED, id);
+    await settle();
+    renderFrom(id);
+  }
+
+  async function edit(id, text) {
+    setText(chat[messageIndex(id)], text);
+    await emit(tavern_events.MESSAGE_EDITED, id);
+    await emit(tavern_events.MESSAGE_UPDATED, id);
+    await settle();
+    renderFrom(id);
+  }
+
+  async function rewind(id) {
+    if (id < 1 || id >= chat.length) return;
+    chat.splice(id);
+    renderFrom(id);
+    await emit(tavern_events.MESSAGE_DELETED, chat.length);
+    postState();
+  }
+
+  async function setVariables(id, variables) {
+    var m = chat[messageIndex(id)];
+    m.variables = m.variables || [];
+    m.variables[m.swipe_id || 0] = clone(variables);
+    log("inspector", "variables set on message " + id, variables);
+    renderFrom(id);
+  }
+
+  async function run(command) {
+    switch (command.type) {
+      case "send":
+        return sendUser(command.text);
+      case "reply":
+        return reply(command.text);
+      case "swipe":
+        return swipe(command.text);
+      case "swipeTo":
+        return swipeTo(command.id, command.swipe);
+      case "edit":
+        return edit(command.id, command.text);
+      case "rewind":
+        return rewind(command.id);
+      case "setVariables":
+        return setVariables(command.id, command.variables);
+      case "view":
+        document.documentElement.style.fontSize = command.textScale * 100 + "%";
+        return;
+      case "scenario": {
+        for (var i = 0; i < command.turns.length; i++) {
+          var turn = command.turns[i];
+          if (turn.role === "user") await sendUser(turn.text);
+          else await reply(turn.text);
+        }
+        return;
+      }
+    }
+  }
+
+  var queue = Promise.resolve();
+  window.addEventListener("message", function (e) {
+    if (e.source !== window.parent || !e.data || !e.data.cfCommand) return;
+    var command = e.data.cfCommand;
+    queue = queue
+      .then(function () { return run(command); })
+      .catch(function (err) { reportError(window, err && err.message ? err.message : err, 0, 0, err && err.stack); })
+      .then(function () { post({ kind: "done", id: command.requestId }); });
+  });
+
+  window.addEventListener("error", function (e) {
+    reportError(window, e.message, e.lineno, e.colno, e.error && e.error.stack);
+  });
+  document.addEventListener("securitypolicyviolation", function (e) {
+    reportError(window, "Blocked a network request to " + (e.blockedURI || "an outside address") + ".", 0, 0);
+  });
+
+  // ---------------------------------------------------------------- start: the chat opens on the greeting
+
+  async function start() {
+    (0, eval)(CF_LIBS.jquery);
+    chatElement = document.getElementById("chat");
+    document.documentElement.style.fontSize = (config.textScale || 1) * 100 + "%";
+    var form = document.getElementById("send_form");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var text = input().value.trim();
+      if (!text) return;
+      input().value = "";
+      log("input box", "sent", text);
+      queue = queue.then(function () { return sendUser(text); });
+    });
+    var greetings = [card.first_mes || ""].concat(card.alternate_greetings || []);
+    var first = newMessage("assistant", greetings[0]);
+    first.swipes = greetings.slice();
+    first.variables = greetings.map(function () { return {}; });
+    if (greetings.join("").trim()) chat.push(first);
+    renderAll();
+    await emit(tavern_events.CHAT_CHANGED, "sandbox");
+    for (var i = 0; i < card.scripts.length; i++) await startScript(card.scripts[i]);
+    await settle();
+    renderAll();
+    post({ kind: "ready" });
+  }
+
+  start().catch(function (e) {
+    reportError(window, "The sandbox didn't start: " + (e && e.message ? e.message : e), 0, 0, e && e.stack);
+  });
+})();

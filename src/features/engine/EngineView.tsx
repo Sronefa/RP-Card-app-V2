@@ -13,6 +13,7 @@ import {
   newVar,
   readEngine,
   rulesText,
+  sampleReply,
   startValue,
   stateSchema,
   VAR_TYPES,
@@ -23,9 +24,10 @@ import {
   type VarType,
 } from "../../engine/sheet";
 import { CardBar } from "../editor/CardBar";
+import { SandboxPage } from "./SandboxPage";
 import { NoCard } from "../editor/NoCard";
 
-const TABS = { vars: "Variables", panel: "Panel", test: "Test a reply" } as const;
+const TABS = { vars: "Variables", panel: "Panel", test: "Test a reply", sandbox: "Sandbox" } as const;
 type Tab = keyof typeof TABS;
 const selectClass = "min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm";
 
@@ -65,7 +67,7 @@ function EngineBody() {
       <div className="sticky top-0 z-10 border-b border-border bg-surface/95 pb-3 backdrop-blur">
         <CardBar detail={config ? `Engine on · ${config.vars.length} values` : "Engine off"} />
       </div>
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4">
+      <div className={`mx-auto flex w-full flex-1 flex-col gap-4 p-4 ${config && tab === "sandbox" ? "max-w-5xl" : "max-w-3xl"}`}>
         <h1 className="text-lg font-semibold">Immersive Engine</h1>
         {!config ? (
           <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4" aria-label="Turn on">
@@ -108,8 +110,10 @@ function EngineBody() {
               <VarsPage config={config} save={save} onImport={tracker?.fields.length ? importTracker : undefined} />
             ) : tab === "panel" ? (
               <PanelPage config={config} save={save} />
-            ) : (
+            ) : tab === "test" ? (
               <TestPage config={config} />
+            ) : (
+              <SandboxPage config={config} save={save} />
             )}
             <Button variant="danger" className="self-start" onClick={() => setConfirmOff(true)}>
               Turn the engine off
@@ -490,11 +494,6 @@ export function PanelPreview({ config, state, delta }: { config: EngineConfig; s
       className="w-full rounded-lg border border-border bg-surface-sunken p-2"
     />
   );
-}
-
-function sampleReply(config: EngineConfig): string {
-  const match = /<UpdateVariable>[\s\S]*<\/UpdateVariable>/.exec(rulesText(config));
-  return `{{char}} hands you the map.\n\n${match ? match[0].replace(/<Analysis>[\s\S]*?<\/Analysis>/, "<Analysis>A sample change.</Analysis>") : ""}`;
 }
 
 function TestPage({ config }: { config: EngineConfig }) {
