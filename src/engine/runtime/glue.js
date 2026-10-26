@@ -144,7 +144,9 @@ async function cfHandleNow(messageId) {
   }
   var data = cfClone(before);
   await eventEmit(CF_EVENTS.VARIABLE_UPDATE_STARTED, data);
-  var result = cfUpdate(before.stat_data, message.message, cfSchemaOrNull());
+  var text = message.message;
+  if (CF_CONFIG.side && message.role === "assistant" && !/<UpdateVariable>/i.test(text)) text = await cfSideUpdate(messageId, before);
+  var result = cfUpdate(before.stat_data, text, cfSchemaOrNull());
   if (result.skipped.length) cfLog("Skipped updates", result.skipped);
   // Modules keep derived values (the clock, routines) in step with what the model changed.
   data.stat_data = cfRunHooks(result.stat_data, before.stat_data, messageId);
@@ -159,6 +161,83 @@ async function cfHandleNow(messageId) {
     await setChatMessages([{ message_id: messageId }], { refresh: "affected" });
   }
   await eventEmit("cf:state", messageId);
+}
+
+// ---------------------------------------------------------------- side calls
+
+/** A message's text without the panel placeholder, as the side call reads it. */
+function cfPlain(text) {
+  return String(text || "").split(CF_PLACEHOLDER).join("").trim();
+}
+
+function cfMacros(text) {
+  try {
+    return typeof substitudeMacros === "function" ? substitudeMacros(text) : text;
+  } catch (e) {
+    return text;
+  }
+}
+
+/** The side call's answer as an update block: JSON ops, or a block the model wrote anyway. */
+function cfSideBlock(raw) {
+  var text = String(raw || "");
+  if (/<UpdateVariable>/i.test(text)) return text;
+  var json = /[[{][\s\S]*[\]}]/.exec(text.replace(/```(?:json)?/gi, ""));
+  if (!json) return "";
+  var parsed;
+  try {
+    parsed = JSON.parse(json[0]);
+  } catch (e) {
+    return "";
+  }
+  var ops = Array.isArray(parsed) ? parsed : parsed && parsed.ops;
+  if (!Array.isArray(ops)) return "";
+  return "<UpdateVariable>\n<JSONPatch>\n" + JSON.stringify(ops) + "\n</JSONPatch>\n</UpdateVariable>";
+}
+
+/**
+ * With side calls on, a silent generation reads the latest turn and writes the update, so the reply
+ * stays pure prose. Its answer is kept on the message, so a re-read (an edit elsewhere, a reload)
+ * doesn't pay for it again; a changed reply gets a new one.
+ */
+async function cfSideUpdate(messageId, before) {
+  var message = getChatMessages(messageId)[0];
+  var source = cfPlain(message && message.message);
+  var saved = cfMessageData(messageId).cf_side;
+  if (saved && saved.source === source) return saved.block;
+  if (cfSettings().sideCalls === false) return "";
+  var previous = messageId > 0 ? getChatMessages(messageId - 1)[0] : null;
+  var turn =
+    "<game_state>\n" + cfYaml(cfForAi(before.stat_data)) + "\n</game_state>\n\n<latest_turn>\n" +
+    (previous && previous.role === "user" ? "{{user}}: " + cfPlain(previous.message) + "\n\n" : "") +
+    "{{char}}: " + source + "\n</latest_turn>\n\nWrite the update for this turn.";
+  var raw;
+  try {
+    raw = await generateRaw({
+      ordered_prompts: [
+        { role: "system", content: CF_CONFIG.side.prompt },
+        { role: "user", content: cfMacros(turn) },
+      ],
+      should_silence: true,
+      json_schema: { name: "game_state_update", value: CF_CONFIG.side.schema, strict: false },
+    });
+  } catch (e) {
+    console.warn("[CardForge engine] The side call failed.", e);
+    try {
+      toastr.warning("The game state didn't update: the side call failed.");
+    } catch (ignored) {}
+    return "";
+  }
+  var block = cfSideBlock(raw);
+  if (!block) cfLog("The side call's answer had no update in it.", raw);
+  await updateVariablesWith(
+    function (vars) {
+      vars.cf_side = { source: source, block: block };
+      return vars;
+    },
+    { type: "message", message_id: messageId },
+  );
+  return block;
 }
 
 /** The MVU-compatible interface panels use (`await waitGlobalInitialized('Mvu')`). */

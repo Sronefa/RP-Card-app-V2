@@ -28,7 +28,7 @@ export interface ModelChoice {
 }
 
 /** Co-writer modes. Each has its own system prompt and can use its own model. */
-export type ModeId = "refine" | "interview" | "gap" | "draft" | "suggest" | "lore" | "critic" | "image" | "planner" | "world" | "arc" | "mechanics" | "engineer";
+export type ModeId = "refine" | "interview" | "gap" | "draft" | "suggest" | "lore" | "critic" | "image" | "planner" | "world" | "arc" | "mechanics" | "engineer" | "playtest" | "player" | "sidecall";
 
 /** How hard a model thinks before it answers, where the provider supports it. */
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";

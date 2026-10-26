@@ -38,6 +38,8 @@ interface CardForge {
   /** A card image by file name: /user/images/<character>/<file>. */
   asset(file: string): string;
   settings(): Settings;
+  /** Set when the card keeps the state with a side call: about how many tokens a turn it costs. */
+  sideCall(): { tokens: number } | null;
   setSettings(patch: Partial<Settings>): Promise<Settings>;
   /** The theme as a :root { --cf-… } rule, for the current settings. */
   themeCss(settings?: Settings): string;

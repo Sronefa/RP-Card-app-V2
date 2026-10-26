@@ -136,14 +136,17 @@ export interface SandboxOptions {
   libs: SandboxLibs;
   user?: string;
   textScale?: number;
+  /** CardForge answers the player's messages and the card's generate calls with a real model. */
+  playtest?: boolean;
 }
 
 /** The whole sandbox page, for an iframe's srcdoc. */
-export function sandboxDocument({ data, libs, user, textScale }: SandboxOptions): string {
+export function sandboxDocument({ data, libs, user, textScale, playtest }: SandboxOptions): string {
   const config = {
     card: sandboxCard(data),
     user: user || "You",
     textScale: textScale ?? 1,
+    playtest: !!playtest,
     thVersion: TAVERN_HELPER_VERSION,
     thFunctions: TAVERN_HELPER_FUNCTIONS,
   };
@@ -169,7 +172,11 @@ export function sandboxDocument({ data, libs, user, textScale }: SandboxOptions)
 export type SandboxReport =
   | { kind: "ready" }
   | { kind: "done"; id?: number; result?: unknown; failed?: string }
-  | { kind: "state"; chat: SandboxMessage[]; chatVariables: Record<string, unknown>; schema: string[] }
+  | { kind: "state"; chat: SandboxMessage[]; injected?: InjectedPrompt[]; chatVariables: Record<string, unknown>; schema: string[] }
+  /** Playtest: the player sent a message from the chat's own box, so a reply is due. */
+  | { kind: "turn"; id: number }
+  /** Playtest: the card's script called generate or generateRaw. Answer with a "generated" command. */
+  | { kind: "generate"; requestId: number; purpose: "generate" | "generateRaw"; options: GenerateOptions; chat: SandboxMessage[]; injected: InjectedPrompt[] }
   | { kind: "log"; source: string; action: string; detail: string }
   | { kind: "console"; level: "error" | "warn"; source: string; message: string }
   | { kind: "error"; source: string; message: string; line: number; column: number; code: string; stack: string };
@@ -182,6 +189,26 @@ export interface SandboxMessage {
   swipe_id: number;
   swipes: number;
   variables: Record<string, unknown>;
+}
+
+/** A prompt a card script injected with Tavern Helper's injectPrompts. */
+export interface InjectedPrompt {
+  id: string;
+  position: "in_chat" | "none" | string;
+  depth: number;
+  role: "system" | "user" | "assistant";
+  content: string;
+  should_scan: boolean;
+}
+
+/** The parts of Tavern Helper's generate and generateRaw options a playtest uses. */
+export interface GenerateOptions {
+  user_input?: string;
+  ordered_prompts?: (string | { role: string; content: string })[];
+  injects?: { role?: string; content: string; position?: string; depth?: number }[];
+  max_chat_history?: number | "all";
+  json_schema?: { name?: string; value?: unknown };
+  should_silence?: boolean;
 }
 
 /** A command for the sandbox. */
@@ -199,7 +226,11 @@ export type SandboxCommand =
   | { type: "close" }
   | { type: "capture" }
   | { type: "inspect" }
-  | { type: "click"; screen?: string; selector?: string; text?: string };
+  | { type: "click"; screen?: string; selector?: string; text?: string }
+  /** Playtest: the answer to a "generate" report. */
+  | { type: "generated"; requestId: number; text?: string; error?: string }
+  /** Playtest: the reply as it streams in; null takes the bubble away. */
+  | { type: "typing"; text: string | null };
 
 /** What capture returns: a PNG of everything the player sees, base64. */
 export interface SandboxCapture {

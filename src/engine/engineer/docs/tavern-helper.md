@@ -50,6 +50,8 @@ The model ends each reply with:
 
 The ops are: `replace` (set a value), `delta` (add to a number), `insert` (also `add`; `/-` appends to a list, and a new key creates it), `remove` and `move`. The updater refuses writes to `_` values, checks every value against the schema (clamps numbers, repairs types), and skips what it can't apply. The CardForge sandbox shows skipped ops. Regex hides the block from the player and drops old blocks from the prompt.
 
+A card in side-call mode (the Variables tab, "Who writes the updates") leaves the rules out of the reply's prompt. After each reply the script asks a silent `generateRaw` with a JSON schema for `{ analysis, ops }`, turns the ops into this same block and keeps the answer on the message, so the reply stays pure prose. It costs the player about `CF.sideCall().tokens` a turn, and stops when they turn side calls off.
+
 ## Events
 
 ```js

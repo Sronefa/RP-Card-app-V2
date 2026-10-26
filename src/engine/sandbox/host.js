@@ -72,34 +72,84 @@
     });
   }
 
+  /** The chat as CardForge sees it: each message with its current swipe's variables. */
+  function chatSnapshot() {
+    return {
+      chat: chat.map(function (m, i) {
+        return {
+          id: i,
+          role: roleOf(m),
+          name: m.name,
+          message: m.mes,
+          swipe_id: m.swipe_id || 0,
+          swipes: (m.swipes || [m.mes]).length,
+          variables: (m.variables || [])[m.swipe_id || 0] || {},
+        };
+      }),
+      injected: Object.keys(injected).map(function (id) { return injected[id]; }),
+    };
+  }
+
   var stateQueued = false;
   function postState() {
     if (stateQueued) return;
     stateQueued = true;
     setTimeout(function () {
       stateQueued = false;
-      post({
-        kind: "state",
-        chat: chat.map(function (m, i) {
-          return {
-            id: i,
-            role: roleOf(m),
-            name: m.name,
-            message: m.mes,
-            swipe_id: m.swipe_id || 0,
-            swipes: (m.swipes || [m.mes]).length,
-            variables: (m.variables || [])[m.swipe_id || 0] || {},
-          };
-        }),
-        chatVariables: chatVariables,
-        schema: Object.keys(schemas),
-      });
+      var now = chatSnapshot();
+      post({ kind: "state", chat: now.chat, injected: now.injected, chatVariables: chatVariables, schema: Object.keys(schemas) });
     }, 0);
   }
 
   // ---------------------------------------------------------------- chat model (SillyTavern's shape)
 
   var chat = [];
+  /** Prompts the card's scripts injected, by id (Tavern Helper's injectPrompts). */
+  var injected = {};
+
+  // ---------------------------------------------------------------- playtest: generations by CardForge
+
+  // In a playtest, CardForge answers with a real model: replies to the player's messages, and the
+  // card's own generate and generateRaw calls (side calls).
+  var PLAYTEST = !!config.playtest;
+  var asked = {};
+  var askedCount = 0;
+  function askCardForge(purpose, options) {
+    return new Promise(function (resolve, reject) {
+      var id = ++askedCount;
+      asked[id] = { resolve: resolve, reject: reject };
+      var now = chatSnapshot();
+      post({ kind: "generate", requestId: id, purpose: purpose, options: options || {}, chat: now.chat, injected: now.injected });
+    });
+  }
+  function answered(command) {
+    var waiting = asked[command.requestId];
+    if (!waiting) return;
+    delete asked[command.requestId];
+    if (command.error) waiting.reject(new Error(command.error));
+    else waiting.resolve(command.text || "");
+  }
+
+  /** The reply being written, shown as it streams in. */
+  function typing(text) {
+    var bubble = document.getElementById("cf-typing");
+    if (text === null || text === undefined) {
+      if (bubble) bubble.remove();
+      return;
+    }
+    if (!bubble) {
+      bubble = document.createElement("div");
+      bubble.id = "cf-typing";
+      bubble.className = "mes";
+      bubble.innerHTML = '<div class="mes_avatar"></div><div class="mes_block"><div class="ch_name"></div><div class="mes_text"></div></div>';
+      bubble.querySelector(".mes_avatar").textContent = CHAR.charAt(0).toUpperCase();
+      bubble.querySelector(".ch_name").textContent = CHAR;
+      chatElement.appendChild(bubble);
+    }
+    bubble.querySelector(".mes_text").textContent = text || "…";
+    chatElement.scrollTop = chatElement.scrollHeight;
+  }
+
   var chatVariables = {};
   var characterVariables = {};
   var globalVariables = {};
@@ -946,10 +996,12 @@
       generate: async function (config) {
         log(sourceName(win), "generate", config);
         await emit(iframe_events.GENERATION_REQUESTED, config);
+        if (PLAYTEST) return askCardForge("generate", config);
         return "[Sandbox: generate() isn't connected to a model here. Playtest runs it for real.]";
       },
       generateRaw: async function (config) {
         log(sourceName(win), "generateRaw", config);
+        if (PLAYTEST) return askCardForge("generateRaw", config);
         return "[Sandbox: generateRaw() isn't connected to a model here. Playtest runs it for real.]";
       },
       stopGenerationById: function () {
@@ -960,10 +1012,30 @@
       },
       injectPrompts: function (prompts, option) {
         log(sourceName(win), "injectPrompts", { prompts: prompts, option: option });
-        return { uninject: function () {} };
+        var ids = (prompts || []).map(function (p) {
+          var id = String(p.id || "prompt-" + Math.random().toString(36).slice(2));
+          injected[id] = {
+            id: id,
+            position: p.position || "in_chat",
+            depth: typeof p.depth === "number" ? p.depth : 0,
+            role: p.role || "system",
+            content: String(p.content || ""),
+            should_scan: !!p.should_scan,
+          };
+          return id;
+        });
+        postState();
+        return {
+          uninject: function () {
+            ids.forEach(function (id) { delete injected[id]; });
+            postState();
+          },
+        };
       },
       uninjectPrompts: function (ids) {
         log(sourceName(win), "uninjectPrompts", ids);
+        (ids || []).forEach(function (id) { delete injected[id]; });
+        postState();
       },
       registerMacroLike: function (regex) {
         log(sourceName(win), "registerMacroLike", String(regex));
@@ -1498,6 +1570,9 @@
   window.addEventListener("message", function (e) {
     if (e.source !== window.parent || !e.data || !e.data.cfCommand) return;
     var command = e.data.cfCommand;
+    // Answers and the typing bubble skip the queue: a queued command may be waiting on them.
+    if (command.type === "generated") return answered(command);
+    if (command.type === "typing") return typing(command.text);
     var result;
     var failed = "";
     queue = queue
@@ -1530,7 +1605,12 @@
       if (!text) return;
       input().value = "";
       log("input box", "sent", text);
-      queue = queue.then(function () { return sendUser(text); });
+      queue = queue.then(function () {
+        return sendUser(text).then(function (id) {
+          // In a playtest, CardForge writes the reply with the real model.
+          if (PLAYTEST) post({ kind: "turn", id: id });
+        });
+      });
     }
     document.getElementById("send_form").addEventListener("submit", submit);
     document.getElementById("send_but").addEventListener("click", submit);

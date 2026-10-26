@@ -740,6 +740,10 @@ var CardForgeApi = {
   setSettings: cfSetSettings,
   themeCss: cfThemeCss,
   freezePanels: cfFreezePanels,
+  /** With side-call updates on: about how many tokens each one costs. Otherwise null. */
+  sideCall: function () {
+    return CF_CONFIG.side ? { tokens: CF_CONFIG.side.tokens } : null;
+  },
   modules: function () {
     return cfModules().map(function (m) {
       return { id: m.id, name: m.name, slot: m.slot, button: m.button || "" };

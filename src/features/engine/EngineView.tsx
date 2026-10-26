@@ -14,6 +14,8 @@ import {
   readEngine,
   rulesText,
   sampleReply,
+  sideCallPrompt,
+  sideCallTokens,
   stateSchema,
   varLabel,
   varsFromTracker,
@@ -25,10 +27,12 @@ import { EngineerPage } from "./EngineerPage";
 import { NoCard } from "../editor/NoCard";
 import { LookPage, PanelPreview } from "./LookPage";
 import { ModulesPage } from "./ModulesPage";
+import { PlaytestPage } from "./PlaytestPage";
 import { SandboxPage } from "./SandboxPage";
+import { useEngineer } from "../../engine/engineer/session";
 import { nameProblem, summary, VarEditor } from "./VarEditor";
 
-const TABS = { vars: "Variables", modules: "Modules", look: "Look", engineer: "Engineer", test: "Test", sandbox: "Sandbox" } as const;
+const TABS = { vars: "Variables", modules: "Modules", look: "Look", engineer: "Engineer", test: "Test", sandbox: "Sandbox", playtest: "Playtest" } as const;
 type Tab = keyof typeof TABS;
 
 /** The Immersive Engine: a game state that updates itself after every reply, for Tavern Helper cards. */
@@ -67,7 +71,7 @@ function EngineBody() {
       <div className="sticky top-0 z-10 border-b border-border bg-surface/95 pb-3 backdrop-blur">
         <CardBar detail={config ? `Engine on · ${config.vars.length} values` : "Engine off"} />
       </div>
-      <div className={`mx-auto flex w-full flex-1 flex-col gap-4 p-4 ${config && tab === "sandbox" ? "max-w-5xl" : "max-w-3xl"}`}>
+      <div className={`mx-auto flex w-full flex-1 flex-col gap-4 p-4 ${config && (tab === "sandbox" || tab === "playtest") ? "max-w-5xl" : "max-w-3xl"}`}>
         <h1 className="text-lg font-semibold">Immersive Engine</h1>
         {!config ? (
           <section className="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4" aria-label="Turn on">
@@ -116,8 +120,16 @@ function EngineBody() {
               <EngineerPage />
             ) : tab === "test" ? (
               <TestPage config={config} />
-            ) : (
+            ) : tab === "sandbox" ? (
               <SandboxPage config={config} save={save} />
+            ) : (
+              <PlaytestPage
+                onFlag={(text) => {
+                  useEngineer.getState().setDraft(text);
+                  setTab("engineer");
+                  toast("The flagged reply is ready in the engineer's message box");
+                }}
+              />
             )}
             <Button variant="danger" className="self-start" onClick={() => setConfirmOff(true)}>
               Turn the engine off
@@ -174,7 +186,8 @@ function VarsPage({
     save({ ...config, vars: [...config.vars, v] });
     setOpen(v.id);
   };
-  const rules = rulesText(config);
+  const side = config.updateMode === "side";
+  const rules = side ? sideCallPrompt(effectiveConfig(config)) : rulesText(config);
 
   return (
     <div className="flex flex-col gap-4">
@@ -224,9 +237,29 @@ function VarsPage({
         </Button>
         {onImport && <Button onClick={onImport}>Import the status tracker</Button>}
       </div>
+      <fieldset className="flex flex-col gap-1 rounded-xl border border-border p-3 text-sm">
+        <legend className="px-1 font-medium">Who writes the updates</legend>
+        <label className="flex min-h-8 items-start gap-2">
+          <input type="radio" name="update-mode" className="mt-1 size-4" checked={!side} onChange={() => save({ ...config, updateMode: "reply" })} />
+          <span>
+            The roleplay model, at the end of each reply
+            <span className="block text-xs text-ink-muted">No extra calls. The rules sit in the prompt and the reply carries an update block, hidden from the player.</span>
+          </span>
+        </label>
+        <label className="flex min-h-8 items-start gap-2">
+          <input type="radio" name="update-mode" className="mt-1 size-4" checked={side} onChange={() => save({ ...config, updateMode: "side" })} />
+          <span>
+            A side call after each reply
+            <span className="block text-xs text-ink-muted">
+              The reply stays pure prose; a silent second call on the player's own API reads it and writes the update. About{" "}
+              {sideCallTokens(config)} extra tokens a turn. Players can turn it off in the card's settings app.
+            </span>
+          </span>
+        </label>
+      </fieldset>
       <details className="rounded-xl border border-border p-3 text-sm">
         <summary className="cursor-pointer font-medium">
-          What the model is told (~{estimateTokens(rules)} tokens, always on)
+          {side ? `What the side call is told (~${estimateTokens(rules)} tokens a turn)` : `What the model is told (~${estimateTokens(rules)} tokens, always on)`}
         </summary>
         <pre className="mt-2 overflow-x-auto rounded-lg bg-surface-sunken p-2 text-xs whitespace-pre-wrap">{rules}</pre>
       </details>
