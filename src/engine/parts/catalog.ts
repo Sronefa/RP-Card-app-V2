@@ -9,14 +9,18 @@ import type { CardAsset, CardDataV3 } from "../../card";
 import { worldMeta } from "../../editor/world";
 import { newId } from "../../lib/id";
 import { coreModules, modulesOf } from "../modules/compile";
+import { choicesModule } from "../modules/choices";
 import { creatorModule, creatorSettings, CREATOR_TAG } from "../modules/creator";
 import { eventsModule } from "../modules/events";
 import { journalModule } from "../modules/journal";
+import { lifeModule } from "../modules/life";
 import { menuModule } from "../modules/menu";
 import { notifyModule } from "../modules/notify";
 import { addModules, cleanModule } from "../modules/pack";
 import { peopleModule, peopleSettings } from "../modules/people";
 import { phoneModule, phoneSettings } from "../modules/phone";
+import { routesModule, routesSettings } from "../modules/routes";
+import { schoolModule } from "../modules/school";
 import { settingsAppModule } from "../modules/settingsApp";
 import { timeModule } from "../modules/time";
 import { titleModule, titleSettings, TITLE_TAG } from "../modules/title";
@@ -48,6 +52,8 @@ export interface Part {
   generic?: (settings: Settings) => Settings;
   /** The tag that shows it in the opening message. */
   messageTag?: string;
+  /** A tag its preview shows it with, for an inline part the model places itself. */
+  previewTag?: string;
 }
 
 // ---------------------------------------------------------------- tailoring from the card
@@ -119,11 +125,42 @@ export function fillPeople(raw: Settings, data: CardDataV3): Settings {
 export function fillTitle(raw: Settings, data: CardDataV3): Settings {
   const s = titleSettings(raw);
   const art = images(data).find((a) => a.type === "background") ?? images(data).find((a) => a.type === "icon");
+  const cast = worldOf(data, "npc").map((f) => ({ name: f.name.trim(), avatar: portraitFor(data, f.name) }));
   return {
     ...raw,
     title: s.title || data.name,
     premise: s.premise || premiseOf(data.scenario || data.description || ""),
     art: s.art || (art ? fileOf(art) : ""),
+    cast: mergeByName(s.cast, cast).slice(0, 6),
+  };
+}
+
+const CG = /^(cg|event|scene)[ _-]?/i;
+const words = (name: string) => name.replace(CG, "").replace(/[_-]+/g, " ").trim();
+
+/** Love interests from the NPC pages, date spots from the places, gifts from the items, event pictures from "cg_…" images. */
+export function fillRoutes(raw: Settings, data: CardDataV3): Settings {
+  const s = routesSettings(raw);
+  const npcs = worldOf(data, "npc");
+  const interests = npcs.map((f) => ({ name: f.name.trim(), avatar: portraitFor(data, f.name), about: f.look ?? "", loved: "", liked: "", disliked: "" }));
+  const spots = worldOf(data, "location").map((f) => ({ name: f.name.trim(), description: f.mood ?? "" }));
+  const gifts = worldOf(data, "item")
+    .filter((f) => (f.type ?? "item").toLowerCase() !== "service")
+    .map((f) => ({ name: f.name.trim(), price: firstNumber(f.price) }));
+  const gallery = images(data)
+    .filter((a) => CG.test(a.name) || /cg/i.test(a.type))
+    .map((a) => {
+      const caption = words(a.name);
+      const route = npcs.find((f) => caption.toLowerCase().includes(f.name.trim().toLowerCase()))?.name.trim() ?? "";
+      return { file: fileOf(a), caption: caption.charAt(0).toUpperCase() + caption.slice(1), route };
+    });
+  const byFile = new Set(s.gallery.map((g) => g.file));
+  return {
+    ...raw,
+    interests: mergeByName(s.interests, interests),
+    spots: mergeByName(s.spots, spots),
+    gifts: mergeByName(s.gifts, gifts),
+    gallery: [...s.gallery, ...gallery.filter((g) => !byFile.has(g.file))],
   };
 }
 
@@ -259,6 +296,92 @@ export const BUILT_IN_PARTS: Part[] = [
     previewSettings: { contacts: [{ name: "Rhea", role: "Barista", avatar: "" }] },
     sample: PHONE_SAMPLE,
   },
+  {
+    id: "life",
+    name: "Daily life",
+    summary: "Needs that drain with the clock, a job with shifts and pay, bills that come due, skills that grow, and a home to sleep, cook and wash in.",
+    tags: ["life", "needs", "money", "job", "screen", "modern"],
+    requires: ["time"],
+    source: "built-in",
+    make: (s) => lifeModule(s),
+    tailor: "Set the job, pay and shift days, the rent and bills in the card's currency, the home and its rooms, and how fast each need drains.",
+    sample: {
+      Time: { Day: 5, Clock: "07:40", _Weekday: "Friday", Weather: "Clear" },
+      Needs: { Energy: 34, Hunger: 72, Hygiene: 80, Mood: 58, Stress: 41 },
+      Job: { Title: "Barista", Performance: 62, _Shift: "Today 09:00–17:00" },
+      Life: { Money: 212, Home: "Studio apartment", _Bills: ["Rent $650: due Day 7"], $Paid: {} },
+      Skills: { Cooking: 2, Fitness: 1, Charisma: 3, Work: 2 },
+    },
+  },
+  {
+    id: "school",
+    name: "School app",
+    summary: "The class on now from a timetable, grades and study per subject, exam days, attendance and violations that expire, clubs and council requests.",
+    tags: ["school", "time", "screen", "stats"],
+    requires: ["time"],
+    source: "built-in",
+    make: (s) => schoolModule(s),
+    tailor: "Name the school, set the subjects, periods and timetable, the exam days, the clubs from the cast, and the handbook's rules.",
+    sample: {
+      Time: { Day: 3, Clock: "09:55", _Weekday: "Wednesday" },
+      School: {
+        _Now: "2nd period: English (until 10:40)",
+        _Next: "10:50 3rd period: Math",
+        Grades: { Math: 58, Literature: 74, History: 66, Science: 61, English: 70, Art: 82, PE: 77 },
+        Study: { Math: 2, Literature: 4, History: 1, Science: 0, English: 3, Art: 1, PE: 0 },
+        Attendance: 94,
+        Violations: ["Late to homeroom — expires Day 9"],
+        _Exams: ["Midterms: Day 14 (in 11 days)"],
+        Club: "Literature club",
+        ClubRank: "New member",
+        Announcements: ["Culture festival stall sign-ups open Friday"],
+      },
+    },
+  },
+  {
+    id: "routes",
+    name: "Routes",
+    summary: "Love interests with heart meters, stages and route status; date planning, gifts and discovered tastes; a gallery and endings that stay unlocked across chats.",
+    tags: ["dating", "relationships", "vn", "romance", "screen"],
+    requires: [],
+    source: "built-in",
+    make: (s) => routesModule(s),
+    tailor: "Write each love interest's loved, liked and disliked things, the date spots, the endings per route with hints, and caption the event pictures.",
+    fill: fillRoutes,
+    generic: (s) => ({ ...s, interests: [], gallery: [], endings: [] }),
+    previewSettings: {
+      interests: [
+        { name: "Mina", avatar: "", about: "Runs the harbor café; laughs with her whole face.", loved: "tea, old maps", liked: "rain", disliked: "perfume" },
+        { name: "Kai", avatar: "", about: "Quiet, sharp, always sketching.", loved: "jazz", liked: "", disliked: "crowds" },
+      ],
+      gallery: [
+        { file: "", caption: "Under one umbrella", route: "Mina" },
+        { file: "", caption: "Rooftop stars", route: "Kai" },
+      ],
+      endings: [
+        { route: "Mina", name: "The café at dawn", kind: "good", hint: "Earn her trust before the festival" },
+        { route: "Mina", name: "Strangers again", kind: "bad", hint: "" },
+        { route: "Kai", name: "A sketch of you", kind: "good", hint: "Find out what he draws" },
+      ],
+    },
+    sample: {
+      Mina: { Affection: 62, Trust: 40, Route: "Open", Discovered: ["Loves: tea", "Dislikes: perfume"] },
+      Kai: { Affection: 28, Trust: 22, Route: "Open", Discovered: [] },
+      Routes: { Focus: "Mina", Gifts: { Flowers: 1 }, Money: 140, Unlocked: ["Under one umbrella"] },
+    },
+  },
+  {
+    id: "choices",
+    name: "Choice menu",
+    summary: "At moments that matter the model offers two to four options as buttons, with an optional countdown; a tap sends the choice.",
+    tags: ["choices", "inline", "vn", "story"],
+    requires: [],
+    source: "built-in",
+    make: (s) => choicesModule(s),
+    tailor: "Pick how often the model offers choices, and set a timer for tense scenes (confessions, chases).",
+    previewTag: '<cf-module id="choices"/>',
+    sample: { Choices: { Options: ["Tell her the truth", "Change the subject", "Kiss her"] } },
+  },
 ];
 
 /** The author's saved modules, as parts. */
@@ -323,7 +446,11 @@ export function installParts(config: EngineConfig, data: CardDataV3, ids: string
     for (const need of new Set([...part.requires, ...part.make().requires])) visit(need, [...path, part.name]);
     const at = modules.findIndex((m) => m.id === id || m.core === id);
     if (at >= 0) {
-      if (!modules[at].enabled) modules = modules.map((m, i) => (i === at ? { ...m, enabled: true } : m));
+      const have = modules[at];
+      // A built-in part the author never changed takes the settings asked for (a kit's start time).
+      const take = settings[id] && have.core && untouched(have, part) ? cleanModule({ ...part.make({ ...stripLive(have.settings), ...settings[id] }), enabled: true }) : null;
+      if (take) modules = modules.map((m, i) => (i === at ? take : m));
+      else if (!have.enabled) modules = modules.map((m, i) => (i === at ? { ...m, enabled: true } : m));
       return;
     }
     let module = part.make();
@@ -338,6 +465,18 @@ export function installParts(config: EngineConfig, data: CardDataV3, ids: string
   };
   for (const id of ids) visit(id, []);
   return { config: { ...config, modules }, added, messageTags, notes };
+}
+
+function stripLive(settings: Settings): Settings {
+  const s = { ...settings };
+  delete s.live;
+  return s;
+}
+
+/** Whether a module still has its part's default settings. */
+function untouched(m: EngineModule, part: Part): boolean {
+  const norm = (s: Settings) => JSON.stringify(stripLive(part.make(stripLive(s)).settings));
+  return norm(m.settings) === norm(part.make().settings);
 }
 
 /** The opening message with the tags of newly installed parts: the title first, the rest after. */
@@ -365,12 +504,176 @@ export interface Kit {
   builtIn?: boolean;
 }
 
+const opt = (name: string, description: string) => ({ name, description });
+
 export const BUILT_IN_KITS: Kit[] = [
   {
     id: "shared-starter",
     name: "Starter game",
     description: "The shared parts every kit starts from: time, settings, title screen, character creator, menu, people, events, journal and notifications.",
     parts: ["time", "settings", "title", "creator", "menu", "people", "events", "journal", "notify"].map((id) => ({ id })),
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-modern-life",
+    name: "Modern life sim",
+    description: "A phone at the centre of a modern life: texts, social, bank and maps; needs, a job, rent and bills; a lock-screen title.",
+    theme: { preset: "phone", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Monday", startClock: "07:30", startSeason: "Spring", weathers: ["Clear", "Cloudy", "Rain", "Storm", "Fog"] } },
+      { id: "settings" },
+      { id: "title", settings: { style: "lock", newGame: "Start my life" } },
+      {
+        id: "creator",
+        settings: {
+          title: "Who are you?",
+          intro: "A new chapter in the city. Who's living it?",
+          lookIdeas: ["Oversized hoodie, tired eyes, good sneakers", "Sharp blazer, neat bun, always on time", "Paint on the jeans, rings on every finger"],
+          choices: [
+            { name: "Background", options: [opt("Moved for work", "New city, new job, nobody you know yet."), opt("Fresh start", "You left something behind. You don't talk about it."), opt("Local", "You grew up here. Everyone knows your mother.")] },
+            { name: "Occupation", options: [opt("Working", "A job that pays the rent, mostly."), opt("Student", "Classes by day, a part-time shift by night.")] },
+            { name: "Apartment", options: [opt("Shared flat", "Cheap, loud, a fridge with names on everything."), opt("Studio", "Small, yours, a window over the street."), opt("Nice one-bedroom", "More than you can afford. For now.")] },
+          ],
+          stats: [
+            { name: "Cooking", base: 1, max: 10 },
+            { name: "Fitness", base: 1, max: 10 },
+            { name: "Charisma", base: 1, max: 10 },
+            { name: "Work", base: 1, max: 10 },
+          ],
+          points: 5,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "Begin", description: "", message: "I'm {name}. My alarm goes off and a new day starts." }],
+        },
+      },
+      { id: "phone", settings: { startMoney: 800, apps: ["messages", "contacts", "social", "news", "wallet", "map", "calendar", "shop", "system", "quests", "photos", "settings"], system: { name: "Jobs", description: "Job offers and side gigs in town. Applying reaches the story: the employer answers, an interview follows." } } },
+      { id: "life", settings: { skillsGroup: "Player" } },
+      { id: "people" },
+      {
+        id: "events",
+        settings: {
+          scheduled: [
+            { name: "Payday", when: "Fri", from: "", to: "", where: "", text: "Wages land today; the bars fill up after work." },
+            { name: "Farmers' market", when: "Sat", from: "08:00", to: "13:00", where: "", text: "Stalls along the square; fresh bread and neighbours who talk." },
+          ],
+          random: [
+            { name: "A call from home", chance: 10, where: "", part: "Evening", text: "Family calls: news, guilt, or a favour." },
+            { name: "Street performer", chance: 15, where: "", part: "Afternoon", text: "Music on the corner draws a small crowd." },
+          ],
+        },
+      },
+      { id: "journal", settings: { title: "Diary", button: "📔 Diary" } },
+      { id: "menu", settings: { title: "Home screen", only: true } },
+      { id: "notify", settings: { watch: [{ path: "Phone.Texts", title: "Messages", icon: "chat" }, { path: "Phone.Feed", title: "Social", icon: "heart" }, { path: "Phone.News", title: "News", icon: "news" }] } },
+    ],
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-school",
+    name: "School / academy",
+    description: "Timetable and periods, grades and exams, clubs, a record that expires, festivals on the calendar; a phone for the class chat; a school-gate title.",
+    theme: { preset: "academy", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Monday", startClock: "07:40", startSeason: "Spring", weathers: ["Clear", "Cloudy", "Rain", "Storm"] } },
+      { id: "settings" },
+      { id: "title", settings: { style: "gate", tagline: "The spring term begins", newGame: "Through the gate" } },
+      {
+        id: "creator",
+        settings: {
+          title: "Student file",
+          intro: "Fill in your student file before the first bell.",
+          lookIdeas: ["Uniform worn loose, tie undone, headphones always on", "Perfectly pressed uniform, glasses, a planner in hand", "Sleeves rolled up, sports tape on the fingers, sunburnt nose"],
+          choices: [
+            { name: "Year", options: [opt("First year", "Everything is new; nobody knows your name."), opt("Second year", "You know the halls and the rumours."), opt("Third year", "Exams, futures, and one last festival.")] },
+            { name: "Arrival", options: [opt("Transfer student", "You arrive mid-term. Everyone stares."), opt("Returning", "Same school, same faces, new year.")] },
+            { name: "Living", options: [opt("Dorm", "A roommate, a curfew, a hallway that never sleeps."), opt("Commute", "The morning train and the walk past the shrine.")] },
+          ],
+          stats: [
+            { name: "Academics", base: 1, max: 5 },
+            { name: "Sports", base: 1, max: 5 },
+            { name: "Arts", base: 1, max: 5 },
+            { name: "Social", base: 1, max: 5 },
+          ],
+          points: 5,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "First day", description: "", message: "I'm {name}. The bell rings as I reach the gate." }],
+        },
+      },
+      { id: "school" },
+      { id: "phone", settings: { apps: ["messages", "contacts", "social", "calendar", "map", "wallet", "system", "photos", "settings"], startMoney: 60, system: { name: "Forum", description: "The anonymous school forum: gossip, the confessions board, rankings. Posts here reach the story and spread." } } },
+      { id: "people", settings: { stages: [{ name: "Classmate", from: 0 }, { name: "Friend", from: 25 }, { name: "Close friend", from: 50 }, { name: "Crush", from: 70 }, { name: "Sweetheart", from: 90 }] } },
+      {
+        id: "events",
+        settings: {
+          scheduled: [
+            { name: "Morning assembly", when: "Mon", from: "08:30", to: "08:45", where: "", text: "The principal's speech; whispers in the back rows." },
+            { name: "Sports day", when: "Day 10", from: "09:00", to: "16:00", where: "", text: "Relays, tug of war and class rivalries on the field." },
+            { name: "Culture festival", when: "Day 24", from: "10:00", to: "20:00", where: "", text: "Every class runs a stall; the night ends with a bonfire." },
+            { name: "School trip", when: "Day 35", from: "", to: "", where: "", text: "Two nights away: shared rooms, late talks, one big secret." },
+          ],
+          random: [
+            { name: "Pop quiz", chance: 12, where: "", part: "Morning", text: "A surprise quiz; the unprepared panic." },
+            { name: "Rumour", chance: 15, where: "", part: "Afternoon", text: "A rumour spreads through the class chat." },
+          ],
+        },
+      },
+      { id: "journal", settings: { title: "Diary", button: "📔 Diary" } },
+      { id: "menu", settings: { title: "Menu", only: true } },
+      { id: "notify", settings: { watch: [{ path: "Phone.Texts", title: "Messages", icon: "chat" }, { path: "School.Announcements", title: "Announcement", icon: "news" }] } },
+    ],
+    modules: [],
+    builtIn: true,
+  },
+  {
+    id: "kit-dating",
+    name: "Dating sim / VN",
+    description: "Routes with hearts and stages, dates and gifts, choices at key moments, a gallery and endings kept across playthroughs; a visual-novel title with the cast.",
+    theme: { preset: "dating", overrides: {} },
+    parts: [
+      { id: "time", settings: { startWeekday: "Friday", startClock: "16:00", startSeason: "Spring" } },
+      { id: "settings" },
+      { id: "title", settings: { style: "cast", newGame: "Start" } },
+      {
+        id: "creator",
+        settings: {
+          title: "About you",
+          intro: "Before the story starts: who are you, and how did you get here?",
+          lookIdeas: ["Messy hair, warm smile, always a little late", "Tall, neat, a quiet sort of handsome", "Bright eyes, freckles, talks with her hands"],
+          choices: [
+            { name: "Situation", options: [opt("New in town", "A new place where nobody knows your past."), opt("Childhood friend returns", "Someone you grew up with is back, and changed."), opt("New job", "First week, new colleagues, everyone curious.")] },
+          ],
+          stats: [
+            { name: "Charm", base: 1, max: 5 },
+            { name: "Confidence", base: 1, max: 5 },
+            { name: "Wit", base: 1, max: 5 },
+            { name: "Style", base: 1, max: 5 },
+          ],
+          points: 6,
+          items: [],
+          pickItems: 0,
+          routes: [{ label: "Begin", description: "", message: "I'm {name}. It's a Friday afternoon, and something is about to start." }],
+        },
+      },
+      { id: "routes" },
+      { id: "choices" },
+      { id: "phone", settings: { apps: ["messages", "contacts", "calendar", "photos", "settings"], lock: false } },
+      {
+        id: "events",
+        settings: {
+          scheduled: [
+            { name: "Summer festival", when: "Day 7", from: "18:00", to: "23:00", where: "", text: "Lanterns, yukata, fireworks at nine: the night for a confession." },
+            { name: "Confession day", when: "Day 14", from: "", to: "", where: "", text: "Chocolates change hands; everyone is watching who gets one." },
+          ],
+          random: [{ name: "Chance meeting", chance: 20, where: "", part: "Afternoon", text: "One of the love interests happens to be here." }],
+        },
+      },
+      { id: "journal", settings: { title: "Memories", button: "💌 Memories" } },
+      { id: "menu", settings: { title: "Menu", only: true } },
+      { id: "notify", settings: { watch: [{ path: "Phone.Texts", title: "Messages", icon: "chat" }] } },
+    ],
     modules: [],
     builtIn: true,
   },

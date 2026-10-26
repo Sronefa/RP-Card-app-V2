@@ -198,7 +198,8 @@ function PartPreview({ part, parts, config, onClose }: { part: Part; parts: Part
         const base = part.id === "menu" ? config : { ...config, modules: [] };
         const settings = part.previewSettings ? { [part.id]: part.previewSettings } : {};
         const out = installParts(base, data, [part.id], parts, settings);
-        const card = applyEngine({ ...data, first_mes: withMessageTags(`A preview of the ${part.name.toLowerCase()}.`, out.messageTags), alternate_greetings: [] }, out.config);
+        const tags = [...out.messageTags, ...(part.previewTag ? [part.previewTag] : [])];
+        const card = applyEngine({ ...data, first_mes: withMessageTags(`A preview of the ${part.name.toLowerCase()}.`, tags), alternate_greetings: [] }, out.config);
         await preview.load({ data: card, libs, device: "phone", scenario: [] });
         if (!live) return;
         if (part.sample) await preview.setSample(part.sample);

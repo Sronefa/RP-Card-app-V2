@@ -1,5 +1,5 @@
 /**
- * The card theme: one set of CSS variables every engine screen shares, from one of five presets
+ * The card theme: one set of CSS variables every engine screen shares, from one of six presets
  * with the author's own changes on top. Players can switch light and dark and the text size in the
  * settings app; nothing here loads from the web (fonts are system font stacks, textures are CSS).
  */
@@ -36,7 +36,7 @@ export interface ThemePreset {
   dark: ThemeTokens;
 }
 
-export type PresetId = "parchment" | "cyberpunk" | "novel" | "dating" | "phone";
+export type PresetId = "parchment" | "cyberpunk" | "novel" | "dating" | "phone" | "academy";
 
 export interface CardTheme {
   preset: PresetId;
@@ -255,6 +255,46 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
       heading: FONTS.System,
       texture: "none",
       shadow: "0 1px 3px rgba(0,0,0,.5)",
+    },
+  },
+  academy: {
+    id: "academy",
+    name: "Academy",
+    description: "Navy and crest gold on crisp paper, like a school's own handbook.",
+    mode: "light",
+    light: {
+      bg: "#f4f1ea",
+      surface: "#fffdf8",
+      surface2: "#e9e4d8",
+      text: "#1d2840",
+      muted: "#66708a",
+      accent: "#1f3a6e",
+      accent2: "#b8892b",
+      border: "#cfc6b2",
+      good: "#2e7d4f",
+      bad: "#b3382c",
+      radius: 10,
+      font: FONTS.System,
+      heading: FONTS.Serif,
+      texture: "linear-gradient(180deg, rgba(31,58,110,.05), transparent 120px)",
+      shadow: "0 1px 4px rgba(29,40,64,.14)",
+    },
+    dark: {
+      bg: "#0f1626",
+      surface: "#17213a",
+      surface2: "#202c4a",
+      text: "#ece7da",
+      muted: "#9aa5bf",
+      accent: "#6f95e0",
+      accent2: "#e0b85a",
+      border: "#33415f",
+      good: "#5fbf86",
+      bad: "#e2675a",
+      radius: 10,
+      font: FONTS.System,
+      heading: FONTS.Serif,
+      texture: "linear-gradient(180deg, rgba(224,184,90,.06), transparent 120px)",
+      shadow: "0 1px 6px rgba(0,0,0,.45)",
     },
   },
 };
