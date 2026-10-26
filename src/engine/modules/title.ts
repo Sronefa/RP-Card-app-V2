@@ -7,7 +7,9 @@
  * Styles fit the kits: "classic" (art and a menu), "lock" (a phone lock screen that unlocks into the
  * menu), "gate" (petals, leaves or snow falling by the in-game season) and "cast" (a visual-novel
  * menu with the cast's portraits, and Gallery and Endings when the card has routes), "embers" (sparks
- * rising over dark art) and "system" (a game's status window that boots up, for isekai).
+ * rising over dark art), "system" (a game's status window that boots up, for isekai), "glitch" (a
+ * title that tears in neon, for cyberpunk), "stars" (stars streaking past at warp, for space) and
+ * "static" (a VHS tape playing, noise and a timestamp, for horror).
  */
 import { newVar } from "../sheet";
 import type { EngineModule } from "./types";
@@ -19,6 +21,9 @@ export const TITLE_STYLES = {
   cast: "Visual novel with the cast",
   embers: "Embers rising (dark fantasy)",
   system: "A system window booting up (isekai)",
+  glitch: "Neon glitch (cyberpunk)",
+  stars: "Stars streaking past (space)",
+  static: "VHS static (horror)",
 } as const;
 export type TitleStyle = keyof typeof TITLE_STYLES;
 
@@ -101,6 +106,20 @@ function fall() {
   }
   return '<div class="ts-fall ts-' + kind + '" aria-hidden="true">' + out + "</div>";
 }
+// Effects over the art: streaking stars, a scan bar, or tape noise with the in-game time.
+function fx() {
+  var out = "";
+  if (settings.style === "stars") {
+    for (var i = 0; i < 28; i++) out += '<i style="--a:' + ((i * 137) % 360) + "deg;animation-delay:-" + ((i * 0.37) % 2.4).toFixed(2) + "s;--l:" + (40 + (i * 23) % 60) + 'px"></i>';
+    return '<div class="ts-warp" aria-hidden="true">' + out + "</div>";
+  }
+  if (settings.style === "glitch") return '<div class="ts-scan" aria-hidden="true"></div>';
+  if (settings.style === "static") {
+    var t = time();
+    return '<div class="ts-noise" aria-hidden="true"></div><div class="ts-roll" aria-hidden="true"></div><div class="ts-vhs" aria-hidden="true"><span>▶ PLAY</span><span>' + esc((t.Clock || "00:00") + (t.Day ? " · DAY " + t.Day : "")) + "</span></div>";
+  }
+  return "";
+}
 function cast() {
   if (settings.style !== "cast" || !settings.cast.length) return "";
   return '<div class="ts-cast">' + settings.cast.slice(0, 6).map(function (c, i) {
@@ -130,12 +149,12 @@ function render() {
   var more = CF.state.latestId() > 0;
   var routes = settings.style === "cast" && has("routes");
   var sys = settings.style === "system";
-  root.innerHTML = '<div class="ts ts-' + esc(settings.style) + '">' + art() + '<div class="ts-shade"></div>' + fall() + '<div class="ts-body">' +
+  root.innerHTML = '<div class="ts ts-' + esc(settings.style) + '">' + art() + '<div class="ts-shade"></div>' + fall() + fx() + '<div class="ts-body">' +
     (sys ? '<div class="ts-win"><span class="ts-winhead">' + CF.ui.icon("spark") + " System</span>" +
       '<p class="ts-boot"><span>Soul signature detected.</span><span>Building a new world…</span><span>Welcome, Player.</span></p>' : "") +
     cast() +
     (settings.tagline ? '<span class="ts-tag">' + esc(settings.tagline) + "</span>" : "") +
-    "<h1>" + esc(title) + "</h1>" +
+    '<h1 data-text="' + esc(title) + '">' + esc(title) + "</h1>" +
     (settings.premise ? '<p class="ts-premise">' + esc(settings.premise) + "</p>" : "") +
     '<div class="ts-menu">' +
     '<button type="button" class="cf-btn primary" data-new' + (busy ? " disabled" : "") + ">" + esc(settings.newGame) + "</button>" +
@@ -266,7 +285,37 @@ const CSS = String.raw`
 .ts-system .ts-premise, .ts-system .ts-tag { text-align: center; }
 .ts-system .ts-menu { align-self: center; width: 100%; }
 @keyframes ts-open { from { opacity: 0; transform: scaleY(.2); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ts-body, .ts-cast figure, .ts-swipe, .ts-win { animation: none; } .ts-boot span { animation: none; opacity: 1; } .ts-fall { display: none; } }
+/* Neon glitch */
+.ts-glitch { background: linear-gradient(160deg, color-mix(in srgb, var(--cf-accent) 35%, #05050c), #05050c 55%, color-mix(in srgb, var(--cf-accent2) 25%, #05050c)); }
+.ts-glitch .ts-shade { background: linear-gradient(180deg, rgba(5,5,12,.2), rgba(5,5,12,.85)), repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 3px); }
+.ts-glitch h1 { position: relative; text-transform: uppercase; letter-spacing: .06em; color: #fff; text-shadow: 0 0 12px color-mix(in srgb, var(--cf-accent) 80%, transparent); }
+.ts-glitch h1::before, .ts-glitch h1::after { content: attr(data-text); position: absolute; inset: 0; pointer-events: none; }
+.ts-glitch h1::before { color: var(--cf-accent2); transform: translate(-2px, 0); clip-path: inset(0 0 60% 0); animation: ts-tear 2.8s steps(1) infinite; opacity: .85; }
+.ts-glitch h1::after { color: var(--cf-accent); transform: translate(2px, 0); clip-path: inset(55% 0 0 0); animation: ts-tear 2.2s steps(1) infinite reverse; opacity: .85; }
+@keyframes ts-tear { 0%, 88%, 100% { clip-path: inset(0 0 100% 0); } 90% { clip-path: inset(10% 0 55% 0); transform: translate(-4px, 0); } 93% { clip-path: inset(60% 0 8% 0); transform: translate(4px, 0); } 96% { clip-path: inset(35% 0 40% 0); transform: translate(-2px, 0); } }
+.ts-scan { position: absolute; left: 0; right: 0; height: 60px; top: -60px; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--cf-accent2) 18%, transparent), transparent); animation: ts-scan 4s linear infinite; pointer-events: none; }
+@keyframes ts-scan { to { top: 100%; } }
+.ts-glitch .ts-tag { color: var(--cf-accent2); font-family: var(--cf-heading); }
+/* Stars at warp */
+.ts-warp { position: absolute; left: 50%; top: 38%; width: 0; height: 0; pointer-events: none; }
+.ts-warp i { position: absolute; left: 0; top: 0; width: var(--l); height: 2px; border-radius: 2px; transform-origin: 0 50%; background: linear-gradient(90deg, transparent, #fff); animation: ts-warp 2.4s linear infinite; opacity: 0; }
+@keyframes ts-warp { 0% { transform: rotate(var(--a)) translateX(0) scaleX(.1); opacity: 0; } 20% { opacity: .9; } 100% { transform: rotate(var(--a)) translateX(320px) scaleX(1); opacity: 0; } }
+.ts.ts-stars { background: radial-gradient(60% 50% at 50% 38%, color-mix(in srgb, var(--cf-accent2) 30%, #02040a), #02040a 75%); }
+.ts.ts-stars h1 { letter-spacing: .12em; text-transform: uppercase; font-family: var(--cf-heading); }
+/* VHS static */
+.ts-static { background: #0a0a0a; }
+.ts-static .ts-art { filter: grayscale(.6) contrast(1.2) brightness(.8); }
+.ts-noise { position: absolute; inset: -50%; pointer-events: none; opacity: .22; mix-blend-mode: screen;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1.4 -.35'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+  animation: ts-noise .25s steps(3) infinite; }
+@keyframes ts-noise { 33% { transform: translate(-3%, 2%); } 66% { transform: translate(2%, -3%); } }
+.ts-roll { position: absolute; left: 0; right: 0; height: 18%; top: -20%; background: linear-gradient(180deg, transparent, rgba(255,255,255,.07), transparent); animation: ts-roll 5s linear infinite; pointer-events: none; }
+@keyframes ts-roll { to { top: 110%; } }
+.ts-vhs { position: absolute; top: 12px; left: 14px; right: 14px; display: flex; justify-content: space-between; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85em; letter-spacing: .1em; color: #f2f2f2; text-shadow: 2px 0 rgba(255,0,0,.5), -2px 0 rgba(0,255,255,.4); }
+.ts-vhs span:first-child { animation: ts-pulse 1.2s steps(1) infinite; }
+.ts-static h1 { font-family: var(--cf-heading); letter-spacing: .08em; text-shadow: 2px 0 rgba(200,0,20,.6), -1px 0 rgba(0,200,200,.35), 0 2px 18px rgba(0,0,0,.8); animation: ts-jitter 4s steps(1) infinite; }
+@keyframes ts-jitter { 0%, 92%, 100% { transform: none; } 93% { transform: translate(2px, -1px); } 95% { transform: translate(-3px, 1px) skewX(4deg); } 97% { transform: translate(1px, 0); } }
+@media (prefers-reduced-motion: reduce) { .ts-body, .ts-cast figure, .ts-swipe, .ts-win { animation: none; } .ts-boot span { animation: none; opacity: 1; } .ts-fall, .ts-warp, .ts-scan, .ts-roll { display: none; } .ts-noise, .ts-static h1, .ts-glitch h1::before, .ts-glitch h1::after, .ts-vhs span { animation: none; } }
 `;
 
 export function titleModule(raw?: Record<string, unknown>, enabled = true): EngineModule {

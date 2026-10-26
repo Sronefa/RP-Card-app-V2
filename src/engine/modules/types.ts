@@ -48,7 +48,7 @@ export interface ModuleRegex {
   minDepth?: number;
 }
 
-export const CORE_KINDS = ["time", "settings", "creator", "phone", "title", "menu", "people", "events", "journal", "notify", "life", "school", "routes", "choices", "hero", "inventory", "quests", "map", "combat"] as const;
+export const CORE_KINDS = ["time", "settings", "creator", "phone", "title", "menu", "people", "events", "journal", "notify", "life", "school", "routes", "choices", "hero", "inventory", "quests", "map", "combat", "ship", "case"] as const;
 export type CoreKind = (typeof CORE_KINDS)[number];
 
 export interface EngineModule {

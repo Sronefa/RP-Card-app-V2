@@ -32,6 +32,10 @@ export interface MapSettings {
   hours: number;
   /** Places stay hidden until {{user}} reaches one next to them. */
   fog: boolean;
+  /** The travel button's word: "Travel", or "Jump" on a star chart. */
+  verb: string;
+  /** What {{user}} says on setting out, with {place}. */
+  go: string;
 }
 
 export const DANGER = ["Safe", "Some risk", "Dangerous", "Deadly"];
@@ -51,6 +55,8 @@ export const defaultMapSettings = (): MapSettings => ({
   start: "",
   hours: 3,
   fog: true,
+  verb: "Travel",
+  go: "I set out for {place}.",
 });
 
 const str = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
@@ -78,6 +84,8 @@ export function mapSettings(raw: Record<string, unknown> | undefined): MapSettin
     start: str(raw.start),
     hours: Math.max(0, Math.min(240, num(raw.hours, base.hours))),
     fog: raw.fog !== false,
+    verb: str(raw.verb, base.verb).trim() || base.verb,
+    go: str(raw.go, base.go).trim() || base.go,
   };
 }
 
@@ -214,7 +222,7 @@ function panel() {
   return '<div class="cf-card mp-panel"><div class="cf-spread"><div><span class="cf-label">' + esc(p.region || (at ? "You are here" : "")) + "</span><h2>" + esc(p.name) + "</h2></div>" + pips(p.danger) + "</div>" +
     (p.description ? "<p>" + esc(p.description) + "</p>" : "") +
     (at ? '<p class="cf-small mp-here">' + ui.icon("compass") + " You are here</p>"
-      : path ? '<button type="button" class="cf-btn primary mp-go" data-travel="' + esc(p.name) + '">' + ui.icon("map") + "Travel" + (hours ? " · about " + hours + "h" : "") + (path.length > 1 ? " · via " + esc(path.slice(0, -1).join(", ")) : "") + "</button>" +
+      : path ? '<button type="button" class="cf-btn primary mp-go" data-travel="' + esc(p.name) + '">' + ui.icon("map") + esc(S.verb) + (hours ? " · about " + hours + "h" : "") + (path.length > 1 ? " · via " + esc(path.slice(0, -1).join(", ")) : "") + "</button>" +
         (worst >= 2 ? '<p class="cf-small mp-warn">' + ui.icon("skull") + " The way is " + (worst > 2 ? "deadly" : "dangerous") + ".</p>" : "")
       : '<p class="cf-small cf-muted">No known road from here.</p>') + "</div>";
 }
@@ -232,7 +240,7 @@ root.addEventListener("click", function (e) {
   if ((b = e.target.closest("[data-place]"))) return pick(b.getAttribute("data-place"));
   if ((b = e.target.closest("[data-travel]"))) {
     var to = b.getAttribute("data-travel"), path = route(to) || [to];
-    app.send("map", { travel: to, via: path.slice(0, -1), hours: path.length * S.hours }, "I set out for " + to + ".").then(function () { app.toast("In your message box: send it when you're ready"); });
+    app.send("map", { travel: to, via: path.slice(0, -1), hours: path.length * S.hours }, S.go.split("{place}").join(to)).then(function () { app.toast("In your message box: send it when you're ready"); });
   }
 });
 root.addEventListener("keydown", function (e) {
@@ -273,7 +281,7 @@ const CSS = String.raw`
 .mp-pips.d1 i.on { background: var(--cf-accent2); }
 .mp-pips.d2 i.on, .mp-pips.d3 i.on { background: var(--cf-bad); }
 .mp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.mp-chips .cf-chip { cursor: pointer; font: inherit; font-size: .85em; }
+.mp-chips .cf-chip { cursor: pointer; font: inherit; font-size: .85em; color: var(--cf-text); border: 1px solid var(--cf-border); min-height: 32px; }
 .mp-chips .cf-chip.on { background: var(--cf-accent); border-color: var(--cf-accent); color: #fff; }
 @media (prefers-reduced-motion: reduce) { .mp-ring { animation: none; } }
 `;

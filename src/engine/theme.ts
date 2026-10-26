@@ -1,5 +1,5 @@
 /**
- * The card theme: one set of CSS variables every engine screen shares, from one of eight presets
+ * The card theme: one set of CSS variables every engine screen shares, from one of ten presets
  * with the author's own changes on top. Players can switch light and dark and the text size in the
  * settings app; nothing here loads from the web (fonts are system font stacks, textures are CSS).
  */
@@ -36,7 +36,7 @@ export interface ThemePreset {
   dark: ThemeTokens;
 }
 
-export type PresetId = "parchment" | "cyberpunk" | "novel" | "dating" | "phone" | "academy" | "grimdark" | "system";
+export type PresetId = "parchment" | "cyberpunk" | "novel" | "dating" | "phone" | "academy" | "grimdark" | "system" | "starship" | "dread";
 
 export interface CardTheme {
   preset: PresetId;
@@ -375,6 +375,86 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
       heading: FONTS.System,
       texture: "linear-gradient(180deg, rgba(10,114,194,.06), transparent 50%)",
       shadow: "0 0 0 1px rgba(10,114,194,.12), 0 2px 10px rgba(10,114,194,.15)",
+    },
+  },
+  starship: {
+    id: "starship",
+    name: "Starship console",
+    description: "A ship's console: amber readouts and cyan scans on deep space black, crisp and clean.",
+    mode: "dark",
+    dark: {
+      bg: "#05080d",
+      surface: "#0c121b",
+      surface2: "#141d2a",
+      text: "#e3ecf5",
+      muted: "#8193a8",
+      accent: "#d9730d",
+      accent2: "#4cc9f0",
+      border: "#24344a",
+      good: "#56d69b",
+      bad: "#ff4d5e",
+      radius: 10,
+      font: FONTS.System,
+      heading: FONTS.Mono,
+      texture: "radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.35), transparent 60%), radial-gradient(1px 1px at 68% 42%, rgba(255,255,255,.25), transparent 60%), radial-gradient(1px 1px at 38% 82%, rgba(255,255,255,.3), transparent 60%), linear-gradient(180deg, rgba(76,201,240,.06), transparent 50%)",
+      shadow: "0 0 0 1px rgba(76,201,240,.10), 0 4px 16px rgba(0,0,0,.5)",
+    },
+    light: {
+      bg: "#eef2f6",
+      surface: "#ffffff",
+      surface2: "#dfe6ee",
+      text: "#0e1621",
+      muted: "#56667a",
+      accent: "#b35a00",
+      accent2: "#0b7ea3",
+      border: "#b7c4d3",
+      good: "#18865a",
+      bad: "#c42b3c",
+      radius: 10,
+      font: FONTS.System,
+      heading: FONTS.Mono,
+      texture: "none",
+      shadow: "0 1px 4px rgba(14,22,33,.15)",
+    },
+  },
+  dread: {
+    id: "dread",
+    name: "Dread",
+    description: "Near-black and bone white, a typewriter's headings and one colour: blood. For horror and mystery.",
+    mode: "dark",
+    dark: {
+      bg: "#080808",
+      surface: "#121212",
+      surface2: "#1c1b1a",
+      text: "#d9d4ca",
+      muted: "#837d73",
+      accent: "#b3121f",
+      accent2: "#9aa06e",
+      border: "#2e2b28",
+      good: "#7d9a6a",
+      bad: "#e0313f",
+      radius: 2,
+      font: FONTS.Serif,
+      heading: FONTS.Mono,
+      texture: "radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.03), transparent 60%), radial-gradient(circle at 50% 120%, rgba(179,18,31,.10), transparent 55%)",
+      shadow: "0 2px 12px rgba(0,0,0,.7)",
+    },
+    light: {
+      bg: "#e4dfd4",
+      surface: "#efebe2",
+      surface2: "#d8d1c3",
+      text: "#1a1714",
+      muted: "#615a50",
+      accent: "#8f0d18",
+      accent2: "#5e6440",
+      border: "#aaa092",
+      good: "#4c6a3a",
+      bad: "#a3121e",
+      radius: 2,
+      font: FONTS.Serif,
+      heading: FONTS.Mono,
+      texture: "radial-gradient(circle at 20% 10%, rgba(0,0,0,.05), transparent 45%)",
+      shadow: "0 2px 6px rgba(26,23,20,.25)",
     },
   },
 };
