@@ -43,6 +43,8 @@ interface CardForge {
   themeCss(settings?: Settings): string;
   /** The card's enabled modules. */
   modules(): { id: string; name: string; slot: string; button: string }[];
+  /** Turns older status panels into still pictures (the player's "live panels" setting). Runs on its own after each message. */
+  freezePanels(): void;
   state: {
     /** The state at a message (default: the latest), or one value by path. */
     get(path?: string, messageId?: number | "latest"): any;
@@ -50,6 +52,8 @@ interface CardForge {
     latestId(): number;
     /** The player changes a value on the latest state. Logged in _PlayerEdits so the AI keeps it. */
     set(path: string | string[], value: any, note?: string): Promise<any>;
+    /** Several player changes in one write and one log line: [[path, value], ...]. */
+    setMany(changes: [string | string[], any][], note?: string): Promise<any>;
     /** Every value back to the start, on the latest state. */
     reset(): Promise<void>;
   };
@@ -58,6 +62,8 @@ interface CardForge {
     send(app: string, payload?: any, text?: string, options?: { now?: boolean }): Promise<string>;
     /** The same line, without writing it anywhere. */
     text(app: string, payload?: any, text?: string): string;
+    /** Writes plain text into the input box (no action tag); with now, sends it. */
+    write(text: string, options?: { now?: boolean }): Promise<string>;
   };
   bus: {
     /** Listens for "cf:<name>" events between screens. Returns a function that stops listening. */
@@ -77,7 +83,9 @@ interface App {
   /** What changed in this screen's message. */
   delta(): Delta;
   set(path: string | string[], value: any, note?: string): Promise<any>;
+  setMany(changes: [string | string[], any][], note?: string): Promise<any>;
   send(app: string, payload?: any, text?: string, options?: { now?: boolean }): Promise<string>;
+  write(text: string, options?: { now?: boolean }): Promise<string>;
   open(moduleId: string): void;
   close(): void;
   /** Runs fn after updates, swipes, deletions and the player's edits. */
@@ -149,6 +157,8 @@ Draw from the state every time, and redraw on `app.onState`. Don't keep your own
 
 `app.set("Player.Gold", 40, "spent at the shop")` changes the latest state at once. The change goes through the schema (clamps, repairs). It is logged in `_PlayerEdits`, so the model reads "Player.Gold: 52 → 40 (spent at the shop)" and builds on it instead of undoing it. Use it for things the player decides alone: equipping an item, renaming, choosing a setting. For anything the story should react to (buying, talking, travelling), send an action instead and let the model write the update.
 
+`app.setMany([["Player.Name", "Ash"], ["Player.Class", "Mage"]], "made in the character creator")` writes several values in one go: one save, one schema check and one `_PlayerEdits` line. Hidden `$` values (like a read counter or the player's own notes) are saved but not logged, so the model isn't told about bookkeeping.
+
 `CF.state.reset()` puts every value back to the start, as the settings app's "Back to the start" does.
 
 ## Sending actions
@@ -161,6 +171,8 @@ I buy the rope.
 ```
 
 The player can add words and send it. With `{ now: true }` it is sent at once. The engine's regex shows the action as a short line (`⟶ shop`) and keeps old ones out of the prompt. Tell the model in a lorebook rule what each action means (see the RP guide).
+
+`app.write("I rest until morning.", { now: true })` writes plain text, without an action tag: for a prewritten message, like the status panel's action buttons or the creator's opening line.
 
 A button can send without any script: `CF.ui.button("Buy", { send: "shop", payload: { buy: "rope" }, text: "I buy the rope.", primary: true })`.
 

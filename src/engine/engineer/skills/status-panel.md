@@ -17,4 +17,6 @@ Checklist:
 - [ ] Compact: about 1 to 3 lines at 360px wide.
 - [ ] Changed values show a delta badge or flash.
 
+The panel's own values (the sheet's) already slide and flash. The user sets their tabs and action buttons on the Look tab; a section is only for what those can't show.
+
 Example: read_example("relationship-panel").

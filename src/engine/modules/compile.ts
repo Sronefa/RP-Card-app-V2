@@ -6,6 +6,8 @@
  */
 import type { SillyTavernRegex } from "../../editor/trackers";
 import { varLabel, varPath, type EngineConfig, type EngineVar } from "../sheet";
+import { creatorModule } from "./creator";
+import { phoneModule } from "./phone";
 import { settingsAppModule } from "./settingsApp";
 import { timeModule } from "./time";
 import type { EngineModule, ModuleRegex } from "./types";
@@ -26,16 +28,34 @@ export const PLAYER_EDITS: EngineVar = {
   rule: "Values the player changed by hand in the game screens, newest last. They are true now: build on them, never undo them.",
 };
 
-/** A core module is rebuilt from its settings, so cards get the current code. */
-export function resolveModule(m: EngineModule): EngineModule {
+/** Built-in screens an author can add from the Modules tab. They aren't in a new card. */
+export const BUILT_IN_SCREENS = [
+  { core: "creator" as const, make: () => creatorModule(), help: "The first message lets the player make their character, then Begin sends the opening." },
+  { core: "phone" as const, make: () => phoneModule(), help: "A phone over the chat with a lock screen, home screen and apps the player uses to act." },
+];
+
+/** Overlay modules that show as apps on the phone's home screen. */
+export const PHONE_APP_TAG = "phone-app";
+
+/**
+ * A core module is rebuilt from its settings, so cards get the current code. `all` is the card's
+ * other modules, for the phone's extra apps.
+ */
+export function resolveModule(m: EngineModule, all: EngineModule[] = []): EngineModule {
   if (m.core === "time") return timeModule(m.settings, m.enabled);
   if (m.core === "settings") return settingsAppModule(m.settings, m.enabled);
+  if (m.core === "creator") return creatorModule(m.settings, m.enabled);
+  if (m.core === "phone") {
+    const extra = all.filter((o) => o.enabled && o.slot === "overlay" && o.tags.includes(PHONE_APP_TAG)).map((o) => ({ id: o.id, name: o.name }));
+    return phoneModule(m.settings, m.enabled, extra);
+  }
   return m;
 }
 
 /** The card's modules, resolved. Cards from before modules get the core ones. */
 export function modulesOf(config: EngineConfig): EngineModule[] {
-  return (config.modules ?? coreModules()).map(resolveModule);
+  const all = config.modules ?? coreModules();
+  return all.map((m) => resolveModule(m, all));
 }
 
 export const enabledModules = (config: EngineConfig) => modulesOf(config).filter((m) => m.enabled);
@@ -112,7 +132,8 @@ export function inlineDoc(moduleId: string): string {
   return [
     "<!DOCTYPE html>",
     '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>',
-    '<body style="margin:0"><div id="cf-root"></div><script>',
+    // The root is marked, so a screen that also opens over the chat knows it's inside a message.
+    '<body style="margin:0"><div id="cf-root" data-cf-inline="1"></div><script>',
     "(function () {",
     "  function core() { try { return window.CardForge || window.parent.CardForge; } catch (e) { return null; } }",
     `  var n = 0; (function go() { var CF = core(); if (CF) CF.mount(window, ${id}); else if (n++ < 100) setTimeout(go, 100); })();`,
@@ -137,7 +158,8 @@ export function moduleRegex(config: EngineConfig): SillyTavernRegex[] {
   const out: SillyTavernRegex[] = [];
   for (const m of enabledModules(config)) {
     m.regex.forEach((r, i) => out.push(...toRegex(`cf-${m.id}-${i}`, `CardForge ${m.name}: ${r.name || `regex ${i + 1}`}`, r)));
-    if (m.slot === "message") {
+    // A message module, or a hub screen that can also show inside a message (the phone).
+    if (m.slot === "message" || (m.slot === "overlay" && m.settings.inline === true)) {
       const find = `/<cf-module id="${m.id}"\\s*\\/>/g`;
       out.push(
         ...toRegex(`cf-${m.id}-show`, `CardForge ${m.name}: show`, { name: "show", find, replace: "```html\n" + inlineDoc(m.id) + "\n```", ai: true, user: true, only: "display" }),

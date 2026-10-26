@@ -63,7 +63,7 @@ export function cleanModule(raw: unknown): EngineModule | null {
   const name = str(raw.name).trim();
   const id = str(raw.id).trim();
   if (!name && !id) return null;
-  const core = raw.core === "time" || raw.core === "settings" ? (raw.core as CoreKind) : undefined;
+  const core = ["time", "settings", "creator", "phone"].includes(str(raw.core)) ? (raw.core as CoreKind) : undefined;
   const slot = (str(raw.slot) in SLOTS ? raw.slot : "overlay") as Slot;
   const m: EngineModule = {
     id: id || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "module",

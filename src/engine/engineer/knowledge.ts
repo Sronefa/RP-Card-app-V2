@@ -3,7 +3,7 @@
  * the app, so they always match the engine core that gets exported), the skills (playbooks the
  * user can edit and add to) and the example modules.
  */
-import { coreModules } from "../modules/compile";
+import { BUILT_IN_SCREENS, coreModules } from "../modules/compile";
 import type { EngineModule } from "../modules/types";
 import { EXAMPLES } from "./examples";
 
@@ -144,13 +144,19 @@ export const skillsIndex = (skills: Skill[]) => skills.map((s) => `- ${s.id}: ${
 
 /** The example library: reference modules, and the core modules as they are built. */
 export function examples(): EngineModule[] {
-  return [...EXAMPLES, ...coreModules()];
+  return [...EXAMPLES, ...coreModules(), ...BUILT_IN_SCREENS.map((b) => b.make())];
 }
 
 export const examplesIndex = () =>
   examples()
     .map((m) => `- ${m.id}: ${m.name} (${m.slot}). ${m.description}`)
     .join("\n");
+
+/** A core module's settings as the author sets them, without what CardForge works out from them. */
+function authorSettings(m: EngineModule) {
+  const { live: _live, catalog: _catalog, extra: _extra, ...rest } = m.settings;
+  return rest;
+}
 
 export function readExample(id: string): string | undefined {
   const m = examples().find((e) => e.id === id);
@@ -169,6 +175,7 @@ export function readExample(id: string): string | undefined {
   return [
     `Example module "${m.name}" (${m.id}, slot ${m.slot}${m.button ? `, button "${m.button}"` : ""}). ${m.description}`,
     `<file name="values.json">\n${JSON.stringify(values, null, 2)}\n</file>`,
+    m.core ? `<file name="settings.json">\n${JSON.stringify(authorSettings(m), null, 2)}\n</file>` : "",
     m.rules.length ? `<file name="rules.json">\n${JSON.stringify(m.rules, null, 2)}\n</file>` : "",
     m.html ? `<file name="html">\n${m.html}\n</file>` : "",
     m.css ? `<file name="css">\n${m.css}\n</file>` : "",

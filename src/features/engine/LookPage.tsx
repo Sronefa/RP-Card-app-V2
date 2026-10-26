@@ -1,10 +1,10 @@
 /** The engine's Look tab: the card theme every screen shares, and the status panel. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, TextInput } from "../../components/ui";
-import { panelHtml } from "../../engine/panel";
+import { panelGroups, panelHtml } from "../../engine/panel";
 import kitCss from "../../engine/runtime/kit.css?raw";
 import { effectiveConfig } from "../../engine/modules/compile";
-import { initialState, themeOf, type EngineConfig } from "../../engine/sheet";
+import { initialState, themeOf, type EngineConfig, type PanelAction, type PanelTab } from "../../engine/sheet";
 import { FONTS, PRESET_IDS, PRESETS, themeTokens, themeVars, type CardTheme, type ThemeMode, type ThemeTokens } from "../../engine/theme";
 import { selectClass } from "./VarEditor";
 
@@ -171,6 +171,8 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
         </label>
         {panel.enabled && (
           <>
+            <PanelTabsEditor config={config} tabs={panel.tabs ?? []} onChange={(tabs, key) => setPanel({ tabs }, `tabs.${key}`)} />
+            <PanelActionsEditor actions={panel.actions ?? []} onChange={(actions, key) => setPanel({ actions }, `actions.${key}`)} />
             <h3 className="text-sm font-medium">With the starting values</h3>
             <PanelPreview config={config} state={initialState(effectiveConfig(config))} mode={mode} />
             <p className="text-xs text-ink-muted">
@@ -181,6 +183,75 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
         )}
       </section>
     </div>
+  );
+}
+
+function PanelTabsEditor({ config, tabs, onChange }: { config: EngineConfig; tabs: PanelTab[]; onChange: (t: PanelTab[], key: string) => void }) {
+  const groups = panelGroups(config);
+  const setTab = (i: number, patch: Partial<PanelTab>, key: string) => onChange(tabs.map((t, j) => (j === i ? { ...t, ...patch } : t)), `${i}.${key}`);
+  return (
+    <fieldset className="flex flex-col gap-2 text-sm">
+      <legend className="font-medium">Tabs</legend>
+      <p className="text-xs text-ink-muted">
+        Opened, the panel shows its values in these tabs. Groups no tab names go under "Other". Without tabs, it shows
+        them all in one list.
+      </p>
+      {tabs.map((t, i) => (
+        <div key={i} className="flex flex-col gap-2 rounded-lg border border-border p-2">
+          <div className="flex gap-2">
+            <TextInput aria-label="Tab name" placeholder="e.g. People" value={t.label} onChange={(e) => setTab(i, { label: e.target.value }, "label")} />
+            <Button variant="ghost" onClick={() => onChange(tabs.filter((_, j) => j !== i), "remove")}>
+              Remove
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-x-4">
+            {groups.map((g) => (
+              <label key={g} className="flex min-h-8 items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  checked={t.groups.includes(g)}
+                  onChange={(e) => setTab(i, { groups: e.target.checked ? [...t.groups, g] : t.groups.filter((x) => x !== g) }, "groups")}
+                />
+                {g || "Values without a group"}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <Button className="self-start" onClick={() => onChange([...tabs, { label: "", groups: [] }], "add")}>
+        Add a tab
+      </Button>
+    </fieldset>
+  );
+}
+
+function PanelActionsEditor({ actions, onChange }: { actions: PanelAction[]; onChange: (a: PanelAction[], key: string) => void }) {
+  const setAction = (i: number, patch: Partial<PanelAction>, key: string) => onChange(actions.map((a, j) => (j === i ? { ...a, ...patch } : a)), `${i}.${key}`);
+  return (
+    <fieldset className="flex flex-col gap-2 text-sm">
+      <legend className="font-medium">Action buttons</legend>
+      <p className="text-xs text-ink-muted">
+        Buttons on the newest panel. Each puts a message in the input box, or runs a slash command when it starts with
+        "/".
+      </p>
+      {actions.map((a, i) => (
+        <div key={i} className="grid grid-cols-2 gap-2 rounded-lg border border-border p-2 sm:grid-cols-4">
+          <TextInput aria-label="Button label" placeholder="e.g. Rest" value={a.label} onChange={(e) => setAction(i, { label: e.target.value }, "label")} />
+          <TextInput aria-label="Message or command" placeholder="I rest until morning." className="sm:col-span-3" value={a.text} onChange={(e) => setAction(i, { text: e.target.value }, "text")} />
+          <label className="col-span-2 flex min-h-8 items-center gap-2 sm:col-span-3">
+            <input type="checkbox" className="size-4" checked={a.now} onChange={(e) => setAction(i, { now: e.target.checked }, "now")} />
+            Send it at once
+          </label>
+          <Button variant="ghost" className="col-span-2 justify-self-end sm:col-span-1" onClick={() => onChange(actions.filter((_, j) => j !== i), "remove")}>
+            Remove
+          </Button>
+        </div>
+      ))}
+      <Button className="self-start" onClick={() => onChange([...actions, { label: "", text: "", now: true }], "add")}>
+        Add a button
+      </Button>
+    </fieldset>
   );
 }
 

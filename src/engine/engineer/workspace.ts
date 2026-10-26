@@ -5,7 +5,7 @@
  */
 import { ToolInputError } from "../../ai/tools";
 import type { ToolCall } from "../../ai/types";
-import { coreModules, modulesOf, newModule } from "../modules/compile";
+import { BUILT_IN_SCREENS, coreModules, modulesOf, newModule } from "../modules/compile";
 import { cleanModule } from "../modules/pack";
 import { SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../modules/types";
 import { newVar, themeOf, VAR_TYPES, type EngineConfig, type EngineVar, type VarType } from "../sheet";
@@ -156,6 +156,15 @@ export function applyOp(config: EngineConfig, call: ToolCall): { config: EngineC
       // A core module is rebuilt from its settings, which checks them.
       const next = module.core ? (cleanModule(merged) ?? merged) : merged;
       return { config: withModule(config, index, next), summary: `Change the "${module.name}" module's options` };
+    }
+    case "add_built_in": {
+      const screen = BUILT_IN_SCREENS.find((b) => b.core === input.screen);
+      if (!screen) throw new ToolInputError(`"screen" must be "creator" or "phone"`);
+      if (modulesIn(config).some((m) => m.core === screen.core || m.id === screen.core)) throw new ToolInputError(`The card already has a "${screen.core}" module`);
+      const base = screen.make();
+      const extra = input.settings && typeof input.settings === "object" && !Array.isArray(input.settings) ? (input.settings as Input) : {};
+      const module = cleanModule({ ...base, settings: { ...base.settings, ...extra } }) ?? base;
+      return { config: { ...config, modules: [...modulesIn(config), module] }, summary: `Add the built-in ${module.name.toLowerCase()}` };
     }
     case "delete_module": {
       const { index, module } = findModule(config, input.module);

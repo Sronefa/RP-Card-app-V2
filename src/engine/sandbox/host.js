@@ -1523,14 +1523,19 @@
     (0, eval)(CF_LIBS.jquery);
     chatElement = document.getElementById("chat");
     document.documentElement.style.fontSize = (config.textScale || 1) * 100 + "%";
-    var form = document.getElementById("send_form");
-    form.addEventListener("submit", function (e) {
+    // The page is sandboxed without forms, so a submit never fires: the button and Enter send instead.
+    function submit(e) {
       e.preventDefault();
       var text = input().value.trim();
       if (!text) return;
       input().value = "";
       log("input box", "sent", text);
       queue = queue.then(function () { return sendUser(text); });
+    }
+    document.getElementById("send_form").addEventListener("submit", submit);
+    document.getElementById("send_but").addEventListener("click", submit);
+    input().addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) submit(e);
     });
     var greetings = [card.first_mes || ""].concat(card.alternate_greetings || []);
     var first = newMessage("assistant", greetings[0]);
