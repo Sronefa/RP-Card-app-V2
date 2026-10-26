@@ -15,6 +15,7 @@ import type { CardDataV3, Lorebook, LorebookEntry } from "../card";
 import { emptyBook, newEntry, withStPosition } from "../editor/lorebook";
 import { stageRanges, type SillyTavernRegex, type TrackerConfig } from "../editor/trackers";
 import { newId } from "../lib/id";
+import { estimateTokens } from "../lib/tokens";
 import { coreModules, effectiveConfig, enabledModules, moduleRegex, moduleRuntime } from "./modules/compile";
 import type { EngineModule } from "./modules/types";
 import { panelHtml } from "./panel";
@@ -83,7 +84,14 @@ export interface EngineConfig {
   modules?: EngineModule[];
   /** The card theme. Missing on cards from before themes: the panel's accent on the phone preset. */
   theme?: CardTheme;
+  /**
+   * Who writes the updates: the roleplay model at the end of each reply (the default), or a silent
+   * side call after each reply, which keeps the reply pure prose.
+   */
+  updateMode?: UpdateMode;
 }
+
+export type UpdateMode = "reply" | "side";
 
 export interface ScenarioTurn {
   role: "user" | "assistant";
@@ -263,16 +271,24 @@ function v0(v: EngineVar): string {
   return "new value";
 }
 
-/** The `[mvu_update]` entry: what each value means, when it changes, and the block format. */
-export function rulesText(config: EngineConfig): string {
+function ruleLines(config: EngineConfig, intro: string): string[] {
   const vars = live(config).filter((v) => !v.hidden);
-  const lines = vars.map((v) => `- ${varPath(v).join(".")} (${describe(v)})${v.rule.trim() ? `: ${v.rule.trim()}` : ""}`);
-  const ops = exampleOps(config);
   return [
     "<variable_rules>",
-    "The game state is in <game_state>. Keep it true to the story: change a value only when something in your reply changes it.",
-    ...lines,
+    intro,
+    ...vars.map((v) => `- ${varPath(v).join(".")} (${describe(v)})${v.rule.trim() ? `: ${v.rule.trim()}` : ""}`),
     "</variable_rules>",
+  ];
+}
+
+const OPS_HELP =
+  'Use "delta" to raise or lower a number, "replace" for a new value, "insert" to add to a list (path ending in /-) or to counts (path ending in the name), "remove" to take an entry out. Paths start at the top of <game_state>.';
+
+/** The `[mvu_update]` entry: what each value means, when it changes, and the block format. */
+export function rulesText(config: EngineConfig): string {
+  const ops = exampleOps(config);
+  return [
+    ...ruleLines(config, "The game state is in <game_state>. Keep it true to the story: change a value only when something in your reply changes it."),
     "<variable_format>",
     "End every reply, after the story, with this block:",
     "<UpdateVariable>",
@@ -285,10 +301,62 @@ export function rulesText(config: EngineConfig): string {
     "]",
     "</JSONPatch>",
     "</UpdateVariable>",
-    'Use "delta" to raise or lower a number, "replace" for a new value, "insert" to add to a list (path ending in /-) or to counts (path ending in the name), "remove" to take an entry out. Paths start at the top of <game_state>.',
+    OPS_HELP,
     "If nothing changed, write an empty list: [].",
     "</variable_format>",
   ].join("\n");
+}
+
+/** What the side call answers with: the ops, as JSON (Tavern Helper's `json_schema`). */
+export const SIDE_CALL_SCHEMA = {
+  type: "object",
+  properties: {
+    analysis: { type: "string", description: "One short line per value that changed, and why." },
+    ops: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          op: { type: "string", enum: ["replace", "delta", "insert", "remove", "move"] },
+          path: { type: "string" },
+          value: {},
+          from: { type: "string" },
+        },
+        required: ["op", "path"],
+      },
+    },
+  },
+  required: ["analysis", "ops"],
+};
+
+/** The modules' rules, which say what their actions change. */
+function moduleRuleLines(config: EngineConfig): string[] {
+  const rules = enabledModules(config).flatMap((m) => m.rules.map((r) => r.content.trim()).filter(Boolean));
+  return rules.length ? ["<module_rules>", ...rules, "</module_rules>"] : [];
+}
+
+/** The side call's instructions: the rules, and the JSON to answer with. */
+export function sideCallPrompt(config: EngineConfig): string {
+  const ops = exampleOps(config);
+  return [
+    "You keep the game state of a roleplay up to date. You get the state and the latest turn; you write no story.",
+    ...ruleLines(config, "Change a value only when something in the latest turn changes it."),
+    ...moduleRuleLines(config),
+    "<answer_format>",
+    'Answer with JSON only: {"analysis": "one short line per value that changed, and why", "ops": [ … ]}, where ops are JSON Patch operations like these:',
+    `[${ops.join(", ")}]`,
+    OPS_HELP,
+    'If nothing changed, answer {"analysis": "", "ops": []}.',
+    "</answer_format>",
+  ].join("\n");
+}
+
+/** About how many tokens one side call costs: its instructions, the state, a reply and the answer. */
+export function sideCallTokens(config: EngineConfig): number {
+  const full = effectiveConfig(config);
+  const REPLY = 450;
+  const ANSWER = 150;
+  return estimateTokens(sideCallPrompt(full)) + estimateTokens(runtime.cfYaml(runtime.cfForAi(initialState(full)))) + REPLY + ANSWER;
 }
 
 // Tavern Helper's macro: the latest state as YAML, without "$" fields.
@@ -317,6 +385,7 @@ export function settingsSource(config: EngineConfig, charName = ""): string {
     kit: kitCss,
     modules: moduleRuntime(config),
     charName,
+    side: config.updateMode === "side" ? { prompt: sideCallPrompt(full), schema: SIDE_CALL_SCHEMA, tokens: sideCallTokens(config) } : null,
   };
   return `var CF_CONFIG = ${scriptJson(settings)};\n${schemaSource(full)}`;
 }
@@ -445,18 +514,20 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
         extensions: mark,
       }),
     );
-    add(
-      withStPosition(
-        newEntry(draft, {
-          comment: "[mvu_update] Update rules",
-          constant: true,
-          insertion_order: 900,
-          content: rulesText(full),
-          extensions: mark,
-        }),
-        1,
-      ),
-    );
+    // With side calls the rules go to the side call instead, and the reply stays pure prose.
+    if (saved.updateMode !== "side")
+      add(
+        withStPosition(
+          newEntry(draft, {
+            comment: "[mvu_update] Update rules",
+            constant: true,
+            insertion_order: 900,
+            content: rulesText(full),
+            extensions: mark,
+          }),
+          1,
+        ),
+      );
     add(atDepth(newEntry(draft, { comment: "Game state", constant: true, insertion_order: 950, content: STATE_TEXT, extensions: mark }), 1));
     for (const m of enabledModules(saved))
       for (const rule of m.rules) {
@@ -470,7 +541,7 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
         });
         add(rule.depth === undefined ? withStPosition(entry, 1) : atDepth(entry, rule.depth));
       }
-    if (saved.reminder)
+    if (saved.reminder && saved.updateMode !== "side")
       add(
         atDepth(
           newEntry(draft, { comment: "[mvu_update] Format reminder", constant: true, insertion_order: 960, content: REMINDER_TEXT, extensions: mark }),

@@ -13,25 +13,25 @@ import {
 } from "../../engine/sandbox/sandbox";
 import { scenarioOf, type EngineConfig, type ScenarioTurn } from "../../engine/sheet";
 
-const DEVICES = {
+export const DEVICES = {
   phone: { label: "Phone", width: 390, height: 760 },
   tablet: { label: "Tablet", width: 820, height: 1000 },
   desktop: { label: "Desktop", width: 1280, height: 800 },
 } as const;
-type Device = keyof typeof DEVICES;
+export type Device = keyof typeof DEVICES;
 const TEXT_SIZES = [0.9, 1, 1.15, 1.3];
 const PANES = { state: "State", scenario: "Scenario", actions: "Actions", errors: "Errors" } as const;
 type Pane = keyof typeof PANES;
 const selectClass = "min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm";
 
-interface LogEntry {
+export interface LogEntry {
   n: number;
   source: string;
   action: string;
   detail: string;
 }
 
-interface Problem {
+export interface Problem {
   n: number;
   level: "error" | "warn";
   source: string;
@@ -42,7 +42,7 @@ interface Problem {
 }
 
 /** The value after it has stopped changing for `ms`. */
-function useSettled<T>(value: T, ms: number): T {
+export function useSettled<T>(value: T, ms: number): T {
   const [settled, setSettled] = useState(value);
   useEffect(() => {
     const timer = setTimeout(() => setSettled(value), ms);
@@ -288,7 +288,7 @@ export function SandboxPage({ config, save }: { config: EngineConfig; save: (c: 
 }
 
 /** Shows a device-sized page, scaled down to fit when it is wider than the space. */
-function DeviceFrame({ width, height, overlay, children }: { width: number; height: number; overlay?: React.ReactNode; children: React.ReactNode }) {
+export function DeviceFrame({ width, height, overlay, children }: { width: number; height: number; overlay?: React.ReactNode; children: React.ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   const [room, setRoom] = useState(width);
   useEffect(() => {
@@ -323,7 +323,7 @@ function preview(text: string) {
   return plain.length > 60 ? `${plain.slice(0, 60)}…` : plain || "(no text)";
 }
 
-function StatePane({
+export function StatePane({
   chat,
   ready,
   selected,
@@ -533,7 +533,7 @@ function ScenarioPane({
   );
 }
 
-function ActionsPane({ log, onClear }: { log: LogEntry[]; onClear: () => void }) {
+export function ActionsPane({ log, onClear }: { log: LogEntry[]; onClear: () => void }) {
   if (!log.length)
     return (
       <p className="text-sm text-ink-muted">
@@ -558,7 +558,7 @@ function ActionsPane({ log, onClear }: { log: LogEntry[]; onClear: () => void })
   );
 }
 
-function ErrorsPane({ problems, onClear }: { problems: Problem[]; onClear: () => void }) {
+export function ErrorsPane({ problems, onClear }: { problems: Problem[]; onClear: () => void }) {
   if (!problems.length) return <p className="text-sm text-ink-muted">No errors or warnings.</p>;
   return (
     <div className="flex flex-col gap-2">

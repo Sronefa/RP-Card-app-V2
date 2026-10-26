@@ -243,6 +243,8 @@ export async function putSetting(key: string, value: unknown) {
 export const loreChatKey = (cardId: string) => `lore:${cardId}`;
 /** Key of a card's UI engineer chat. */
 export const engineerChatKey = (cardId: string) => `engineer:${cardId}`;
+/** Key of a card's playtest record: the persona and saved game states. */
+export const playtestKey = (cardId: string) => `playtest:${cardId}`;
 
 /** A chat of another shape, kept in the same store under its own key. */
 export async function getRecord<T extends { cardId: string }>(key: string): Promise<T | undefined> {

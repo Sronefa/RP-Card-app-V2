@@ -11,6 +11,8 @@ import {
   newVar,
   readEngine,
   rulesText,
+  sideCallPrompt,
+  sideCallTokens,
   tavernHelperScript,
   varsFromTracker,
   type EngineConfig,
@@ -205,5 +207,47 @@ describe("the engine script in a chat", () => {
     });
     expect(injected.at(-1)?.[0].content).toBe("Tuesday Night Spring Clear");
     vi.unstubAllGlobals();
+  });
+});
+
+describe("side calls", () => {
+  const side = (): EngineConfig => ({ ...config(), updateMode: "side" });
+
+  it("leaves the update rules out of the reply and gives the side call its own prompt and cost", () => {
+    const data = applyEngine(newCard().data, side());
+    expect(data.character_book!.entries.map((e) => e.comment)).toEqual(["[initvar] Starting values", "Game state"]);
+    const prompt = sideCallPrompt(side());
+    expect(prompt).toContain("- Player.Health (number, 0 to 100): Drops when hurt.");
+    expect(prompt).not.toContain("Secret");
+    expect(prompt).toContain("Answer with JSON only");
+    expect(sideCallTokens(side())).toBeGreaterThan(600);
+    expect(tavernHelperScript(side()).content).toContain('"game_state_update"');
+    expect(tavernHelperScript(config()).content).toContain('"side":null');
+  });
+
+  it("asks a silent generation for the update after each reply and keeps its answer", async () => {
+    const tavern = fakeTavern([{ role: "assistant", message: "Welcome to the inn." }]);
+    const calls: { ordered_prompts: { content: string }[]; json_schema: unknown }[] = [];
+    const generateRaw = async (options: (typeof calls)[number]) => {
+      calls.push(options);
+      return JSON.stringify({ analysis: "paid", ops: [{ op: "delta", path: "/Player/Gold", value: -2 }] });
+    };
+    Object.assign(tavern.api, { generateRaw, toastr: { warning: () => {} } });
+    await runScript(tavernHelperScript(side()).content, tavern);
+    tavern.messages.push({ role: "user", message: "I buy a drink." });
+    tavern.vars.push({});
+    await tavern.api.eventEmit("message_sent", 1);
+    tavern.messages.push({ role: "assistant", message: "You pay for the ale." });
+    tavern.vars.push({});
+    await tavern.api.eventEmit("message_received", 2);
+    expect(tavern.vars[2]).toMatchObject({ stat_data: { Player: { Gold: 10 } } });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].ordered_prompts[1].content).toMatch(/Gold: 12[\s\S]*I buy a drink\.[\s\S]*You pay for the ale\./);
+    expect(calls[0].ordered_prompts[1].content).not.toContain("Secret");
+    expect(tavern.messages[2].message).not.toContain("UpdateVariable");
+    // A re-read of the same reply uses the kept answer.
+    await tavern.api.eventEmit("message_edited", 2);
+    expect(calls).toHaveLength(1);
+    expect(tavern.vars[2]).toMatchObject({ stat_data: { Player: { Gold: 10 } } });
   });
 });

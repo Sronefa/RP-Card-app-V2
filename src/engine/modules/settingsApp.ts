@@ -68,7 +68,9 @@ function panels(s) {
 }
 function generations(s) {
   return '<div class="cf-stack">' + check("sideCalls", "Background generations (texts, feeds, shop stock)", s.sideCalls) +
-    '<p class="cf-small cf-muted">They use your own API and cost extra tokens. Turned off, those screens just wait for the story.</p></div>';
+    '<p class="cf-small cf-muted">They use your own API and cost extra tokens. Turned off, those screens just wait for the story.</p>' +
+    (CF.sideCall() ? '<p class="cf-small">This card also keeps the game state with one after each reply, about ' + CF.sideCall().tokens + " tokens a turn. Turned off, the values stop changing.</p>" : "") +
+    "</div>";
 }
 function sound(s) {
   return '<div class="cf-stack">' +
