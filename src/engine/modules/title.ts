@@ -6,7 +6,8 @@
  *
  * Styles fit the kits: "classic" (art and a menu), "lock" (a phone lock screen that unlocks into the
  * menu), "gate" (petals, leaves or snow falling by the in-game season) and "cast" (a visual-novel
- * menu with the cast's portraits, and Gallery and Endings when the card has routes).
+ * menu with the cast's portraits, and Gallery and Endings when the card has routes), "embers" (sparks
+ * rising over dark art) and "system" (a game's status window that boots up, for isekai).
  */
 import { newVar } from "../sheet";
 import type { EngineModule } from "./types";
@@ -16,6 +17,8 @@ export const TITLE_STYLES = {
   lock: "Phone lock screen",
   gate: "Seasons falling (petals, leaves, snow)",
   cast: "Visual novel with the cast",
+  embers: "Embers rising (dark fantasy)",
+  system: "A system window booting up (isekai)",
 } as const;
 export type TitleStyle = keyof typeof TITLE_STYLES;
 
@@ -89,9 +92,9 @@ function art() {
 function time() { return CF.state.get("Time") || {}; }
 // Falling petals, leaves or snow for the "gate" style, by season and weather.
 function fall() {
-  if (settings.style !== "gate") return "";
+  if (settings.style !== "gate" && settings.style !== "embers") return "";
   var t = time();
-  var kind = /snow/i.test(t.Weather || "") || t._Season === "Winter" ? "snow" : t._Season === "Autumn" ? "leaf" : t._Season === "Summer" ? "mote" : "petal";
+  var kind = settings.style === "embers" ? "ember" : /snow/i.test(t.Weather || "") || t._Season === "Winter" ? "snow" : t._Season === "Autumn" ? "leaf" : t._Season === "Summer" ? "mote" : "petal";
   var out = "";
   for (var i = 0; i < 16; i++) {
     out += '<i style="left:' + ((i * 37) % 100) + "%;animation-delay:-" + ((i * 1.7) % 9).toFixed(1) + "s;animation-duration:" + (7 + (i % 5)) + "s;--s:" + (0.6 + (i % 4) * 0.2) + '"></i>';
@@ -126,7 +129,10 @@ function render() {
   }
   var more = CF.state.latestId() > 0;
   var routes = settings.style === "cast" && has("routes");
+  var sys = settings.style === "system";
   root.innerHTML = '<div class="ts ts-' + esc(settings.style) + '">' + art() + '<div class="ts-shade"></div>' + fall() + '<div class="ts-body">' +
+    (sys ? '<div class="ts-win"><span class="ts-winhead">' + CF.ui.icon("spark") + " System</span>" +
+      '<p class="ts-boot"><span>Soul signature detected.</span><span>Building a new world…</span><span>Welcome, Player.</span></p>' : "") +
     cast() +
     (settings.tagline ? '<span class="ts-tag">' + esc(settings.tagline) + "</span>" : "") +
     "<h1>" + esc(title) + "</h1>" +
@@ -136,7 +142,7 @@ function render() {
     (more ? '<button type="button" class="cf-btn" data-continue>Continue</button>' : "") +
     (routes ? '<div class="ts-pair"><button type="button" class="cf-btn" data-routes="gallery">Gallery</button><button type="button" class="cf-btn" data-routes="endings">Endings</button></div>' : "") +
     (has("settings") ? '<button type="button" class="cf-btn ghost" data-settings>Settings</button>' : "") +
-    "</div></div></div>";
+    "</div>" + (sys ? "</div>" : "") + "</div></div>";
 }
 function music() {
   if (!settings.music) return;
@@ -242,7 +248,25 @@ const CSS = String.raw`
 .ts-cast + .ts-tag, .ts-cast ~ h1 { text-align: center; }
 .ts-cast ~ .ts-premise { text-align: center; margin: 0 auto; }
 .ts-cast ~ .ts-menu { align-self: center; width: 100%; }
-@media (prefers-reduced-motion: reduce) { .ts-body, .ts-cast figure, .ts-swipe { animation: none; } .ts-fall { display: none; } }
+/* Embers rising */
+.ts-embers { background: radial-gradient(120% 80% at 50% 110%, color-mix(in srgb, var(--cf-accent) 55%, #000), #050403 70%); }
+.ts-ember i { top: auto; bottom: -10px; width: calc(4px * var(--s)); height: calc(4px * var(--s)); border-radius: 50%; background: #ffb347; box-shadow: 0 0 6px 2px rgba(255,120,40,.7); animation-name: ts-rise; }
+@keyframes ts-rise { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(30px, -420px); opacity: 0; } }
+.ts-embers h1 { letter-spacing: .04em; text-shadow: 0 0 22px rgba(255,90,40,.45), 0 2px 18px rgba(0,0,0,.7); }
+/* System window */
+.ts-system { align-items: center; background: radial-gradient(100% 80% at 50% 0%, color-mix(in srgb, var(--cf-accent) 30%, #050a18), #03060f 75%); }
+.ts-system .ts-shade { background: rgba(3,8,20,.55); }
+.ts-win { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid color-mix(in srgb, var(--cf-accent) 70%, transparent); border-radius: 6px; background: rgba(8,24,56,.72); box-shadow: 0 0 24px color-mix(in srgb, var(--cf-accent) 35%, transparent), inset 0 0 18px rgba(63,184,255,.12); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: ts-open .5s ease both; }
+.ts-winhead { display: flex; align-items: center; gap: 6px; justify-content: center; text-transform: uppercase; letter-spacing: .3em; font-size: .72em; color: var(--cf-accent); border-bottom: 1px solid color-mix(in srgb, var(--cf-accent) 40%, transparent); padding-bottom: 8px; }
+.ts-winhead svg { width: 14px; height: 14px; }
+.ts-boot { display: flex; flex-direction: column; gap: 2px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8em; color: #bfe6ff; }
+.ts-boot span { opacity: 0; animation: ts-in .4s ease forwards; }
+.ts-boot span:nth-child(1) { animation-delay: .3s; } .ts-boot span:nth-child(2) { animation-delay: .9s; } .ts-boot span:nth-child(3) { animation-delay: 1.5s; color: #fff; }
+.ts-system h1 { text-align: center; color: #fff; text-shadow: 0 0 16px color-mix(in srgb, var(--cf-accent) 70%, transparent); }
+.ts-system .ts-premise, .ts-system .ts-tag { text-align: center; }
+.ts-system .ts-menu { align-self: center; width: 100%; }
+@keyframes ts-open { from { opacity: 0; transform: scaleY(.2); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ts-body, .ts-cast figure, .ts-swipe, .ts-win { animation: none; } .ts-boot span { animation: none; opacity: 1; } .ts-fall { display: none; } }
 `;
 
 export function titleModule(raw?: Record<string, unknown>, enabled = true): EngineModule {

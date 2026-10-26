@@ -188,7 +188,8 @@ function lifeVars(s: Live, taken: Set<string>): EngineVar[] {
     vars.push(newVar({ id: "life-job-performance", group: "Job", name: "Performance", type: "number", start: "50", min: 0, max: 100, pinned: false, rule: "How {{user}} is doing at work, 0 to 100: +2 to +5 for a good shift, −5 to −10 for a bad one or a missed shift. Around 80 a promotion comes up." }));
     vars.push(newVar({ id: "life-job-shift", group: "Job", name: "Shift", type: "text", start: "", readOnly: true, pinned: false, rule: "When {{user}} works next, set by the engine." }));
   }
-  if (!s.moneyPath && s.money === "Life.Money")
+  // Money of its own only when there's pay or bills: a survival card without them needs none.
+  if (!s.moneyPath && s.money === "Life.Money" && (s.job.title.trim() || s.bills.length))
     vars.push(newVar({ id: "life-money", group: "Life", name: "Money", type: "number", start: String(s.startMoney), min: 0, pinned: true, rule: `{{user}}'s money in ${s.currency || "the currency"}. Delta it when {{user}} pays or is paid.` }));
   if (s.bills.length) {
     vars.push(newVar({ id: "life-bills", group: "Life", name: "Bills", type: "list", start: "", readOnly: true, pinned: false, rule: "Bills due soon or overdue, set by the engine. Unpaid bills bring reminders, then late fees and an angry landlord." }));
@@ -361,7 +362,8 @@ function draw() {
   var t = get("Time") || {};
   var job = get("Job") || {};
   var today = '<div class="cf-stack">' +
-    '<div class="cf-card lf-head"><span class="cf-label">' + esc([t._Weekday, t.Day ? "Day " + t.Day : "", t.Clock].filter(Boolean).join(" · ")) + '</span><b class="lf-money">' + esc(cash(money())) + ui.delta(delta(S.money)) + "</b>" +
+    '<div class="cf-card lf-head"><span class="cf-label">' + esc([t._Weekday, t.Day ? "Day " + t.Day : "", t.Clock].filter(Boolean).join(" · ")) + "</span>" +
+    (typeof get(S.money) === "number" ? '<b class="lf-money">' + esc(cash(money())) + ui.delta(delta(S.money)) + "</b>" : "") +
     (job._Shift ? '<span class="cf-small">' + ui.icon("clock") + " " + esc(job._Shift) + "</span>" : "") + "</div>" +
     '<div class="cf-card cf-stack">' + (needs() || '<p class="cf-muted">No needs tracked.</p>') + "</div>" +
     ((get("Life._Bills") || []).length ? '<div class="cf-card lf-due"><span class="cf-label">Due</span>' + (get("Life._Bills") || []).map(function (l) { return "<p>" + esc(l) + "</p>"; }).join("") + "</div>" : "") +

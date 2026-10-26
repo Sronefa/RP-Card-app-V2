@@ -118,6 +118,16 @@ export const newEngine = (): EngineConfig => ({
   theme: newTheme(),
 });
 
+/** The value a new engine starts with, so the sheet isn't empty. */
+export const starterVar = (): EngineVar => newVar({ group: "Player", name: "Health", start: "100", min: 0, max: 100, rule: "Drops when {{user}} is hurt, rises with rest or healing." });
+
+/** Whether a value is still the starter one, as the engine made it. */
+export function isStarterVar(v: EngineVar): boolean {
+  const a = { ...v, id: "" };
+  const b = { ...starterVar(), id: "" };
+  return JSON.stringify(a, Object.keys(a).sort()) === JSON.stringify(b, Object.keys(b).sort());
+}
+
 /** The card theme, or the one a card from before themes gets. */
 export const themeOf = (config: EngineConfig): CardTheme => config.theme ?? newTheme(config.panel.accent);
 

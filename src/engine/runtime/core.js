@@ -301,6 +301,13 @@ var CF_ICONS = {
   plus: "M12 5v14M5 12h14",
   book: "M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zm0 0v16m4-14h7",
   gift: "M4 11h16v9H4zM3 7h18v4H3zm9 0v13M12 7c-1-3-5-3.5-5-1s5 1 5 1zm0 0c1-3 5-3.5 5-1s-5 1-5 1",
+  sword: "M20 4 9.5 14.5M20 4h-5l-8.5 8.5M20 4v5l-8.5 8.5M5.5 12.5l6 6M8 16l-4 4",
+  shield: "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z",
+  flask: "M9 3h6m-5 0v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3M7.3 14h9.4",
+  skull: "M12 3a8 8 0 0 0-8 8c0 3 1.5 4.6 3 5.5V20h10v-3.5c1.5-.9 3-2.5 3-5.5a8 8 0 0 0-8-8zm-3 7.5v1m6-1v1M10 20v-2.5m4 2.5v-2.5",
+  fire: "M12 21a6 6 0 0 0 6-6c0-4-3-6-4.5-10-2 2-3 4.5-2.5 7-1.2-.8-1.8-2-2-3.2C7.2 10.6 6 12.6 6 15a6 6 0 0 0 6 6z",
+  scroll: "M8 4h10a2 2 0 0 1 0 4h-2v10a2 2 0 0 1-2 2H6a2 2 0 0 1 0-4h2zm0 12h6M11 8h3m-3 4h3",
+  compass: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm3.5 5.5-2 5-5 2 2-5z",
 };
 
 function cfEsc(value) {
@@ -787,12 +794,15 @@ function cfFreezeSoon() {
 function cfRunHooks(stat, before, messageId) {
   var out = stat;
   var latest = true;
+  var role = "";
   try {
     latest = messageId === undefined || messageId === null || messageId >= getLastMessageId();
+    var message = typeof messageId === "number" ? getChatMessages(messageId)[0] : null;
+    role = (message && message.role) || "";
   } catch (e) {}
   cfHooks.forEach(function (hook) {
     try {
-      var next = hook.fn(out, before, { messageId: messageId, latest: latest, settings: hook.settings });
+      var next = hook.fn(out, before, { messageId: messageId, latest: latest, role: role, settings: hook.settings });
       if (cfIsObject(next)) out = next;
     } catch (e) {
       console.error("[CardForge] The '" + hook.module + "' module's update hook failed.", e);

@@ -16,6 +16,7 @@ import {
   sampleReply,
   sideCallPrompt,
   sideCallTokens,
+  starterVar,
   stateSchema,
   varLabel,
   varsFromTracker,
@@ -86,7 +87,7 @@ function EngineBody() {
               manager can read it. Cards without the engine stay extension-free.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" onClick={() => save({ ...newEngine(), vars: [newVar({ group: "Player", name: "Health", start: "100", min: 0, max: 100, rule: "Drops when {{user}} is hurt, rises with rest or healing." })] })}>
+              <Button variant="primary" onClick={() => save({ ...newEngine(), vars: [starterVar()] })}>
                 Turn on the engine
               </Button>
               {tracker && tracker.fields.length > 0 && (

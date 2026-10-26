@@ -1,5 +1,5 @@
 /**
- * The card theme: one set of CSS variables every engine screen shares, from one of six presets
+ * The card theme: one set of CSS variables every engine screen shares, from one of eight presets
  * with the author's own changes on top. Players can switch light and dark and the text size in the
  * settings app; nothing here loads from the web (fonts are system font stacks, textures are CSS).
  */
@@ -36,7 +36,7 @@ export interface ThemePreset {
   dark: ThemeTokens;
 }
 
-export type PresetId = "parchment" | "cyberpunk" | "novel" | "dating" | "phone" | "academy";
+export type PresetId = "parchment" | "cyberpunk" | "novel" | "dating" | "phone" | "academy" | "grimdark" | "system";
 
 export interface CardTheme {
   preset: PresetId;
@@ -295,6 +295,86 @@ export const PRESETS: Record<PresetId, ThemePreset> = {
       heading: FONTS.Serif,
       texture: "linear-gradient(180deg, rgba(224,184,90,.06), transparent 120px)",
       shadow: "0 1px 6px rgba(0,0,0,.45)",
+    },
+  },
+  grimdark: {
+    id: "grimdark",
+    name: "Grimdark",
+    description: "Ash, iron and old blood: a dark, worn look for dark fantasy and survival.",
+    mode: "dark",
+    dark: {
+      bg: "#0d0b0a",
+      surface: "#171412",
+      surface2: "#221d19",
+      text: "#ddd3c3",
+      muted: "#958a7a",
+      accent: "#a8322a",
+      accent2: "#c08a3e",
+      border: "#3b322b",
+      good: "#7f9a5a",
+      bad: "#d24a3a",
+      radius: 3,
+      font: FONTS.Serif,
+      heading: FONTS.Elegant,
+      texture: "radial-gradient(circle at 50% -10%, rgba(168,50,42,.14), transparent 55%), repeating-linear-gradient(45deg, rgba(255,255,255,.012) 0 2px, transparent 2px 5px)",
+      shadow: "0 2px 10px rgba(0,0,0,.6)",
+    },
+    light: {
+      bg: "#d9d3c9",
+      surface: "#e8e3da",
+      surface2: "#cdc5b8",
+      text: "#221c17",
+      muted: "#5f564c",
+      accent: "#8a241d",
+      accent2: "#8a5f22",
+      border: "#a3988a",
+      good: "#4f6a2e",
+      bad: "#9c2b1f",
+      radius: 3,
+      font: FONTS.Serif,
+      heading: FONTS.Elegant,
+      texture: "radial-gradient(circle at 80% 0%, rgba(0,0,0,.08), transparent 50%)",
+      shadow: "0 2px 6px rgba(30,20,10,.3)",
+    },
+  },
+  system: {
+    id: "system",
+    name: "System window",
+    description: "Glowing blue status windows over deep navy, like a game's own interface.",
+    mode: "dark",
+    dark: {
+      bg: "#060b1a",
+      surface: "rgba(14, 30, 64, 0.92)",
+      surface2: "rgba(24, 48, 96, 0.85)",
+      text: "#e4f1ff",
+      muted: "#86a3cc",
+      accent: "#3fb8ff",
+      accent2: "#ffd166",
+      border: "rgba(90, 180, 255, 0.45)",
+      good: "#4ee6a0",
+      bad: "#ff5d73",
+      radius: 6,
+      font: FONTS.System,
+      heading: FONTS.System,
+      texture: "linear-gradient(180deg, rgba(63,184,255,.10), transparent 60%), repeating-linear-gradient(0deg, rgba(63,184,255,.035) 0 1px, transparent 1px 4px)",
+      shadow: "0 0 0 1px rgba(63,184,255,.18), 0 0 18px rgba(63,184,255,.22)",
+    },
+    light: {
+      bg: "#eaf3ff",
+      surface: "#ffffff",
+      surface2: "#d8e8fb",
+      text: "#0b1a33",
+      muted: "#4d6587",
+      accent: "#0a72c2",
+      accent2: "#b07d00",
+      border: "#93bbe6",
+      good: "#13865a",
+      bad: "#c42b44",
+      radius: 6,
+      font: FONTS.System,
+      heading: FONTS.System,
+      texture: "linear-gradient(180deg, rgba(10,114,194,.06), transparent 50%)",
+      shadow: "0 0 0 1px rgba(10,114,194,.12), 0 2px 10px rgba(10,114,194,.15)",
     },
   },
 };

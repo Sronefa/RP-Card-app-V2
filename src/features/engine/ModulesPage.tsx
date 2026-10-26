@@ -10,6 +10,11 @@ import { coreModules, moduleConflicts, resolveModule, modulePaths, modulesOf, ne
 import { creatorModule, creatorSettings } from "../../engine/modules/creator";
 import { eventsModule, eventsSettings } from "../../engine/modules/events";
 import { choicesModule, choicesSettings } from "../../engine/modules/choices";
+import { combatSettings } from "../../engine/modules/combat";
+import { heroSettings } from "../../engine/modules/hero";
+import { inventorySettings } from "../../engine/modules/inventory";
+import { mapModule, mapSettings } from "../../engine/modules/map";
+import { questsSettings } from "../../engine/modules/quests";
 import { journalModule, journalSettings } from "../../engine/modules/journal";
 import { lifeSettings } from "../../engine/modules/life";
 import { routesSettings } from "../../engine/modules/routes";
@@ -30,6 +35,7 @@ import { loadModuleLibrary, removeFromModuleLibrary, saveModulesToLibrary } from
 import { ChoicesEditor, LifeEditor, RoutesEditor, SchoolEditor } from "./KitEditors";
 import { EventsEditor, JournalEditor, MenuEditor, NotifyEditor, PeopleEditor, TitleEditor } from "./PartEditors";
 import { PartsBrowser } from "./PartsBrowser";
+import { CombatEditor, HeroEditor, InventoryEditor, MapEditor, QuestsEditor } from "./RpgEditors";
 import { CreatorEditor, ListInput, PhoneEditor } from "./ScreenEditors";
 import { nameProblem, selectClass, summary, VarEditor } from "./VarEditor";
 
@@ -147,6 +153,16 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
                     <RoutesEditor settings={routesSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
                   ) : m.core === "choices" ? (
                     <ChoicesEditor settings={choicesSettings(m.settings)} onChange={(s, key) => update(i, choicesModule(raw(s), m.enabled), key)} />
+                  ) : m.core === "hero" ? (
+                    <HeroEditor settings={heroSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
+                  ) : m.core === "inventory" ? (
+                    <InventoryEditor settings={inventorySettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
+                  ) : m.core === "quests" ? (
+                    <QuestsEditor settings={questsSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
+                  ) : m.core === "map" ? (
+                    <MapEditor settings={mapSettings(m.settings)} onChange={(s, key) => update(i, mapModule(raw(s), m.enabled), key)} />
+                  ) : m.core === "combat" ? (
+                    <CombatEditor settings={combatSettings(m.settings)} onChange={(s, key) => update(i, resolveModule({ ...m, settings: raw(s) }, modules), key)} />
                   ) : (
                     <CustomEditor m={m} onChange={(next, key) => update(i, next, key)} />
                   )}

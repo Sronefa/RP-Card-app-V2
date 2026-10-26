@@ -27,6 +27,9 @@ Engine screens should feel like a polished mobile game, not a web form. Aim for 
   - **Visual novel**: a translucent dialogue frame, soft gradients, rounded type.
   - **Dating sim**: pinks and peach, round corners, playful.
   - **Modern phone OS**: clean system UI, like a phone's own apps.
+  - **Academy**: navy and crest gold on crisp paper, serif headings.
+  - **Grimdark**: ash, iron and old blood; dark, worn, small corners.
+  - **System window**: glowing blue status windows over deep navy, thin bright borders.
   Match the preset's character in your own CSS: no glows on parchment, no serif on the HUD.
 
 ## Theme tokens (set_theme)
