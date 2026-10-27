@@ -42,6 +42,7 @@ const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
   { mode: "arc", label: "Story arcs", help: "Plans the story arc and builds the antagonist. Use a strong model." },
   { mode: "mechanics", label: "Game Wizard", help: "Writes mechanics modules and checks them for contradictions. Use a strong model." },
   { mode: "engineer", label: "UI engineer", help: "Builds and tests the engine's screens. Use your strongest model that can see images." },
+  { mode: "worker", label: "UI engineer worker", help: "Builds one task at a time for the UI engineer, who plans and checks. Uses the UI engineer's model unless you pick a cheaper one here; it should see images." },
   { mode: "playtest", label: "Playtest roleplay", help: "Plays the card in the engine's Playtest tab. Use the model your players use." },
   { mode: "player", label: "Playtest auto-player", help: "Plays {{user}} in auto-play. A cheaper model works well." },
   { mode: "sidecall", label: "Playtest side calls", help: "Answers the card's own background calls in a playtest, like side-call updates. A cheaper model works well." },

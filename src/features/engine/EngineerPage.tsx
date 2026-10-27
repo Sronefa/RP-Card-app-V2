@@ -9,6 +9,7 @@ import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { useEditor } from "../../editor/store";
 import { BUILT_IN_SKILLS, EMPTY_OVERRIDES, skillsWith, type SkillOverrides } from "../../engine/engineer/knowledge";
 import { useEngineer, type EngineerProposal } from "../../engine/engineer/session";
+import type { WorkerRun } from "../../engine/engineer/worker";
 import { describeCall } from "../../engine/engineer/tools";
 import type { FileChange } from "../../engine/engineer/workspace";
 import { diffLines } from "../../lib/diff";
@@ -34,7 +35,7 @@ const STATUS: Record<EngineerProposal["status"], string> = {
 /** The UI engineer: a chat that builds and tests the engine's screens, one proposal per turn. */
 export function EngineerPage() {
   const record = useEditor((s) => s.record);
-  const { chat, busy, streaming, round, error, draft, setDraft, load, send, stop, decide, clear } = useEngineer();
+  const { chat, busy, streaming, round, worker, error, draft, setDraft, load, send, stop, decide, clear } = useEngineer();
   const end = useRef<HTMLDivElement>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [zoom, setZoom] = useState<string>();
@@ -46,7 +47,7 @@ export function EngineerPage() {
   const count = chat?.messages.length ?? 0;
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end" });
-  }, [count, streaming, busy, chat?.proposals.length]);
+  }, [count, streaming, busy, chat?.proposals.length, worker?.steps.length]);
 
   if (!record) return null;
 
@@ -88,14 +89,15 @@ export function EngineerPage() {
       )}
       {chat?.messages.map((m, i) => (
         <div key={i} className="contents">
-          <MessageView message={m} results={results} onZoom={setZoom} />
+          <MessageView message={m} results={results} runs={chat.workerRuns ?? {}} onZoom={setZoom} />
           {proposalsAfter(i + 1)}
         </div>
       ))}
       {busy && (
         <div className="flex flex-col gap-1 text-sm text-ink-muted" aria-live="polite">
-          <span className="text-xs">Working, step {round}…</span>
+          <span className="text-xs">{worker ? "The worker is building…" : `Planning, step ${round}…`}</span>
           {streaming && <span className="leading-relaxed whitespace-pre-wrap">{streaming}</span>}
+          {worker && <WorkerLive worker={worker} />}
         </div>
       )}
       {error && (
@@ -224,20 +226,49 @@ function EngineerControls({ onSkills, onClear }: { onSkills: () => void; onClear
         </span>
       </label>
       <span className="w-full text-xs text-ink-muted">
-        Pick its model under Settings, task models, UI engineer. A strong model that can see images works best; max thinking and{" "}
-        {DEFAULT_ENGINEER.maxRounds} steps are the defaults.
+        A lead plans and checks, and a worker builds one task at a time in its own context. Pick their models under Settings, task
+        models: UI engineer, and UI engineer worker (the lead's model unless you pick a cheaper one; it should see images). Max
+        thinking and {DEFAULT_ENGINEER.maxRounds} steps are the defaults.
       </span>
     </div>
+  );
+}
+
+/** The worker's steps as they happen. */
+function WorkerLive({ worker }: { worker: WorkerRun & { streaming: string } }) {
+  return (
+    <section className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-raised p-3" aria-label="Worker">
+      <span className="text-xs font-medium text-ink">
+        Worker, step {worker.steps.length + 1}: {worker.task.split("\n")[0]}
+      </span>
+      <WorkerSteps steps={worker.steps} />
+      {worker.streaming && <span className="text-xs leading-relaxed whitespace-pre-wrap">{worker.streaming}</span>}
+    </section>
+  );
+}
+
+function WorkerSteps({ steps }: { steps: WorkerRun["steps"] }) {
+  if (!steps.length) return null;
+  return (
+    <ol className="flex flex-col gap-0.5 text-xs text-ink-muted" aria-label="Worker steps">
+      {steps.map((st, n) => (
+        <li key={n} className={st.error ? "text-red-300" : ""}>
+          {st.label}
+        </li>
+      ))}
+    </ol>
   );
 }
 
 function MessageView({
   message,
   results,
+  runs,
   onZoom,
 }: {
   message: ChatMessage;
   results: Map<string, ToolResult>;
+  runs: Record<string, WorkerRun>;
   onZoom: (src: string) => void;
 }) {
   if (message.role === "user")
@@ -254,6 +285,21 @@ function MessageView({
         <ul className="flex flex-col gap-1 border-l-2 border-border pl-2 text-xs text-ink-muted" aria-label="What the engineer did">
           {message.toolCalls.map((call) => {
             const result = results.get(call.id);
+            const run = runs[call.id];
+            if (run)
+              return (
+                <li key={call.id}>
+                  <details>
+                    <summary className={`cursor-pointer ${result?.isError ? "text-red-300" : ""}`}>
+                      {describeCall(call)} ({run.steps.length} step{run.steps.length === 1 ? "" : "s"}
+                      {run.status === "done" ? "" : run.status === "stopped" ? ", stopped" : ", didn't finish"})
+                    </summary>
+                    <div className="mt-1 pl-3">
+                      <WorkerSteps steps={run.steps} />
+                    </div>
+                  </details>
+                </li>
+              );
             return (
               <li key={call.id} className="flex flex-col gap-1">
                 <span className={result?.isError ? "text-red-300" : ""}>
