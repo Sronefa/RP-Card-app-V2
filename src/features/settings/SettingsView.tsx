@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { ImageProviders } from "./ImageProviders";
+import { ConnectionTest } from "./ConnectionTest";
+import { testTextProvider } from "../../ai/connection";
 import { WritingStyle } from "./WritingStyle";
 import { SamplingSettings } from "./SamplingSettings";
 import { ignorePhrase, repeatedPhrases } from "../../editor/phraseStats";
@@ -199,9 +201,15 @@ export function SettingsView() {
                 </span>
               </label>
             )}
-            <div className="flex flex-wrap justify-between gap-2">
-              <Button onClick={() => void loadModels(p)}>Test and load models</Button>
-              <Button variant="danger" onClick={() => removeProvider(p)}>
+            <div className="flex flex-wrap items-center gap-2">
+              <ConnectionTest
+                name={p.name}
+                run={() =>
+                  testTextProvider(p, current?.providerId === p.id ? current.model : p.models?.[0], createProvider(p))
+                }
+              />
+              <Button onClick={() => void loadModels(p)}>Load models</Button>
+              <Button variant="danger" className="ml-auto" onClick={() => removeProvider(p)}>
                 Remove
               </Button>
             </div>
@@ -268,7 +276,8 @@ export function SettingsView() {
         <h3 className="mt-2 text-sm font-medium">Jailbreaks</h3>
         <p className="text-sm text-ink-muted">
           Sent at the very end of every request, after the chat and right before the model answers, where it carries the
-          most weight. It applies to every task in every project while it's on.
+          most weight. It applies to every writing task in every project while it's on. The UI engineer builds code and
+          goes without it, unless you turn it on below.
         </p>
         {settings.presets
           .filter((p) => p.kind === "jailbreak")
@@ -299,6 +308,21 @@ export function SettingsView() {
         >
           Add jailbreak
         </Button>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4"
+            checked={!!settings.engineerJailbreak}
+            onChange={(e) => void update({ engineerJailbreak: e.target.checked || undefined })}
+          />
+          <span>
+            Send the jailbreak to the UI engineer too
+            <span className="block text-xs text-ink-muted">
+              Only for strict models that refuse to build screens for dark cards. It costs more: the engineer's chat history
+              can't be reused from the cache while the jailbreak sits on its last message.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section className="flex flex-col gap-3">

@@ -7,7 +7,7 @@ import { withCowriterDefaults, type CowriterSettings } from "../ai/records";
 import { activePacks, cardSampleIds, craftContext, packsWith, REFERENCE_EXAMPLES, styleContext } from "./style";
 import { skillsWith } from "../engine/engineer/knowledge";
 import { bibleContext, cardContext, ENGINE_GUIDE, personasContext, settingsContext, worldContext } from "../ai/prompts";
-import { createProvider, jailbreakText, type AiSettings, modelInfo, modelKey, resolveModel, useAiSettings } from "../ai/settings";
+import { createProvider, jailbreakFor, type AiSettings, modelInfo, modelKey, resolveModel, useAiSettings } from "../ai/settings";
 import { scopeOf, useUsage } from "../ai/usage";
 import { useEditor } from "../editor/store";
 import { DEFAULT_SLOP_PHRASES } from "../editor/slop";
@@ -30,7 +30,10 @@ export class NoModelError extends Error {
   }
 }
 
-/** Puts the jailbreak after the last message, the deepest spot in the prompt. Only this request carries it. */
+/**
+ * Puts the jailbreak after the last message, the deepest spot in the prompt. Only this request carries it.
+ * The UI engineer gets none unless the user turns it on (see jailbreakFor).
+ */
 export function withJailbreak(messages: ChatMessage[], jailbreak: string): ChatMessage[] {
   const last = messages.at(-1);
   const tagged = `<jailbreak>\n${jailbreak}\n</jailbreak>`;
@@ -58,7 +61,7 @@ export async function complete(
   const resolved = resolveModel(useAiSettings.getState().settings, mode);
   if (!resolved) throw new NoModelError();
   const provider = createProvider(resolved.config);
-  const jailbreak = jailbreakText(useAiSettings.getState().settings);
+  const jailbreak = jailbreakFor(useAiSettings.getState().settings, mode);
   if (jailbreak) request = { ...request, messages: withJailbreak(request.messages, jailbreak) };
   if (resolved.config.banPhrases && mode !== "engineer") {
     const phrases = (useAiSettings.getState().settings.slopPhrases ?? DEFAULT_SLOP_PHRASES).filter((p) => !p.includes("*"));

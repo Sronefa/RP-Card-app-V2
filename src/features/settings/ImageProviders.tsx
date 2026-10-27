@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useAiSettings } from "../../ai/settings";
 import { toast } from "../../components/toast";
+import { testImageProvider } from "../../ai/connection";
+import { ConnectionTest } from "./ConnectionTest";
 import { AutoTextarea, Button, TextInput } from "../../components/ui";
 import {
   comfyInfo,
@@ -149,8 +151,9 @@ function ProviderCard({
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button disabled={busy || !p.baseUrl} onClick={() => void loadModels()}>
-          {busy ? "Checking…" : p.kind === "comfyui" ? "Test the connection" : "Load models"}
+          {busy ? "Checking…" : p.kind === "comfyui" ? "Load checkpoints" : "Load models"}
         </Button>
+        <ConnectionTest name={p.name} disabled={!p.baseUrl} run={() => testImageProvider(p)} />
         <span className="text-xs text-ink-muted">
           {p.models?.length ? `${p.models.length} ${p.kind === "comfyui" ? "checkpoints" : "models"}` : "No models loaded yet"}
           {info && ` · ${info.loras.length} LoRAs · ${info.nodes.size} node types`}
