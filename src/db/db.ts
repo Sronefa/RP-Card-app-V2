@@ -162,19 +162,68 @@ export async function saveCard(record: CardRecord): Promise<CardRecord> {
   return saved;
 }
 
+/** Keys of the records kept for a card: its own id, or `<what>:<card id>`. */
+const ofCard = (key: string, id: string) => key === id || key.endsWith(`:${id}`);
+
 export async function deleteCard(id: string) {
   const d = await db();
   const versions = await d.getAllKeysFromIndex("versions", "cardId", id);
-  const tx = d.transaction(["cards", "versions", "chats", "interviews"], "readwrite");
+  const chats = (await d.getAllKeys("chats")).filter((k) => ofCard(k, id));
+  const settings = (await d.getAllKeys("settings")).filter((k) => k.endsWith(`:${id}`));
+  const tx = d.transaction(["cards", "versions", "chats", "interviews", "settings"], "readwrite");
   await Promise.all([
     ...versions.map((v) => tx.objectStore("versions").delete(v)),
     tx.objectStore("cards").delete(id),
-    tx.objectStore("chats").delete(id),
-    tx.objectStore("chats").delete(loreChatKey(id)),
-    tx.objectStore("chats").delete(engineerChatKey(id)),
-    tx.objectStore("chats").delete(`studio:${id}`),
-    tx.objectStore("chats").delete(`inbox:${id}`),
+    // The chats, the lorebook brainstorm, the engineer, the Image Studio, the inbox and the playtest.
+    ...chats.map((k) => tx.objectStore("chats").delete(k)),
+    // The change log and the greeting plan.
+    ...settings.map((k) => tx.objectStore("settings").delete(k)),
     tx.objectStore("interviews").delete(id),
+    tx.done,
+  ]);
+}
+
+/** Everything a project holds, for a bundle file. */
+export interface ProjectSnapshot {
+  project: ProjectRecord;
+  cards: CardRecord[];
+  versions: VersionRecord[];
+  /** Records in the chats store: chats, the engineer, the Image Studio, the inbox, playtests. */
+  chats: { cardId: string }[];
+  interviews: InterviewRecord[];
+  /** Per-card settings: the change log and the greeting plan. */
+  settings: { key: string; value: unknown }[];
+  personas: PersonaRecord[];
+}
+
+export async function snapshotProject(id: string): Promise<ProjectSnapshot | undefined> {
+  const d = await db();
+  const project = await d.get("projects", id);
+  if (!project) return undefined;
+  const cards = await d.getAllFromIndex("cards", "projectId", id);
+  const ids = cards.map((c) => c.id);
+  const mine = (key: string) => ids.some((c) => ofCard(key, c));
+  const versions = (await Promise.all(ids.map((c) => d.getAllFromIndex("versions", "cardId", c)))).flat();
+  const chats = (await d.getAll("chats")).filter((c) => mine(c.cardId));
+  const interviews = (await Promise.all(ids.map((c) => d.get("interviews", c)))).filter((i): i is InterviewRecord => !!i);
+  const settings = (await d.getAll("settings")).filter((s) => ids.some((c) => s.key.endsWith(`:${c}`)));
+  const personas = (await d.getAll("personas")).filter((p) => project.personaIds.includes(p.id));
+  return { project, cards, versions, chats, interviews, settings, personas };
+}
+
+/** Writes a snapshot as it is. Personas already in the library are kept as they are. */
+export async function restoreSnapshot(s: ProjectSnapshot) {
+  const d = await db();
+  const existing = new Set(await d.getAllKeys("personas"));
+  const tx = d.transaction(["projects", "cards", "versions", "chats", "interviews", "settings", "personas"], "readwrite");
+  await Promise.all([
+    tx.objectStore("projects").put(s.project),
+    ...s.cards.map((c) => tx.objectStore("cards").put(c)),
+    ...s.versions.map((v) => tx.objectStore("versions").put(v)),
+    ...s.chats.map((c) => tx.objectStore("chats").put(c as ChatRecord)),
+    ...s.interviews.map((i) => tx.objectStore("interviews").put(i)),
+    ...s.settings.map((x) => tx.objectStore("settings").put(x)),
+    ...s.personas.filter((p) => !existing.has(p.id)).map((p) => tx.objectStore("personas").put(p)),
     tx.done,
   ]);
 }

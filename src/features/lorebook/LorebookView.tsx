@@ -24,6 +24,7 @@ import { isPlainEntry } from "../../editor/world";
 import { ArcPage } from "../arc/ArcPage";
 import { arcHidden, constantTokens, isArcEntry } from "../../editor/arc";
 import { useViewTab } from "../../app/useViewTab";
+import { LorePacks } from "./LorePack";
 
 const TABS = {
   entries: "Entries",
@@ -160,6 +161,7 @@ export function LorebookView() {
               </Button>
               <Button onClick={() => setDialog("settings")}>Book settings</Button>
               {book.entries.some(isPlainEntry) && <Button onClick={() => setDialog("sort")}>✦ Sort my lorebook</Button>}
+              <LorePacks book={book} onAdd={(next) => setBook(next)} />
             </div>
             {book.entries.length > 3 && (
               <TextInput

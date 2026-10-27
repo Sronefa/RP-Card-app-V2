@@ -41,6 +41,8 @@ import { estimateTokens } from "../../lib/tokens";
 import { BrainstormDialog } from "../cowriter/BrainstormDialog";
 import { useRun } from "../cowriter/useRun";
 import { QuestionCard } from "../cowriter/QuestionCard";
+import { FromLibrary, SaveToLibrary } from "../library/LibraryButtons";
+import { storyPayload, storyTemplateText, type Payloads } from "../../lib/libraries";
 
 const selectClass = "min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm";
 
@@ -84,13 +86,15 @@ export function ArcPage() {
   const setSettings = (patch: Partial<ArcSettings>, key: string) =>
     save({ ...arc, settings: { ...arc.settings, ...patch } }, `arc.settings.${key}`);
 
-  const write = () =>
+  /** Plots the arc; a story template gives the settings and the shape of the beats to adapt. */
+  const write = (template?: Payloads["story"]) =>
     run(arc.beats.length ? "Rewriting the arc…" : "Plotting the arc…", async (signal) => {
       const parts = await gatherContext(record);
+      const settings = template ? { ...template.settings, beats: template.beats.length || template.settings.beats } : arc.settings;
       const antagonist = arc.settings.antagonist !== "none" && arc.antagonist ? antagonistText(arc.antagonist) : "";
       const result = await complete("arc", {
         system: systemPrompt("arc"),
-        messages: [{ role: "user", text: `${partsText(parts)}\n\n${arcWriteRequest(arc.settings, antagonist, ask)}` }],
+        messages: [{ role: "user", text: `${partsText(parts)}\n\n${arcWriteRequest(settings, antagonist, [ask, template && storyTemplateText(template)].filter(Boolean).join("\n\n"))}` }],
         tools: [WRITE_ARC],
         signal,
       });
@@ -98,7 +102,7 @@ export function ArcPage() {
       const written = call && readArcDraft(call);
       if (!written?.beats.length)
         throw new Error("The co-writer didn't plot any beats. Try again, or pick another model.");
-      save({ ...currentArc(arc), ...written });
+      save({ ...currentArc(arc), settings, ...written });
       toast(
         arc.hidden
           ? `Arc written: ${written.beats.length} beats, kept secret.`
@@ -214,6 +218,8 @@ export function ArcPage() {
           <Button variant="primary" disabled={!!busy} onClick={() => void write()}>
             {written ? "✦ Write it again" : "✦ Write the arc"}
           </Button>
+          <FromLibrary kind="story" label="✦ Write from a template" onUse={(item) => void write(item.payload)} />
+          {written && !arc.hidden && <SaveToLibrary kind="story" name={arc.title || "Story template"} label="Save as a template" payload={() => storyPayload(currentArc(arc))} />}
         </div>
         {status}
         {!written ? (
