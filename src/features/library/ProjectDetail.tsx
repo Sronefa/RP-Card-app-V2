@@ -31,6 +31,8 @@ import { RemixDialog } from "./RemixDialog";
 import { PersonaInterview } from "./PersonaInterview";
 import { SurpriseDialog } from "./SurpriseDialog";
 import { GuidePanel } from "./GuidePanel";
+import { withContentTags } from "../../lib/contentTags";
+import { withCowriterDefaults } from "../../ai/records";
 import { markStep } from "../../app/guide";
 
 /** Images besides the avatar that only a CHARX file carries into SillyTavern. */
@@ -141,7 +143,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     // Save pending edits first, so the export has them.
     if (record.id === openCardId) await useEditor.getState().flush();
     try {
-      const warnings = await exportRecord(record.id === openCardId ? useEditor.getState().record! : record, format);
+      const source = record.id === openCardId ? useEditor.getState().record! : record;
+      const content = withCowriterDefaults((await getProject(projectId))?.cowriter);
+      const tagged = { ...source, card: { ...source.card, data: withContentTags(source.card.data, content) } };
+      const warnings = await exportRecord(tagged, format);
       if (warnings && format === "png" && hasPackedImages(record))
         warnings.push("SillyTavern ignores images inside PNG cards, so export as CHARX to keep them");
       if (warnings) toast(warnings.length ? `Exported with notes: ${warnings.join("; ")}` : "Exported");

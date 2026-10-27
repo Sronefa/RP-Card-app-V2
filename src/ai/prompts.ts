@@ -13,7 +13,7 @@ import { readEngine, varLabel, varPath } from "../engine/sheet";
 import { tiersEntryOf } from "./engineTools";
 import { KINDS, pageMeta, worldFieldsText } from "../editor/world";
 import { estimateTokens } from "../lib/tokens";
-import { YOU_DECIDE, type ContentMode, type CowriterSettings, type InterviewDepth, type InterviewRound } from "./records";
+import { YOU_DECIDE, type CowriterSettings, type DarkLevel, type ProseSettings, type UnhingedLevel, type InterviewDepth, type InterviewRound } from "./records";
 import { EDITABLE_FIELDS } from "./tools";
 import type { ModeId } from "./types";
 
@@ -26,50 +26,60 @@ How SillyTavern uses a card:
 - Lorebook entries are sent only when one of their keys appears in recent messages. They hold situational facts, NPCs, places and secrets.
 
 Writing principles:
-- Natural, specific prose in third person. No W++, brackets or lists of adjectives.
+- Natural, specific prose, in third person unless the project's prose settings say otherwise. Plain prose rather than W++, brackets or lists of adjectives.
 - Concrete details over adjectives: not "kind" but what the character does that shows it.
-- State behaviour positively. Avoid "never" instructions; they plant the very thing.
-- One fact lives in one place, and fields never contradict each other.
-- Use {{char}} and {{user}}; never name or describe the user's character.
-- Greetings never speak or act for {{user}}, and end on a hook that invites a reply.
+- State behaviour positively: say what to do. A "never" instruction plants the very thing it forbids.
+- One fact lives in one place, and the fields agree with each other.
+- Use {{char}} and {{user}}, and leave the user's character unnamed and undescribed so any user fits.
+- Greetings leave {{user}}'s words and actions to the user, and end on a hook that invites a reply.
 - Characters: want versus need, a wound or a lie they believe, flaws that create friction, a distinct voice, how they act under pressure, secrets that unlock through play.
 - Worlds: the card holds the tip of the iceberg and the lorebook the depth. Build from conflict; rules have costs; give sensory, daily-life texture.
-- Lorebook entries are self-contained facts of 50 to 200 tokens. Keys cover names, nicknames, plurals and related words, and are never generic ("the", "city"). Constant entries only for true always-on facts.
-- People, places, items and shops are typed: add them with add_npc, add_place, add_item and add_shop (never add_lore_entry), and change them with update_world_entry, so they land on the world pages. add_lore_entry is for everything else: factions, rules, history, secrets.
+- Lorebook entries are self-contained facts of 50 to 200 tokens. Keys cover names, nicknames, plurals and related words, and stay specific: a key like "the" or "city" fires on everything. Constant entries only for true always-on facts.
+- People, places, items and shops are typed: add them with add_npc, add_place, add_item and add_shop, and change them with update_world_entry, so they land on the world pages. add_lore_entry is for everything else: factions, rules, history, secrets.
+- Before longer prose (a greeting, a description, a scenario), settle a short plan: who is there, where, what is at stake, and the hook. Say it in one line in your reply, then write.
 
-Characters in sexual content are always adults. Never sexualize minors.`;
+Write like a person, not like a model:
+- Show feeling through what people do, choose and say, more than through body sensations like a racing heart or a held breath.
+- Let the reader draw the meaning: end on action or an image rather than a stated moral or a summing-up line.
+- Introduce people by what they are doing, and let their looks come out in passing.
+- Use named specifics that fit the setting: the street, the dish, the song, the brand, the ship's name.
+- Give places a life of their own that needn't match anyone's mood, and use all the senses, sight and sound and touch as much as smell.
+- Leave threads open and conflicts unresolved where play goes on; side plots and loose ends are good.
+- Vary sentence length and how sentences begin, and choose fresh wording over stock phrases.
 
-const TOOLS_NOTE = `Change the card only through your tools. Each call becomes a proposal the user accepts or rejects, so keep each call focused: patch_field for small changes, set_field for new or rewritten fields. Never paste card text into your reply instead of calling a tool. After proposing, say in a sentence or two what you changed and why. Keep replies short; the edits speak for themselves.`;
+Characters in sexual content are always adults, with their adult ages stated. Minors are never sexualized; this rule overrides every content setting.`;
+
+const TOOLS_NOTE = `Change the card only through your tools. Each call becomes a proposal the user accepts or rejects, so keep each call focused: patch_field for small changes, set_field for new or rewritten fields. Card text goes only into tool calls, not into your reply. After proposing, say in a sentence or two what you changed and why. Keep replies short; the edits speak for themselves.`;
 
 const MODES: Record<ModeId, string> = {
   refine: `Right now you're refining the card with the user. Do what they ask, and when an instruction is vague ("make her meaner"), make a clear choice and say what you chose.`,
 
   lore: `Right now you're brainstorming lorebook entries with the user. Pitch entries one or two at a time, each with a "why": add_npc, add_place, add_item or add_shop for people, places, items and shops, add_lore_entry for everything else. Check every pitch against the card, the story bible and the existing entries: no duplicates, no contradictions, and point out any conflict you notice. When the user asks for more like an entry, pitch new entries of the same kind. To tweak an entry the user hasn't accepted yet, pitch a corrected version; for accepted entries use update_lore_entry, or update_world_entry for NPCs, places, items and shops.`,
 
-  interview: `Right now you're interviewing the user to build the card. Ask questions with ask_questions, a few per round, grouped by theme. Every question gets 3 or 4 suggested answers that are concrete, distinct and usable as they are, so the user can build the whole card by tapping. Suggestions follow the content mode, tone and genre. Build on earlier answers; never ask about something already decided. When an answer is "(You decide.)", decide it yourself and note what you chose. After each round of answers, record what is now decided with note_facts, then ask the next round. Call finish_interview when you know enough. Keep your own text to a sentence or two; the questions do the talking.`,
+  interview: `Right now you're interviewing the user to build the card. Ask questions with ask_questions, a few per round, grouped by theme. Every question gets 3 or 4 suggested answers that are concrete, distinct and usable as they are, so the user can build the whole card by tapping. Suggestions follow the content mode, tone and genre. Build on earlier answers and skip anything already decided. When an answer is "(You decide.)", decide it yourself and note what you chose. After each round of answers, record what is now decided with note_facts, then ask the next round. Call finish_interview when you know enough. Keep your own text to a sentence or two; the questions do the talking.`,
 
   gap: `Right now you're the gap analyst. You read everything the interview gathered and write a short memo with write_memo: what a good card still needs, which answers are too vague to write from, which facts contradict each other, and what the story could use (a rival, a secret, a reason to stay, a hook for the first scene). Be specific and brief. Mark the memo clean only when nothing important is left open.`,
 
-  draft: `Right now you're drafting the card from the interview. Write only what you're asked for in this step, using the story bible and the interview as the source of truth: never contradict them, and fill small gaps with choices that fit. Use your tools for every word; don't write card text in your reply.`,
+  draft: `Right now you're drafting the card from the interview. Write only what you're asked for in this step, using the story bible and the interview as the source of truth: stay consistent with them, and fill small gaps with choices that fit. Use your tools for every word; don't write card text in your reply.`,
 
-  suggest: `Right now you're brainstorming the answer to one interview question with the user. Pitch 4 or 5 varied ideas with suggest_answers, from the expected to the surprising. Riff on the ideas the user likes and combine them when asked. When the user settles on something, write it up with final_answer. Follow the content mode: Dark pushes darker answers; Unhinged actively pushes explicit NSFW answers.`,
+  suggest: `Right now you're brainstorming the answer to one interview question with the user. Pitch 4 or 5 varied ideas with suggest_answers, from the expected to the surprising. Riff on the ideas the user likes and combine them when asked. When the user settles on something, write it up with final_answer. Follow the content settings: Dark, Horror and Dead dove push darker answers; Unhinged and Absolutely unhinged actively push explicit NSFW answers.`,
 
-  image: `Right now you write prompts for image generators, to illustrate the card. Describe only what can be seen: appearance, body, clothing, expression, pose, setting, lighting, composition and art style. Image models don't know the characters' names, so describe them instead of naming them, and leave out {{char}} and {{user}}. Follow the requested format and style exactly. Follow the content mode: in Unhinged mode explicit nudity and sex are fine when asked for; characters are always adults and look it. Hand in the result with write_image_prompt.`,
+  image: `Right now you write prompts for image generators, to illustrate the card. Describe only what can be seen: appearance, body, clothing, expression, pose, setting, lighting, composition and art style. Image models don't know the characters' names, so describe them instead of naming them, and leave out {{char}} and {{user}}. Follow the requested format and style exactly. Follow the content settings: with Unhinged on, explicit nudity and sex are fine when asked for, and Absolutely unhinged leans every image sexual; Horror leans toward dread and wrongness. Characters are always adults and look it. Hand in the result with write_image_prompt.`,
 
   planner: `Right now you sort the card's greetings for the greeting planner. For each greeting, pick the mood, the place and the stage of the relationship between {{char}} and {{user}} that fit it best, using only the values the user gave. If no place list is given, name the places yourself in two or three words each and reuse the same name for the same place. Hand in the result with sort_greetings.`,
 
   world: `Right now you're filling in the world's pages: NPCs, places, money, items and shops, each kept as a lorebook entry. Pitch what the user asks for with the pitch tool, filling every field. Fit the card, the story bible and what already exists: no duplicates, no contradictions, and reuse names the card already mentions before inventing new ones. Keep each field short and concrete; NPC voices must sound different from each other and from {{char}}. Follow the content mode and tone. Characters in sexual content are adults.`,
 
-  arc: `Right now you're plotting a story arc for the card: a run of beats the narrator will steer toward, one after another, as the chat goes on. Follow the arc settings exactly; they are the user's rules for difficulty, death, failure, twists and the antagonist. Each beat is a situation that pressures {{user}} and leaves room for their choices, never a script of what {{user}} does. Beats escalate, pay off what earlier beats set up, and plant fair clues for every twist. Fit the card, the story bible and the lorebook: reuse the NPCs, places and factions that exist before inventing new ones. When you build an antagonist, make them a person with reasons, not a cartoon: a goal they believe in, real resources, limits, and a weakness {{user}} can find. Follow the content mode and tone. Characters in sexual content are adults, with ages stated.`,
+  arc: `Right now you're plotting a story arc for the card: a run of beats the narrator will steer toward, one after another, as the chat goes on. Follow the arc settings exactly; they are the user's rules for difficulty, death, failure, twists and the antagonist. Each beat is a situation that pressures {{user}} and leaves {{user}}'s actions to their choices. Beats escalate, pay off what earlier beats set up, and plant fair clues for every twist. Fit the card, the story bible and the lorebook: reuse the NPCs, places and factions that exist before inventing new ones. When you build an antagonist, make them a person with reasons, not a cartoon: a goal they believe in, real resources, limits, and a weakness {{user}} can find. Follow the content mode and tone. Characters in sexual content are adults, with ages stated.`,
 
   mechanics: `Right now you're the Game Wizard: you turn a mechanic the user describes in plain words into a rules module baked into the card as a lorebook entry, so it works in SillyTavern with no extension. There are no dice; the narrator decides outcomes from the rules and the story. Write modules that follow these attention practices:
-- Rules go in-chat at a depth, not at the top of the prompt. Core rules sit at depth 3 or 4; a module for something happening right now (a fight, a ritual) sits at depth 1 or 2. Never use depth 0, which is for the user's message.
+- Rules go in-chat at a depth, not at the top of the prompt. Core rules sit at depth 3 or 4; a module for something happening right now (a fight, a ritual) sits at depth 1 or 2. Depth 0 is the user's message, so modules go deeper.
 - Keep each module 50 to 200 tokens with one XML tag of its own (lower case, underscores). Use the same names the status block and other modules use for shared values.
 - State rules positively and concretely: what the narrator does, with numbers where values change. Give a one-line example of correct output instead of a list of "never".
 - Few modules are always on. Anything situational is keyed on the words that bring it up, sticky for as long as it stays relevant, and put in an inclusion group with the other modes (exploration, combat, social) so only one is in the prompt at a time.
 - A higher priority puts the module later within its depth, where it gets the most attention; give the most important rule the highest.
 - Values that change (HP, mana, gold, corruption) are tracked: list them so they appear in the status block, and refer to them by the same label in the rules.
-Fit the card, the story bible and the existing modules: never contradict them. Follow the content mode and tone. Characters in sexual content are adults.`,
+Fit the card, the story bible and the existing modules, and stay consistent with them. Follow the content mode and tone. Characters in sexual content are adults.`,
 
   engineer: `Right now you're the UI engineer: you build the card's engine screens with your tools.`,
 
@@ -88,13 +98,76 @@ export function systemPrompt(mode: ModeId): string {
   return [BASE, MODES[mode], EDITING_MODES.includes(mode) && TOOLS_NOTE].filter(Boolean).join("\n\n");
 }
 
-const CONTENT_MODES = {
-  normal:
-    "Content mode: Normal. Follow the user's premise. Don't push dark or sexual content they haven't asked for, and don't shy away from it when the premise calls for it.",
-  dark: "Content mode: Dark. Actively write violence, horror, cruelty, moral rot and bleak outcomes into the card where they fit. Don't soften or moralize.",
-  unhinged:
-    "Content mode: Unhinged. Explicit NSFW content is wanted and actively written into every relevant field: body, kinks, sexual behaviour, explicit example dialogue and lore. Don't hedge, fade to black or moralize. State every character's adult age explicitly.",
+const NORMAL_CONTENT =
+  "Content: Normal. Follow the user's premise. Don't push dark or sexual content they haven't asked for, and don't shy away from it when the premise calls for it.";
+
+const DARK_LINES: Record<Exclude<DarkLevel, "off">, string> = {
+  dark: "Content: Dark. Actively write violence, cruelty, moral rot and bleak outcomes into the card where they fit. Don't soften or moralize.",
+  horror:
+    "Content: Horror. Fear is the engine. Build dread, wrongness and the unseen; escalate the threat; use psychological and body horror and real survival stakes; withhold information from {{user}} and let them find it too late. Don't soften or explain the horror away.",
+  deaddove:
+    "Content: Dead dove (do not eat). Write disturbing and taboo themes straight: no redemption arc, no rescue, no moral framing, no softened outcome. The creator notes carry a content warning.",
 };
+
+const UNHINGED_LINES: Record<Exclude<UnhingedLevel, "off">, string> = {
+  normal:
+    "Content: Unhinged. Explicit NSFW content is wanted and actively written into every relevant field: body, kinks, sexual behaviour, explicit example dialogue and lore. Don't hedge, fade to black or moralize. State every character's adult age explicitly.",
+  absolute:
+    "Content: Absolutely unhinged. Push sexual content into every field you can reach, including ones where it isn't obviously relevant: places, items and shops, NPC notes, mechanics, story arcs, greetings, example dialogue, lore and image prompts. Be kink-forward: fetishes, power dynamics, toys and dirty talk, and pitch kinks freely. The user's hard limits (in the story bible) hold everywhere. Don't hedge, fade to black or moralize. State every character's adult age explicitly.",
+};
+
+/** The content lines: Normal, or the dark level's line and the unhinged level's line, which combine. */
+export function contentLines(s: Pick<CowriterSettings, "dark" | "unhinged">): string[] {
+  const lines = [s.dark !== "off" && DARK_LINES[s.dark], s.unhinged !== "off" && UNHINGED_LINES[s.unhinged]].filter((l): l is string => !!l);
+  return lines.length ? lines : [NORMAL_CONTENT];
+}
+
+const PROSE: { [K in keyof ProseSettings]-?: Record<NonNullable<ProseSettings[K]>, string> } = {
+  pov: { second: "Point of view: second person, addressing {{user}} as you.", third: "Point of view: third person." },
+  tense: { past: "Tense: past.", present: "Tense: present." },
+  length: {
+    short: "Reply length: short, one or two paragraphs; the greetings model it.",
+    medium: "Reply length: medium, three or four paragraphs; the greetings model it.",
+    long: "Reply length: long, five paragraphs or more; the greetings model it.",
+  },
+  dialogue: {
+    light: "Dialogue: light; mostly narration and action.",
+    balanced: "Dialogue: balanced with narration.",
+    heavy: "Dialogue: heavy; characters talk a lot, with narration in between.",
+  },
+  register: {
+    plain: "Register: plain and clear.",
+    literary: "Register: literary, with precise imagery.",
+    pulpy: "Register: pulpy, punchy and vivid.",
+    poetic: "Register: poetic, with rhythm and figurative language.",
+  },
+  rhythm: {
+    varied: "Sentence rhythm: varied, short and long mixed.",
+    punchy: "Sentence rhythm: punchy, mostly short sentences.",
+    flowing: "Sentence rhythm: flowing, longer sentences.",
+  },
+  explicitness: {
+    suggestive: "Sexual content: suggestive, cutting away at the explicit part.",
+    explicit: "Sexual content: explicit.",
+    graphic: "Sexual content: graphic and detailed.",
+  },
+  format: {
+    asterisks: "Formatting: actions and narration in *asterisks*, speech in quotes.",
+    quotes: "Formatting: plain narration, speech in quotes.",
+    plain: "Formatting: plain prose with no markup.",
+  },
+};
+
+/** The project's prose settings as lines for the prompt. */
+export function proseLines(prose: ProseSettings | undefined): string[] {
+  if (!prose) return [];
+  return (Object.keys(PROSE) as (keyof ProseSettings)[])
+    .map((k) => {
+      const v = prose[k];
+      return v ? (PROSE[k] as Record<string, string>)[v] : undefined;
+    })
+    .filter((l): l is string => !!l);
+}
 
 const SUGGESTIONS = {
   quiet: "Suggestions: only pitch ideas when the user asks for them.",
@@ -111,7 +184,8 @@ export function settingsContext(
   engineGuide = ENGINE_GUIDE,
 ): string {
   const lines = [
-    CONTENT_MODES[settings.contentMode],
+    ...contentLines(settings),
+    ...proseLines(settings.prose),
     settings.engineMode &&
       `This card is built for the Immersive Engine (an MVU card: a variable sheet the model updates each reply, shown in panels and screens). Write for it from the start with the engine tools (add_variable, set_update_rule, write_tiers, set_greeting_state), following this guide:\n${engineGuide}`,
     settings.tone && `Tone: ${settings.tone}.`,
@@ -154,7 +228,7 @@ export function cardContext(data: CardDataV3, kind: CardKind): string {
   if (engine) {
     const vars = effectiveConfig(engine).vars.filter((v) => v.name.trim());
     out.push(
-      `## engine values (the Immersive Engine is on; never state these in the prose)\n` +
+      `## engine values (the Immersive Engine is on; the prose shows their effects, not their numbers)\n` +
         (vars
           .map((v) => {
             const range = v.min !== undefined || v.max !== undefined ? `, ${v.min ?? "…"} to ${v.max ?? "…"}` : "";
@@ -167,7 +241,7 @@ export function cardContext(data: CardDataV3, kind: CardKind): string {
   }
   if (arcHidden(data))
     out.push(
-      "The story arc entries are secret from the user: use them to keep the card consistent, but never quote, summarize or hint at them.",
+      "The story arc entries are secret from the user: use them to keep the card consistent, and keep their content out of everything the user reads.",
     );
   return out.join("\n\n");
 }
@@ -241,10 +315,15 @@ const THEMES: Record<CardKind, string[]> = {
   ],
 };
 
-const MODE_THEME: Record<ContentMode, string | undefined> = {
-  normal: undefined,
-  dark: "Dark themes: violence, cruelty, horror, what goes wrong",
-  unhinged: "Sex: bodies, kinks, sexual behaviour and dynamics (adults only, ages stated)",
+const DARK_THEME: Record<Exclude<DarkLevel, "off">, string> = {
+  dark: "Dark themes: violence, cruelty, what goes wrong",
+  horror: "Horror: what is feared, what is wrong here, what is hidden from {{user}}, and how the threat escalates",
+  deaddove: "Dead dove: the disturbing or taboo themes to write straight, with no rescue or redemption",
+};
+
+const UNHINGED_THEME: Record<Exclude<UnhingedLevel, "off">, string> = {
+  normal: "Sex: bodies, kinks, sexual behaviour and dynamics (adults only, ages stated)",
+  absolute: "Kinks and hard limits: the user's kink list (fetishes, power dynamics, toys, dirty talk) and the hard limits the card respects everywhere (adults only, ages stated)",
 };
 
 const DEPTH_PLAN: Record<InterviewDepth, string> = {
@@ -258,8 +337,10 @@ const DEPTH_PLAN: Record<InterviewDepth, string> = {
 /** The request that starts an interview. */
 export function interviewKickoff(kind: CardKind, settings: CowriterSettings, premise: string): string {
   const themes = [...THEMES[kind]];
-  const extra = MODE_THEME[settings.contentMode];
-  if (extra) themes.splice(themes.length - 1, 0, extra);
+  if (settings.dark !== "off") themes.splice(themes.length - 1, 0, DARK_THEME[settings.dark]);
+  // Absolutely unhinged asks for the kink list and hard limits up front, so every later answer respects them.
+  if (settings.unhinged === "absolute") themes.splice(1, 0, UNHINGED_THEME.absolute);
+  else if (settings.unhinged === "normal") themes.splice(themes.length - 1, 0, UNHINGED_THEME.normal);
   // Engine cards plan their variables early, right after the core concept.
   if (settings.engineMode)
     themes.splice(1, 0, "Game state: what the engine should track (about six core numbers at most) and what each tier of them means for how characters behave");
@@ -314,7 +395,7 @@ export const DRAFT_GROUPS: { id: string; label: string; brief: Record<CardKind, 
       character:
         "Write name, description, personality and scenario with set_field. The description comes first and matters most: identity, look, personality shown through behaviour, voice, wants and wounds. Personality is a short summary. The scenario is the starting situation with {{user}}.",
       world:
-        "Write name, description, personality and scenario with set_field. Name is the world's name. The description sets the premise, the rules and their costs, the tone and the narrator's role: it narrates, plays every NPC, and never acts for {{user}}. Personality is the narrator's voice and style. The scenario is the starting situation. Keep the details of places, factions and people for the lorebook.",
+        "Write name, description, personality and scenario with set_field. Name is the world's name. The description sets the premise, the rules and their costs, the tone and the narrator's role: it narrates, plays every NPC, and leaves {{user}}'s actions to the user. Personality is the narrator's voice and style. The scenario is the starting situation. Keep the details of places, factions and people for the lorebook.",
     },
   },
   {
@@ -322,9 +403,9 @@ export const DRAFT_GROUPS: { id: string; label: string; brief: Record<CardKind, 
     label: "greetings",
     brief: {
       character:
-        "Write first_mes with set_field, then two alternate greetings with add_greeting, each a different opening situation. Never speak or act for {{user}}; end on a hook; match the reply length you want back.",
+        "Write first_mes with set_field, then two alternate greetings with add_greeting, each a different opening situation. Leave {{user}}'s words and actions to the user; end on a hook; match the reply length you want back.",
       world:
-        "Write first_mes with set_field, then two alternate greetings with add_greeting: different entry points into the world (arriving as a stranger, mid-crisis, somewhere ordinary). Never speak or act for {{user}}; end on a hook.",
+        "Write first_mes with set_field, then two alternate greetings with add_greeting: different entry points into the world (arriving as a stranger, mid-crisis, somewhere ordinary). Leave {{user}}'s words and actions to the user; end on a hook.",
     },
   },
   {
@@ -368,18 +449,18 @@ const ENGINE_GROUP = {
   label: "variables",
   brief: {
     character:
-      "Plan the game state before any prose. Add the core values with add_variable (about six numbers at most, plus the states and lists the story needs), each with a concrete update rule; then give every core number its tiers and threshold events with write_tiers. Use fixed names (protagonist, the character's name), never {{user}}.",
+      "Plan the game state before any prose. Add the core values with add_variable (about six numbers at most, plus the states and lists the story needs), each with a concrete update rule; then give every core number its tiers and threshold events with write_tiers. Use fixed names (protagonist, the character's name) rather than {{user}}.",
     world:
-      "Plan the game state before any prose. Add the core values with add_variable (about six numbers at most, plus the world's states, the protagonist's and the main NPCs' records), each with a concrete update rule; then give every core number its tiers and threshold events with write_tiers. Use fixed names, never {{user}}.",
+      "Plan the game state before any prose. Add the core values with add_variable (about six numbers at most, plus the world's states, the protagonist's and the main NPCs' records), each with a concrete update rule; then give every core number its tiers and threshold events with write_tiers. Use fixed names rather than {{user}}.",
   } as Record<CardKind, string>,
 };
 
 const ENGINE_DRAFT_NOTE: Record<string, string> = {
-  core: "This is an engine card: never state a variable's value in the prose, and keep tier behaviour out of the description; the tiers entries hold it.",
+  core: "This is an engine card: the prose shows what values mean through behaviour, not their numbers, and keep tier behaviour out of the description; the tiers entries hold it.",
   greetings:
     "This is an engine card: after writing the greetings, give each one (0 is the first message) its starting state with set_greeting_state, the values that differ from the defaults at that opening.",
   examples: "This is an engine card: no stats or numbers in the dialogue.",
-  lore: "This is an engine card: entries hold facts and behaviour, never current values.",
+  lore: "This is an engine card: entries hold facts and behaviour; current values live in the engine.",
 };
 
 /** The drafting steps, with the variables first for an engine card. */
@@ -481,7 +562,7 @@ export function imagePromptRequest(opts: {
   return [
     `<subject>\n${opts.subject}\n</subject>`,
     opts.setting && `<setting>\n${opts.setting}\n</setting>`,
-    `Content mode: ${opts.contentMode}.`,
+    `Content: ${opts.contentMode}.`,
     format,
     `Art style "${style.name}": ${style.style || "your choice"}.`,
     style.prefix && `Start the prompt with exactly: ${style.prefix}`,
@@ -517,7 +598,7 @@ export function greetingFillRequest(cells: { mood: string; stage: string; place?
   return [
     `Write ${cells.length === 1 ? "an alternate greeting" : `${cells.length} alternate greetings`} for openings the card doesn't have yet, one add_greeting each:`,
     list.join("\n"),
-    "Each greeting sets up its own situation with a hook, matches the first message in voice and length, and never speaks or acts for {{user}}. The relationship stage is where {{char}} and {{user}} stand when the scene opens.",
+    "Each greeting sets up its own situation with a hook, matches the first message in voice and length, and leaves {{user}}'s words and actions to the user. The relationship stage is where {{char}} and {{user}} stand when the scene opens.",
     engine
       ? "This is an engine card: give each new greeting its starting state with set_greeting_state, so the values (relationship, place, mood) match where the scene opens."
       : "",

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { readImagePrompt, WRITE_IMAGE_PROMPT } from "../../ai/interviewTools";
 import { FRAMINGS, imagePromptRequest, systemPrompt, type Framing } from "../../ai/prompts";
 import { useAiSettings } from "../../ai/settings";
+import { contentLabel } from "../../ai/records";
 import { toast } from "../../components/toast";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { complete, isAbort, projectSettings } from "../../cowriter/engine";
@@ -98,7 +99,7 @@ export function ImagePromptDialog({ onClose }: { onClose: () => void }) {
             text: imagePromptRequest({
               subject: subject.text,
               setting: subject.setting,
-              contentMode: cw.contentMode,
+              contentMode: contentLabel(cw),
               style,
               framing,
               instructions,
