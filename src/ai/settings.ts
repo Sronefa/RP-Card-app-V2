@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import { getSetting, putSetting } from "../db/db";
 import { newId } from "../lib/id";
+import type { ImageModelChoice, ImageProviderConfig, ImageTask } from "../images/providers";
 import { openaiProvider } from "./openai";
 import type { Effort, ModeId, ModelChoice, ModelInfo, Provider, ProviderConfig } from "./types";
 
@@ -91,6 +92,12 @@ export interface AiSettings {
   engineer?: Partial<EngineerSettings>;
   /** The user's changes to the UI engineer's skills. */
   engineerSkills?: { edited: Record<string, string>; removed: string[] };
+  /** Image providers, separate from the text ones. */
+  imageProviders?: ImageProviderConfig[];
+  /** The image model for each kind of work; character art's is the fallback. */
+  imageModels?: Partial<Record<ImageTask, ImageModelChoice>>;
+  /** How big a card may get with its images, in MB. */
+  cardBudgetMb?: number;
 }
 
 export interface EngineerSettings {

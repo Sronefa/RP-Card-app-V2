@@ -8,6 +8,8 @@ import { getProject, saveProject, type CardRecord } from "../../db/db";
 import { useEditor } from "../../editor/store";
 import { fillSheet } from "../../images/fill";
 import { writePrompt } from "../../images/prompt";
+import { useImageQueue } from "../../images/queue";
+import { GeneratePanel } from "./GeneratePanel";
 import {
   customShot,
   duplicateWith,
@@ -15,7 +17,7 @@ import {
   loadStudio,
   mergeShots,
   proposeShots,
-  saveStudio,
+  updateStudio,
   SHOT_GROUPS,
   ST_EXPRESSIONS,
   type EmotionSet,
@@ -45,6 +47,7 @@ import {
 const TABS = {
   bible: "Visual bible",
   shots: "Shot list",
+  generate: "Generate",
   style: "Style lock",
 } as const;
 type Tab = keyof typeof TABS;
@@ -79,9 +82,17 @@ export function ImageStudio({ record }: { record: CardRecord }) {
   useEffect(() => {
     void loadStudio(record.id).then(setStudio);
   }, [record.id]);
-  const saveShots = (next: StudioRecord) => {
-    setStudio(next);
-    void saveStudio(next);
+  const version = useImageQueue((q) => q.version);
+  // New candidates from the queue.
+  useEffect(() => {
+    if (version) void loadStudio(record.id).then(setStudio);
+  }, [version, record.id]);
+  const writes = useRef(0);
+  const change = (fn: (s: StudioRecord) => StudioRecord) => {
+    setStudio((s) => s && fn(s));
+    const n = ++writes.current;
+    // Only the last write's result is shown; earlier ones would undo later optimistic changes.
+    void updateStudio(record.id, fn).then((saved) => n === writes.current && setStudio(saved));
   };
 
   return (
@@ -104,7 +115,11 @@ export function ImageStudio({ record }: { record: CardRecord }) {
         <VisualBible record={record} />
       ) : tab === "shots" ? (
         studio && lock ? (
-          <ShotList record={record} studio={studio} lock={lock} save={saveShots} />
+          <ShotList record={record} studio={studio} lock={lock} change={change} />
+        ) : null
+      ) : tab === "generate" ? (
+        studio ? (
+          <GeneratePanel record={record} studio={studio} change={change} />
         ) : null
       ) : lock ? (
         <StyleLockEditor lock={lock} save={saveLock} />
@@ -408,18 +423,19 @@ function ShotList({
   record,
   studio,
   lock,
-  save,
+  change,
 }: {
   record: CardRecord;
   studio: StudioRecord;
   lock: StyleLock;
-  save: (next: StudioRecord) => void;
+  change: (fn: (s: StudioRecord) => StudioRecord) => void;
 }) {
   const data = record.card.data;
   const [custom, setCustom] = useState("");
+  const [labels, setLabels] = useState(studio.customEmotions.join(", "));
   const [open, setOpen] = useState<string>();
   const shots = studio.shots;
-  const setShots = (next: Shot[]) => save({ ...studio, shots: next });
+  const setShots = (next: Shot[]) => change((s) => ({ ...s, shots: next }));
   const setShot = (id: string, patch: Partial<Shot>) => setShots(shots.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   const planned = shots.filter((s) => !s.skip).length;
 
@@ -448,7 +464,7 @@ function ShotList({
                 type="radio"
                 name="emotion-set"
                 checked={studio.emotionSet === v}
-                onChange={() => save({ ...studio, emotionSet: v })}
+                onChange={() => change((s) => ({ ...s, emotionSet: v }))}
               />
               {label}
             </label>
@@ -458,15 +474,16 @@ function ShotList({
           <TextInput
             aria-label="Emotion labels"
             placeholder="joy, smug, flustered"
-            value={studio.customEmotions.join(", ")}
-            onChange={(e) =>
-              save({
-                ...studio,
-                customEmotions: e.target.value
+            value={labels}
+            onChange={(e) => setLabels(e.target.value)}
+            onBlur={() =>
+              change((s) => ({
+                ...s,
+                customEmotions: labels
                   .split(",")
-                  .map((s) => s.trim())
+                  .map((x) => x.trim())
                   .filter(Boolean),
-              })
+              }))
             }
           />
         )}

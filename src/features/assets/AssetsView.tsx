@@ -9,6 +9,8 @@ import { pickFiles, readFileBytes, safeFileName, saveFile } from "../../lib/file
 import { useObjectUrl } from "../../lib/useObjectUrl";
 import { ImagePromptDialog } from "../images/ImagePromptDialog";
 import { ImageStudio } from "../images/ImageStudio";
+import { ASSET_KINDS, readAssetTags, writeAssetTag, type AssetKind, type AssetTag } from "../../images/filing";
+import { subjectsOf } from "../../images/visual";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
 
@@ -249,6 +251,7 @@ function AssetForm({
         Name
         <TextInput value={asset.name} onChange={(e) => onChange({ ...asset, name: e.target.value }, "asset.name")} />
       </label>
+      {asset.uri !== "ccdefault:" && <AssetTags record={record} uri={asset.uri} />}
       <label className="flex flex-col gap-1 text-sm">
         Type
         <select
@@ -289,5 +292,55 @@ function AssetForm({
         </Button>
       </div>
     </div>
+  );
+}
+
+/** The asset's subject, kind and variant, so the Image Studio and the engine can find it by meaning. */
+function AssetTags({ record, uri }: { record: CardRecord; uri: string }) {
+  const tag = readAssetTags(record.card.data)[uri];
+  const subjects = subjectsOf(record.card.data, record.kind);
+  const set = (patch: Partial<AssetTag>, coalesceKey?: string) => {
+    const data = useEditor.getState().record!.card.data;
+    const next: AssetTag = { ...(readAssetTags(data)[uri] ?? { kind: "portrait" }), ...patch };
+    useEditor.getState().replaceData(writeAssetTag(data, uri, next), coalesceKey);
+  };
+  const select = "min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm";
+  return (
+    <fieldset className="grid grid-cols-3 gap-2">
+      <label className="flex flex-col gap-1 text-xs">
+        Shows
+        <select className={select} value={tag?.subject ?? ""} onChange={(e) => set({ subject: e.target.value || undefined })}>
+          <option value="">Nobody in particular</option>
+          {subjects.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs">
+        Kind
+        <select
+          className={select}
+          value={tag?.kind ?? ""}
+          onChange={(e) =>
+            e.target.value
+              ? set({ kind: e.target.value as AssetKind })
+              : useEditor.getState().replaceData(writeAssetTag(useEditor.getState().record!.card.data, uri, undefined))
+          }
+        >
+          <option value="">Not tagged</option>
+          {(Object.keys(ASSET_KINDS) as AssetKind[]).map((k) => (
+            <option key={k} value={k}>
+              {ASSET_KINDS[k]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs">
+        Variant
+        <TextInput placeholder="joy, night" value={tag?.variant ?? ""} onChange={(e) => set({ variant: e.target.value || undefined }, `tag.${uri}`)} />
+      </label>
+    </fieldset>
   );
 }
