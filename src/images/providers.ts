@@ -64,6 +64,8 @@ export interface ImageModelInfo {
   /** Parameters the model takes beyond the prompt, like seed or strength. */
   params?: string[];
   resolutions?: string[];
+  /** The most images one request may ask for. */
+  maxImages?: number;
 }
 
 export interface ImageRequest {
@@ -109,21 +111,32 @@ export function readImageModel(raw: unknown, key?: string): ImageModelInfo | und
   if (!id) return undefined;
   const caps = isObject(raw.capabilities) ? raw.capabilities : {};
   const pricing = isObject(raw.pricing) ? raw.pricing : isObject(raw.cost) ? raw.cost : {};
+  // NanoGPT prices per resolution ({ per_image: { "1024*1024": 0.005 } }): the cheapest stands for the model.
+  const perSize = isObject(pricing.per_image)
+    ? Object.values(pricing.per_image).map(num).filter((v): v is number => v !== undefined)
+    : [];
   const price =
     num(raw.price) ??
     num(raw.cost) ??
     num(pricing.per_image) ??
+    (perSize.length ? Math.min(...perSize) : undefined) ??
     num(pricing.image) ??
     num(pricing.default) ??
     num(Object.values(pricing).find((v) => num(v) !== undefined));
+  const supported = isObject(raw.supported_parameters) ? raw.supported_parameters : {};
   const params = Array.isArray(raw.supported_parameters)
     ? raw.supported_parameters.filter((p): p is string => typeof p === "string")
     : isObject(raw.supported_parameters)
       ? Object.keys(raw.supported_parameters)
       : undefined;
-  const resolutions = Array.isArray(raw.resolutions)
-    ? raw.resolutions.map((r) => (isObject(r) ? String(r.value ?? r.id ?? "") : String(r))).filter(Boolean)
-    : undefined;
+  // At the top level, or under supported_parameters as a list or an enum ({ values: [...] }).
+  const rawSizes = [raw.resolutions, supported.resolutions, supported.resolution, supported.size]
+    .map((r) => (isObject(r) ? (r.values ?? r.enum) : r))
+    .find(Array.isArray);
+  const resolutions = rawSizes
+    ?.map((r) => (isObject(r) ? String(r.value ?? r.id ?? "") : String(r)))
+    .filter(Boolean);
+  const maxImages = num(supported.max_images) ?? num(raw.max_images);
   return {
     id,
     name: String(raw.name ?? id),
@@ -135,6 +148,7 @@ export function readImageModel(raw: unknown, key?: string): ImageModelInfo | und
     ...(caps.nsfw !== undefined ? { nsfw: !!caps.nsfw } : {}),
     ...(params ? { params } : {}),
     ...(resolutions?.length ? { resolutions } : {}),
+    ...(maxImages !== undefined ? { maxImages } : {}),
   };
 }
 
@@ -171,8 +185,9 @@ export async function listImageModels(p: ImageProviderConfig): Promise<ImageMode
   if (p.kind === "comfyui") return comfyModels(p);
   const f = await getFetch();
   const base = trimSlash(p.baseUrl);
-  // NanoGPT has a detailed image model list; elsewhere the plain one.
-  const urls = p.kind === "nanogpt" ? [`${base}/images/models`, `${base}/image-models`, `${base}/models`] : [`${base}/models`];
+  // NanoGPT's detailed list goes with /images/generations and gives each model's sizes; elsewhere the plain one.
+  const urls =
+    p.kind === "nanogpt" ? [`${base}/image-models?detailed=true`, `${base}/images/models`, `${base}/models`] : [`${base}/models`];
   let last = "";
   for (const url of urls) {
     const res = await f(url, { headers: headers(p) });
@@ -203,12 +218,30 @@ async function fetchImage(item: Record<string, unknown>): Promise<GeneratedImage
   return undefined;
 }
 
-/** The size as OpenAI writes it, and as an aspect ratio for providers that take one. */
+/** The size as OpenAI writes it. */
 const sizeOf = (w: number, h: number) => `${w}x${h}`;
-function aspect(w: number, h: number) {
-  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
-  const g = gcd(w, h);
-  return `${w / g}:${h / g}`;
+
+/**
+ * The size to ask for: the model's listed size nearest the wanted shape, then the wanted area. A
+ * model that lists sizes another way (like "1k") or only "auto" gets none, and picks its own; a
+ * model that lists nothing gets the wanted size as is.
+ */
+export function pickSize(resolutions: string[] | undefined, width: number, height: number): string | undefined {
+  if (!resolutions?.length) return sizeOf(width, height);
+  const sizes = resolutions
+    .map((r) => /^(\d+)\s*[x*×]\s*(\d+)$/i.exec(r.trim()))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => ({ w: Number(m[1]), h: Number(m[2]) }));
+  if (!sizes.length) return undefined;
+  const shape = Math.log(width / height);
+  const area = width * height;
+  const score = (s: { w: number; h: number }) => [Math.abs(Math.log(s.w / s.h) - shape), Math.abs(Math.log((s.w * s.h) / area))];
+  const best = sizes.reduce((a, b) => {
+    const [sa, aa] = score(a);
+    const [sb, ab] = score(b);
+    return sb < sa - 0.01 || (Math.abs(sb - sa) <= 0.01 && ab < aa) ? b : a;
+  });
+  return sizeOf(best.w, best.h);
 }
 
 export async function generateImages(p: ImageProviderConfig, req: ImageRequest): Promise<ImageResult> {
@@ -216,32 +249,48 @@ export async function generateImages(p: ImageProviderConfig, req: ImageRequest):
   const f = await getFetch();
   const info = p.models?.find((m) => m.id === req.model);
   const takes = (param: string) => !info?.params || info.params.includes(param);
+  const size = p.kind === "nanogpt" ? pickSize(info?.resolutions, req.width, req.height) : sizeOf(req.width, req.height);
   const body: Record<string, unknown> = {
     model: req.model,
     prompt: req.prompt,
-    n: req.n,
-    size: sizeOf(req.width, req.height),
+    n: info?.maxImages ? Math.min(req.n, info.maxImages) : req.n,
+    ...(size ? { size } : {}),
     response_format: "b64_json",
   };
   if (p.kind === "nanogpt") {
-    body.resolution = sizeOf(req.width, req.height);
-    body.aspect_ratio = aspect(req.width, req.height);
+    // Only the fields NanoGPT's /images/generations documents. The newer /images route's
+    // resolution, aspect_ratio and input_references don't belong here, and input_references
+    // next to imageDataUrl is refused as conflicting image inputs.
     if (req.negative.trim() && takes("negative_prompt")) body.negative_prompt = req.negative;
     if (req.seed !== undefined && takes("seed")) body.seed = req.seed;
     if (req.reference && info?.imageToImage !== false) {
-      const url = `data:image/png;base64,${bytesToBase64(req.reference)}`;
-      body.imageDataUrl = url;
-      body.input_references = [url];
+      body.imageDataUrl = `data:image/png;base64,${bytesToBase64(req.reference)}`;
       if (req.strength !== undefined && takes("strength")) body.strength = req.strength;
     }
   }
-  const res = await f(`${trimSlash(p.baseUrl)}/images/generations`, {
-    method: "POST",
-    headers: headers(p),
-    body: JSON.stringify(body),
-    signal: req.signal,
-  });
-  if (!res.ok) throw new Error(await readError(res));
+  const post = (b: Record<string, unknown>) =>
+    f(`${trimSlash(p.baseUrl)}/images/generations`, {
+      method: "POST",
+      headers: headers(p),
+      body: JSON.stringify(b),
+      signal: req.signal,
+    });
+  let res = await post(body);
+  // A size the model doesn't take can come back as a 400 or a 5xx from NanoGPT's upstream. When we
+  // guessed the size (the model listed none), try once more and let the model pick its own.
+  if (!res.ok && p.kind === "nanogpt" && body.size && !info?.resolutions?.length && (res.status === 400 || res.status >= 500)) {
+    const { size: _guess, ...rest } = body;
+    const retry = await post(rest);
+    if (retry.ok) res = retry;
+  }
+  if (!res.ok) {
+    const message = await readError(res);
+    throw new Error(
+      p.kind === "nanogpt" && res.status >= 500
+        ? `${message}. NanoGPT couldn't run ${req.model} with these settings: refresh the model list in Settings, or try another model.`
+        : message,
+    );
+  }
   const json = (await res.json()) as Record<string, unknown>;
   const data = Array.isArray(json.data) ? json.data : Array.isArray(json.images) ? json.images : [];
   const images = (await Promise.all(data.filter(isObject).map(fetchImage))).filter((i): i is GeneratedImage => !!i);
