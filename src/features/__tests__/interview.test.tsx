@@ -178,7 +178,16 @@ describe("interview", () => {
     expect(drafts.every((r) => r.system.includes("drafting the card") && r.messages.length === 1)).toBe(true);
     expect(lastText(drafts[0])).toContain("She is 31");
     expect(lastText(drafts[1])).toContain("Vex is a 30-year-old dragon librarian.");
-    expect(drafts[0].tools.map((t) => t.name)).toEqual(["set_field", "add_greeting", "add_example_dialogue", "add_lore_entry"]);
+    expect(drafts[0].tools.map((t) => t.name)).toEqual([
+      "set_field",
+      "add_greeting",
+      "add_example_dialogue",
+      "add_lore_entry",
+      "add_npc",
+      "add_place",
+      "add_item",
+      "add_shop",
+    ]);
 
     // The draft lands in the chat as proposals, and the chat tab opens.
     await screen.findByText(/Here's the first draft/);
@@ -323,7 +332,17 @@ describe("lorebook brainstorm", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Pitch places worth having entries for" }));
     await screen.findByText("Where her secret lives.");
     expect(script.requests[0].system).toContain("brainstorming lorebook entries");
-    expect(script.requests[0].tools.map((t) => t.name)).toEqual(["add_lore_entry", "update_lore_entry", "delete_lore_entry", "pitch"]);
+    expect(script.requests[0].tools.map((t) => t.name)).toEqual([
+      "add_lore_entry",
+      "update_lore_entry",
+      "delete_lore_entry",
+      "add_npc",
+      "add_place",
+      "add_item",
+      "add_shop",
+      "update_world_entry",
+      "pitch",
+    ]);
 
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     expect(useEditor.getState().record!.card.data.character_book?.entries[0].content).toBe("A vault.");

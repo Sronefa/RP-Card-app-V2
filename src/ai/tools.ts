@@ -4,6 +4,7 @@
  */
 import type { CardDataV3, LorebookEntry } from "../card";
 import { emptyBook, entryTitle, newEntry } from "../editor/lorebook";
+import { aKind, fieldsFor, KINDS, pageMeta, syncCast, worldEntry, worldMeta, type WorldKind } from "../editor/world";
 import type { ToolCall, ToolDef } from "./types";
 
 /** Card text fields the co-writer may write. */
@@ -32,6 +33,58 @@ const obj = (properties: Record<string, unknown>, required: string[]): ToolDef["
 });
 const fieldParam = { type: "string", enum: FIELD_NAMES, description: "The card field" };
 const keysParam = { type: "array", items: { type: "string" }, description: "Trigger keywords: name, nicknames, plurals, related words" };
+
+/** The typed world tools and the kind each one adds. */
+export const WORLD_TOOL_KINDS = {
+  add_npc: "npc",
+  add_place: "location",
+  add_item: "item",
+  add_shop: "shop",
+} as const satisfies Record<string, WorldKind>;
+type WorldTool = keyof typeof WORLD_TOOL_KINDS;
+export const isWorldTool = (name: string): name is WorldTool => name in WORLD_TOOL_KINDS;
+
+const WORLD_WHAT: Record<WorldTool, string> = {
+  add_npc: "a person other than {{char}} and {{user}}: anyone with a name or a recurring role",
+  add_place: "a place: a city, district, building, room or landmark",
+  add_item: "an item or a service, with its price",
+  add_shop: "a shop, stall or trader",
+};
+
+function worldTool(name: WorldTool): ToolDef {
+  const def = KINDS[WORLD_TOOL_KINDS[name]];
+  return {
+    name,
+    description: `Add ${WORLD_WHAT[name]}. It lands on the ${def.plural} page as a lorebook entry written from these fields, so use this instead of add_lore_entry for ${def.many}.`,
+    parameters: obj(
+      {
+        why: str("One sentence for the user: why this matters to the story"),
+        ...Object.fromEntries(def.fields.map((f) => [f.key, str(f.hint)])),
+      },
+      ["name"],
+    ),
+  };
+}
+
+export const WORLD_TOOLS: ToolDef[] = [
+  ...(Object.keys(WORLD_TOOL_KINDS) as WorldTool[]).map(worldTool),
+  {
+    name: "update_world_entry",
+    description:
+      "Change an NPC, place, item or shop by its id. Give only the fields that change; the entry's text and keys are rewritten from the fields.",
+    parameters: obj(
+      {
+        id: str("The entry's id, as listed in the card"),
+        fields: {
+          type: "object",
+          description: "The fields to change, by the names listed with the entry (name, role, look, voice, notes...)",
+          additionalProperties: { type: "string" },
+        },
+      },
+      ["id", "fields"],
+    ),
+  },
+];
 
 export const CARD_TOOLS: ToolDef[] = [
   {
@@ -97,6 +150,7 @@ export const CARD_TOOLS: ToolDef[] = [
     description: "Delete a lorebook entry by its id.",
     parameters: obj({ id: str("The entry's id, as listed in the card") }, ["id"]),
   },
+  ...WORLD_TOOLS,
   {
     name: "pitch",
     description:
@@ -106,18 +160,34 @@ export const CARD_TOOLS: ToolDef[] = [
 ];
 
 const tool = (name: string) => CARD_TOOLS.find((t) => t.name === name)!;
+const ADD_WORLD = Object.keys(WORLD_TOOL_KINDS);
 
 /** Tools for drafting a card from scratch: whole fields and new items only. */
-export const DRAFT_TOOLS = ["set_field", "add_greeting", "add_example_dialogue", "add_lore_entry"].map(tool);
+export const DRAFT_TOOLS = ["set_field", "add_greeting", "add_example_dialogue", "add_lore_entry", ...ADD_WORLD].map(tool);
 
 /** Tools for the lorebook brainstorm. */
-export const LORE_TOOLS = ["add_lore_entry", "update_lore_entry", "delete_lore_entry", "pitch"].map(tool);
+export const LORE_TOOLS = [
+  "add_lore_entry",
+  "update_lore_entry",
+  "delete_lore_entry",
+  ...ADD_WORLD,
+  "update_world_entry",
+  "pitch",
+].map(tool);
 
 /** A tool call checked against the card and turned into a change. */
 export type Edit =
   | { kind: "field"; field: EditableField; before: string; after: string }
   | { kind: "greeting"; list: "alternate_greetings" | "group_only_greetings"; index: number; before: string; after: string }
-  | { kind: "lore"; action: "add" | "update" | "delete"; title: string; before?: LorebookEntry; after?: LorebookEntry }
+  | {
+      kind: "lore";
+      action: "add" | "update" | "delete";
+      title: string;
+      before?: LorebookEntry;
+      after?: LorebookEntry;
+      /** Set for an NPC, place, item or shop. */
+      world?: WorldKind;
+    }
   | { kind: "pitch"; title: string; idea: string };
 
 export class ToolInputError extends Error {}
@@ -205,8 +275,51 @@ export function planEdit(data: CardDataV3, call: ToolCall): Edit {
       });
       return { kind: "lore", action: "add", title, after: entry };
     }
+    case "add_npc":
+    case "add_place":
+    case "add_item":
+    case "add_shop": {
+      const book = data.character_book ?? emptyBook();
+      const world = WORLD_TOOL_KINDS[call.name];
+      const fields = fieldsFor(world, input);
+      if (!fields.name) throw new ToolInputError(`"name" must be a non-empty string`);
+      const twin = book.entries.find(
+        (e) => worldMeta(e)?.kind === world && worldMeta(e)!.fields.name?.trim().toLowerCase() === fields.name.toLowerCase(),
+      );
+      if (twin)
+        throw new ToolInputError(
+          `There's already ${aKind(world)} named ${fields.name} (id ${String(twin.id)}); change it with update_world_entry`,
+        );
+      return { kind: "lore", action: "add", title: fields.name, after: worldEntry(book, world, fields), world };
+    }
+    case "update_world_entry": {
+      const book = data.character_book!;
+      const before = book.entries[findEntry(data, input.id)];
+      const meta = pageMeta(before);
+      if (!meta) throw new ToolInputError(`Entry ${String(input.id)} isn't an NPC, place, item or shop; use update_lore_entry`);
+      const world = meta.kind;
+      const changes = input.fields;
+      if (!changes || typeof changes !== "object" || Array.isArray(changes)) throw new ToolInputError(`"fields" must be an object`);
+      const known = new Set(KINDS[world].fields.map((f) => f.key));
+      const unknown = Object.keys(changes).filter((k) => !known.has(k));
+      if (unknown.length)
+        throw new ToolInputError(`A ${KINDS[world].label} has no ${unknown.join(", ")}. Its fields: ${[...known].join(", ")}`);
+      const fields = { ...meta.fields };
+      for (const [k, v] of Object.entries(changes)) {
+        if (typeof v !== "string") throw new ToolInputError(`"${k}" must be a string`);
+        fields[k] = v.trim();
+      }
+      if (!fields.name) throw new ToolInputError(`"name" can't be empty`);
+      const after = worldEntry(book, world, fields, before);
+      return { kind: "lore", action: "update", title: fields.name, before, after, world };
+    }
     case "update_lore_entry": {
       const before = data.character_book!.entries[findEntry(data, input.id)];
+      const meta = pageMeta(before);
+      if (meta && ["title", "keys", "content"].some((k) => input[k] !== undefined))
+        throw new ToolInputError(
+          `Entry ${String(input.id)} is ${aKind(meta.kind)}: its text and keys are written from its fields, so change them with update_world_entry`,
+        );
       const after: LorebookEntry = { ...before };
       if (input.title !== undefined) after.comment = after.name = needString(input, "title");
       const keys = needKeys(input);
@@ -218,7 +331,8 @@ export function planEdit(data: CardDataV3, call: ToolCall): Edit {
     }
     case "delete_lore_entry": {
       const before = data.character_book!.entries[findEntry(data, input.id)];
-      return { kind: "lore", action: "delete", title: entryTitle(before), before };
+      const world = pageMeta(before)?.kind;
+      return { kind: "lore", action: "delete", title: entryTitle(before), before, ...(world ? { world } : {}) };
     }
     case "pitch":
       return { kind: "pitch", title: needString(input, "title"), idea: needString(input, "idea") };
@@ -243,7 +357,7 @@ export function applyEdit(data: CardDataV3, edit: Edit): CardDataV3 {
       if (edit.action === "add") entries = [...entries, edit.after!];
       if (edit.action === "update") entries = entries.map((e) => (e.id === edit.before!.id ? edit.after! : e));
       if (edit.action === "delete") entries = entries.filter((e) => e.id !== edit.before!.id);
-      return { ...data, character_book: { ...book, entries } };
+      return { ...data, character_book: edit.world === "npc" ? syncCast({ ...book, entries }) : { ...book, entries } };
     }
     case "pitch":
       return data;
@@ -258,7 +372,7 @@ export function describeEdit(edit: Edit): string {
     case "greeting":
       return `${edit.before ? "Change" : "Add"} ${edit.list === "group_only_greetings" ? "group greeting" : "alternate greeting"} ${edit.index + 1}`;
     case "lore":
-      return `${edit.action === "add" ? "Add" : edit.action === "update" ? "Change" : "Delete"} lore entry "${edit.title}"`;
+      return `${edit.action === "add" ? "Add" : edit.action === "update" ? "Change" : "Delete"} ${edit.world ? KINDS[edit.world].label : "lore entry"} "${edit.title}"`;
     case "pitch":
       return `Idea: ${edit.title}`;
   }

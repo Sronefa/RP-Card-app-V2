@@ -5,7 +5,7 @@
 import { newId } from "../lib/id";
 import { ANTAGONIST_FIELDS, type Antagonist, type Beat } from "../editor/arc";
 import { cleanModule, LOGIC_NAMES, type MechanicModule, type TrackedValue } from "../editor/mechanics";
-import { KINDS, type WorldKind } from "../editor/world";
+import { ALL_WORLD_FIELDS, fieldsFor, KINDS, TYPED_KINDS, type TypedKind, type WorldKind } from "../editor/world";
 import type { GapMemo, Question } from "./records";
 import type { ToolCall, ToolDef } from "./types";
 
@@ -261,6 +261,58 @@ export function readWorldPitches(call: ToolCall, kind: WorldKind): Record<string
   return items
     .map((item) => Object.fromEntries(KINDS[kind].fields.map((f) => [f.key, text(item?.[f.key])])))
     .filter((f) => f.name);
+}
+
+/** One entry filed under a world page, or left as it is ("other"). */
+export interface Filed {
+  id?: string;
+  kind: TypedKind | "other";
+  fields: Record<string, string>;
+}
+
+/**
+ * Files lorebook entries (with ids) or names (without) under the world pages: NPCs, places,
+ * items and shops. Every field is optional; only the ones of the chosen kind are kept.
+ */
+export function fileWorldTool(withIds: boolean): ToolDef {
+  return {
+    name: "file_world",
+    description: withIds
+      ? "Say which page each lorebook entry belongs on, with its fields filled from the entry."
+      : "Add each name to the right world page, with its fields filled.",
+    parameters: obj(
+      {
+        items: {
+          type: "array",
+          items: obj(
+            {
+              ...(withIds ? { id: str("The entry's id") } : {}),
+              kind: {
+                type: "string",
+                enum: [...TYPED_KINDS, "other"],
+                description: `npc: a person; location: a place; item: an item or service; shop: a shop or trader; other: none of these (a faction, rule, event, history)`,
+              },
+              ...Object.fromEntries(ALL_WORLD_FIELDS.map((f) => [f.key, str(f.hint)])),
+            },
+            withIds ? ["id", "kind"] : ["kind", "name"],
+          ),
+        },
+      },
+      ["items"],
+    ),
+  };
+}
+
+export function readFiled(call: ToolCall): Filed[] {
+  const items = Array.isArray(call.input.items) ? (call.input.items as Record<string, unknown>[]) : [];
+  return items.flatMap((item): Filed[] => {
+    const kind = item?.kind;
+    const id = item?.id === undefined ? undefined : String(item.id);
+    if (kind === "other") return [{ id, kind, fields: {} }];
+    if (!TYPED_KINDS.includes(kind as TypedKind)) return [];
+    const fields = fieldsFor(kind as TypedKind, item);
+    return [{ id, kind: kind as TypedKind, fields }];
+  });
 }
 
 export const WRITE_ARC: ToolDef = {

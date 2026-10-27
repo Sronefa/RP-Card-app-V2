@@ -5,7 +5,7 @@
  */
 import YAML from "yaml";
 import type { CardDataV3 } from "../../card";
-import { ToolInputError } from "../../ai/tools";
+import { applyEdit, describeEdit, isWorldTool, planEdit, ToolInputError, WORLD_TOOLS } from "../../ai/tools";
 import type { ToolCall, ToolDef, ToolResult } from "../../ai/types";
 import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { SandboxLibs } from "../sandbox/sandbox";
@@ -305,7 +305,16 @@ export const TEST_TOOLS: ToolDef[] = [
   ),
 ];
 
-export const ENGINEER_TOOLS: ToolDef[] = [...READ_TOOLS, ...KNOWLEDGE_TOOLS, ...WRITE_TOOLS, ...TEST_TOOLS];
+/**
+ * NPCs, places, items and shops the engineer needs (a contact, a shop, a map pin) go into the
+ * card's world pages, as proposals in the co-writer chat rather than in the engine proposal.
+ */
+export const CARD_WORLD_TOOLS: ToolDef[] = WORLD_TOOLS.filter((t) => isWorldTool(t.name)).map((t) => ({
+  ...t,
+  description: `${t.description} It goes to the user as a proposal in the co-writer chat when your turn ends.`,
+}));
+
+export const ENGINEER_TOOLS: ToolDef[] = [...READ_TOOLS, ...KNOWLEDGE_TOOLS, ...WRITE_TOOLS, ...CARD_WORLD_TOOLS, ...TEST_TOOLS];
 export const WRITE_NAMES = new Set(WRITE_TOOLS.map((t) => t.name));
 
 export interface SampleState {
@@ -326,6 +335,8 @@ export interface EngineerContext {
   libs?: () => Promise<SandboxLibs>;
   /** The user's saved modules, which are parts too. */
   library?: EngineModule[];
+  /** World entries to propose in the co-writer chat (add_npc and the like). */
+  cardCalls?: ToolCall[];
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -584,6 +595,17 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
               .slice(0, 5)
               .join("; ")}.`;
         return text(call.id, `Sample state set; the next render shows it.${issues}`);
+      }
+      case "add_npc":
+      case "add_place":
+      case "add_item":
+      case "add_shop": {
+        // Checked against the card with this turn's earlier additions, so names don't repeat.
+        const calls = (ctx.cardCalls ??= []);
+        const data = calls.reduce((d, c) => applyEdit(d, planEdit(d, c)), ctx.data);
+        const edit = planEdit(data, call);
+        calls.push(call);
+        return text(call.id, `${describeEdit(edit)}: proposed to the user in the co-writer chat when your turn ends.`);
       }
       case "render_preview":
         return await render(ctx, call);

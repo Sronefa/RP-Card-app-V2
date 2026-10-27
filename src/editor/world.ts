@@ -186,6 +186,12 @@ export function worldMeta(entry: LorebookEntry): WorldMeta | undefined {
 
 export const isKind = (entry: LorebookEntry, kind: WorldMeta["kind"]) => worldMeta(entry)?.kind === kind;
 
+/** The meta of a world page entry (NPC, place, money, item or shop); other CardForge entries have none. */
+export function pageMeta(entry: LorebookEntry): (WorldMeta & { kind: WorldKind }) | undefined {
+  const meta = worldMeta(entry);
+  return meta && Object.hasOwn(KINDS, meta.kind) ? (meta as WorldMeta & { kind: WorldKind }) : undefined;
+}
+
 const splitAliases = (s = "") =>
   s
     .split(",")
@@ -236,4 +242,66 @@ export function setCastList(book: Lorebook, on: boolean): Lorebook {
     extensions: { [EXT]: { kind: "cast", fields: {} } satisfies WorldMeta },
   });
   return { ...book, entries: [...book.entries, entry] };
+}
+
+/** "an NPC", "a place", "an item": a kind's label with its article. */
+export const aKind = (kind: WorldKind) => `${/^[aeiou]|^NPC/.test(KINDS[kind].label) ? "an" : "a"} ${KINDS[kind].label}`;
+
+/** The world kinds the co-writer can add as typed entries. */
+export const TYPED_KINDS = ["npc", "location", "item", "shop"] as const satisfies WorldKind[];
+export type TypedKind = (typeof TYPED_KINDS)[number];
+
+/** An entry CardForge didn't make: no world page, arc, mechanics or tracker tag. */
+export const isPlainEntry = (entry: LorebookEntry) => !entry.extensions[EXT];
+
+/** Every field any typed kind has, for tools that may file an entry under any of them. */
+export const ALL_WORLD_FIELDS: FieldDef[] = [
+  ...new Map(TYPED_KINDS.flatMap((k) => KINDS[k].fields).map((f) => [f.key, f])).values(),
+];
+
+/** Keeps only the fields this kind has, trimmed. */
+export function fieldsFor(kind: WorldKind, input: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of KINDS[kind].fields) {
+    const v = input[f.key];
+    if (typeof v === "string" && v.trim()) out[f.key] = v.trim();
+  }
+  return out;
+}
+
+const CUES: Record<TypedKind, RegExp> = {
+  npc: /\b(years? old|aged? \d|in (?:his|her|their) (?:teens|twenties|thirties|forties|fifties|sixties|\d0s)|\d0s\b|woman|man|girl|boy|wife|husband|daughter|son|mother|father|sister|brother|widow|captain|merchant|knight|guard|priest(?:ess)?|innkeeper|smith|personality|speaks|voice|appearance|eyes|hair)\b/gi,
+  location: /\b(located|district|city|town|village|tavern|inn|forest|castle|street|room|building|hall|temple|harbou?r|port|market|island|mountains?|river|ruins|quarter|square|alley|cave|keep|tower|lake|valley|road|docks?)\b/gi,
+  item: /\b(item|weapon|sword|blade|dagger|bow|potion|elixir|artifact|artefact|amulet|ring|relic|armou?r|wield|enchanted|crafted|costs?|price|worth)\b/gi,
+  shop: /\b(shop|store|sells|for sale|vendor|stall|emporium|bakery|apothecary|forge|counter|customers)\b/gi,
+};
+const PRONOUN = /\b(he|she|him|his|her|hers)\b/i;
+
+/**
+ * A best guess at what a plain entry describes, from cue words. Only a clear lead counts, and a
+ * person needs a personal pronoun, so rules and history entries stay plain.
+ */
+export function guessWorldKind(title: string, content: string): TypedKind | undefined {
+  const text = `${title}\n${content}`;
+  const score = (k: TypedKind) => text.match(CUES[k])?.length ?? 0;
+  const scores = TYPED_KINDS.map((k) => [k, score(k)] as const).sort((a, b) => b[1] - a[1]);
+  const [[best, top], [, second]] = scores;
+  if (top < 2 || top < second * 1.5) return undefined;
+  if (best === "npc" && !PRONOUN.test(content)) return undefined;
+  return best;
+}
+
+/** Fields for a plain entry filed under a kind: its title as the name, its text kept whole. */
+export function plainFields(kind: TypedKind, title: string, keys: string[], content: string): Record<string, string> {
+  const textField = { npc: "notes", location: "details", item: "effect", shop: "notes" }[kind];
+  const aliases = keys.filter((k) => k.trim() && k.trim().toLowerCase() !== title.trim().toLowerCase()).join(", ");
+  return { name: title.trim(), [textField]: content.trim(), ...(aliases ? { aliases } : {}) };
+}
+
+/** How the co-writer sees a world entry: its kind and fields, which it edits instead of the text. */
+export function worldFieldsText(meta: WorldMeta & { kind: WorldKind }): string {
+  return KINDS[meta.kind].fields
+    .filter((f) => meta.fields[f.key]?.trim())
+    .map((f) => `${f.key}: ${meta.fields[f.key].trim()}`)
+    .join("\n");
 }

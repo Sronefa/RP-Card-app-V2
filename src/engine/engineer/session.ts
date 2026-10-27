@@ -18,6 +18,7 @@ import { skillsWith } from "./knowledge";
 import { lintConfig } from "./lint";
 import { EnginePreview } from "./preview";
 import { engineSummary, engineerSystemPrompt } from "./prompt";
+import { useCowriter } from "../../cowriter/store";
 import { ENGINEER_TOOLS, runEngineerTool, type EngineerContext, type SampleState } from "./tools";
 import { diffConfigs, replay, type FileChange } from "./workspace";
 import { loadModuleLibrary } from "../../features/engine/moduleLibrary";
@@ -260,6 +261,25 @@ export const useEngineer = create<EngineerState>((set, get) => {
             proposals: [...chat.proposals, proposal],
           });
         } else commit({ ...chat, sample: ctx.sample });
+        if (ctx.cardCalls?.length) {
+          const n = ctx.cardCalls.length;
+          await useCowriter
+            .getState()
+            .addTurn(
+              record.id,
+              `The UI engineer added ${n === 1 ? "this" : "these"} to the world pages while working on: ${request}`,
+              `From the UI engineer: ${n === 1 ? "an addition" : `${n} additions`} to the world pages`,
+              [{ text: "", toolCalls: ctx.cardCalls }],
+            )
+            .catch(() => undefined);
+          commit({
+            ...(get().chat?.cardId === chat.cardId ? get().chat! : chat),
+            unreported: [
+              ...(get().chat?.unreported ?? []),
+              `Your ${n === 1 ? "world addition is" : `${n} world additions are`} waiting for the user in the co-writer chat.`,
+            ],
+          });
+        }
         set({ busy: false, streaming: "", round: 0 });
       }
     },

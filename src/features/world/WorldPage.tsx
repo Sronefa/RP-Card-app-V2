@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { pitchWorldTool, readWorldPitches } from "../../ai/interviewTools";
 import { npcScanRequest, systemPrompt, worldPitchRequest } from "../../ai/prompts";
-import type { Lorebook, LorebookEntry } from "../../card";
+import type { CardDataV3, Lorebook, LorebookEntry } from "../../card";
+import { isArcEntry, readArc } from "../../editor/arc";
 import { AutoTextarea, Button, TextInput } from "../../components/ui";
 import { complete, gatherContext, isAbort, partsText } from "../../cowriter/engine";
 import { emptyBook } from "../../editor/lorebook";
@@ -22,7 +23,18 @@ function useBook() {
 const capital = (s: string) => s[0].toUpperCase() + s.slice(1);
 
 /** One page of the world: a list of NPCs, places, items or shops, or the single currency. */
-export function WorldPage({ kind, intro, single }: { kind: WorldKind; intro?: string; single?: boolean }) {
+export function WorldPage({
+  kind,
+  intro,
+  single,
+  onOpenArc,
+}: {
+  kind: WorldKind;
+  intro?: string;
+  single?: boolean;
+  /** Opens the story arc tab, where the antagonist is edited. */
+  onOpenArc?: () => void;
+}) {
   const { record, book, setBook } = useBook();
   const def = KINDS[kind];
   const [open, setOpen] = useState<number>();
@@ -64,6 +76,7 @@ export function WorldPage({ kind, intro, single }: { kind: WorldKind; intro?: st
         </label>
       )}
       <ul className="flex flex-col gap-2">
+        {kind === "npc" && <Antagonist data={record.card.data} onOpenArc={onOpenArc} />}
         {items.map(({ entry, index }) => (
           <li key={index}>
             <WorldItem
@@ -85,12 +98,39 @@ export function WorldPage({ kind, intro, single }: { kind: WorldKind; intro?: st
       <Pitches
         kind={kind}
         count={single ? 1 : 3}
-        existing={items.map(({ entry }) => worldMeta(entry)!.fields.name).filter(Boolean)}
+        existing={[
+          ...items.map(({ entry }) => worldMeta(entry)!.fields.name),
+          kind === "npc" ? (readArc(record.card.data)?.antagonist?.name ?? "") : "",
+        ].filter(Boolean)}
         record={record}
         disabled={single && items.length > 0}
         onAdd={add}
       />
     </section>
+  );
+}
+
+/** The story arc's antagonist is an NPC too; it is edited on the arc page and stays masked while the arc is secret. */
+function Antagonist({ data, onOpenArc }: { data: CardDataV3; onOpenArc?: () => void }) {
+  const arc = readArc(data);
+  const a = arc?.antagonist;
+  if (!arc || !a?.name.trim() || arc.settings.antagonist === "none" || !data.character_book?.entries.some(isArcEntry)) return null;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpenArc}
+        className="flex w-full items-baseline justify-between gap-2 rounded-xl border border-dashed border-border p-3 text-left"
+      >
+        <span className="min-w-0">
+          <span className="font-medium">{arc.hidden ? "The antagonist" : a.name}</span>
+          <span className="ml-2 truncate text-sm text-ink-muted">
+            {arc.hidden ? "kept secret by the story arc" : a.role || "antagonist"}
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-ink-muted">Story arc</span>
+      </button>
+    </li>
   );
 }
 

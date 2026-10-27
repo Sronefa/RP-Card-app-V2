@@ -90,6 +90,12 @@ function covers(entry: LorebookEntry, name: string): boolean {
   });
 }
 
+/** The card's own name and nickname, whole and word by word. */
+const ownNames = (data: CardDataV3) =>
+  new Set(
+    [data.name, data.nickname ?? ""].flatMap((n) => [n.toLowerCase(), ...n.toLowerCase().split(/\s+/)]).filter(Boolean),
+  );
+
 /**
  * Names in the card's fields, greetings and examples that no entry covers, most mentioned first.
  * `otherEntries` are entries that also count, such as the project world's lorebook.
@@ -103,9 +109,7 @@ export function findUncovered(data: CardDataV3, otherEntries: LorebookEntry[] = 
     ...data.alternate_greetings,
     data.mes_example,
   ].join("\n\n");
-  const own = new Set(
-    [data.name, data.nickname ?? ""].flatMap((n) => [n.toLowerCase(), ...n.toLowerCase().split(/\s+/)]).filter(Boolean),
-  );
+  const own = ownNames(data);
   const entries = [...(data.character_book?.entries ?? []), ...otherEntries];
   return [...properNouns(text)]
     .filter(([name]) => !own.has(name.toLowerCase()) && !entries.some((e) => covers(e, name)))
@@ -115,4 +119,10 @@ export function findUncovered(data: CardDataV3, otherEntries: LorebookEntry[] = 
 
 /** The co-writer request that writes entries for uncovered names. */
 export const coverageRequest = (names: string[]) =>
-  `The card mentions ${names.map((n) => `"${n}"`).join(", ")} but the lorebook has no entries for ${names.length === 1 ? "it" : "them"}. Add a short lorebook entry for each, built from what the card already says, with keys that will trigger on them.`;
+  `The card mentions ${names.map((n) => `"${n}"`).join(", ")} but the lorebook has no entries for ${names.length === 1 ? "it" : "them"}. Add a short lorebook entry for each, built from what the card already says, with keys that will trigger on them: add_npc for people, add_place for places, add_item or add_shop for things and shops, add_lore_entry for anything else.`;
+
+/** Names in new text (a co-writer turn's edits) that neither the card's own names nor any entry covers. */
+export function uncoveredIn(text: string, data: CardDataV3, entries: LorebookEntry[]): string[] {
+  const own = ownNames(data);
+  return [...properNouns(text).keys()].filter((name) => !own.has(name.toLowerCase()) && !entries.some((e) => covers(e, name)));
+}
