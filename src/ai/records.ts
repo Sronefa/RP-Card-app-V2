@@ -100,6 +100,22 @@ export interface Proposal {
   fixed?: string[];
   /** The prose editor's changes, once polished. */
   polished?: string[];
+  /** Feedback chips the user revised it with, in order. */
+  revised?: string[];
+  /** Why the user rejected it, a rejection reason's id. */
+  reason?: string;
+  /** Other versions with different approaches, the first draft first. */
+  variants?: Variant[];
+  /** The user's hand edits to it were offered as a style note, or waved off. */
+  learned?: boolean;
+}
+
+export interface Variant {
+  approach: string;
+  text: string;
+  /** The judge's ranking, best first from 1, and why. */
+  rank?: number;
+  why?: string;
 }
 
 export interface ChatRecord {

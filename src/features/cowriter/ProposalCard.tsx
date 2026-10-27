@@ -6,6 +6,9 @@ import { diffWords } from "../../lib/diff";
 import { estimateTokens } from "../../lib/tokens";
 import { guessWorldKind, KINDS, type TypedKind } from "../../editor/world";
 import { varLabel, type EngineConfig } from "../../engine/sheet";
+import { FEEDBACK, feedbackLabel, REASONS, reasonLabel } from "../../cowriter/learn";
+import { textOf } from "../../cowriter/polish";
+import { Variants } from "./Variants";
 
 const STATUS: Record<Proposal["status"], string> = {
   pending: "",
@@ -25,6 +28,12 @@ export function ProposalCard({
   onMore,
   onRetype,
   onPolish,
+  onRevise,
+  onReason,
+  onVariants,
+  onRank,
+  onUseVariant,
+  busy = false,
 }: {
   proposal: Proposal;
   data: CardDataV3 | undefined;
@@ -35,6 +44,16 @@ export function ProposalCard({
   onRetype?: (kind: TypedKind) => void;
   /** Runs the prose editor over the proposed text. */
   onPolish?: () => void;
+  /** Rewrites the proposed text with a feedback chip. */
+  onRevise?: (feedback: string) => void;
+  /** Records why it was rejected. */
+  onReason?: (reason: string) => void;
+  /** Writes other versions of the proposed text. */
+  onVariants?: () => void;
+  onRank?: () => void;
+  onUseVariant?: (text: string, label: string) => void;
+  /** A model call is running, so the buttons that start one are off. */
+  busy?: boolean;
 }) {
   let edit: Edit | undefined;
   let problem: string | undefined;
@@ -81,6 +100,44 @@ export function ProposalCard({
         <p className="text-xs text-ink-muted">Rewrote overused phrasing: {proposal.fixed.map((f) => `"${f}"`).join(", ")}</p>
       )}
       {pending && proposal.polished && <p className="text-xs text-ink-muted">Polished: {proposal.polished.join("; ") || "line edits"}</p>}
+      {pending && proposal.revised && <p className="text-xs text-ink-muted">Revised: {proposal.revised.map(feedbackLabel).join(", ")}</p>}
+      {pending && proposal.variants && onUseVariant && onRank && (
+        <Variants variants={proposal.variants} current={textOf(proposal.call) ?? ""} busy={busy} onUse={onUseVariant} onRank={onRank} />
+      )}
+      {pending && onRevise && !problem && (
+        <div className="flex flex-wrap gap-1" role="group" aria-label={`Revise edit ${proposal.number}`}>
+          {FEEDBACK.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              disabled={busy}
+              onClick={() => onRevise(f.id)}
+              className="rounded-full border border-border px-2 py-0.5 text-xs text-ink-muted hover:border-accent hover:text-ink disabled:opacity-40"
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {proposal.status === "rejected" && onReason && !isPitch && (
+        proposal.reason ? (
+          <p className="text-xs text-ink-muted">Why: {reasonLabel(proposal.reason)}</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label={`Why was edit ${proposal.number} rejected?`}>
+            <span className="text-xs text-ink-muted">Why? (optional)</span>
+            {REASONS.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onReason(r.id)}
+                className="rounded-full border border-border px-2 py-0.5 text-xs text-ink-muted hover:border-accent hover:text-ink"
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        )
+      )}
       {!pending && onMore && (
         <Button variant="ghost" className="self-end" onClick={onMore}>
           More like this
@@ -96,6 +153,11 @@ export function ProposalCard({
           {guess && (
             <Button variant="ghost" className={onMore ? "" : "mr-auto"} onClick={() => onRetype!(guess)}>
               Save as {guess === "npc" ? "NPC" : KINDS[guess].label}
+            </Button>
+          )}
+          {onVariants && !problem && !proposal.variants && (
+            <Button variant="ghost" aria-label={`Variants of edit ${proposal.number}`} disabled={busy} onClick={onVariants}>
+              ✦ Variants
             </Button>
           )}
           {onPolish && !problem && (

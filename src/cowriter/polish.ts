@@ -65,18 +65,21 @@ function polishRequest(text: string, where: string, focus?: string[]): string {
     .join("\n\n");
 }
 
-function readPolish(call: ToolCall | undefined, original: string): Polished {
+export function readPolish(call: ToolCall | undefined, original: string, least = 0.5): Polished {
   const text = typeof call?.input.text === "string" ? call.input.text : "";
   if (!text.trim()) throw new Error("The editor didn't hand back the text. Try again.");
   // A reply that loses most of the text is a mistake, not an edit.
-  if (text.trim().length < original.trim().length * 0.5) throw new Error("The editor cut too much. Try again.");
+  if (text.trim().length < original.trim().length * least) throw new Error("The editor cut too much. Try again.");
   const changes = Array.isArray(call?.input.changes) ? call!.input.changes.filter((c): c is string => typeof c === "string") : [];
   return { text, changes };
 }
 
+/** The context parts a one-off rewrite of a text needs: how to write, not the whole card. */
+export const STYLE_KEYS = ["settings", "notes", "style", "craft", "bible"];
+
 /** Line edits for one text, with the project's prose settings, style and content in view. */
 export async function polishText(record: CardRecord, text: string, where: string, signal?: AbortSignal, focus?: string[]): Promise<Polished> {
-  const parts = (await gatherContext(record)).filter((p) => ["settings", "style", "craft", "bible"].includes(p.key));
+  const parts = (await gatherContext(record)).filter((p) => STYLE_KEYS.includes(p.key));
   const result = await complete("editor", {
     system: systemPrompt("editor"),
     messages: [{ role: "user", text: `${partsText(parts)}\n\n${polishRequest(text, where, focus)}` }],

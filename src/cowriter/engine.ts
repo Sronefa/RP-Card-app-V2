@@ -136,12 +136,16 @@ export async function gatherContext(record: CardRecord): Promise<ContextPart[]> 
   ];
 }
 
-/** Style samples, craft packs and reference examples, each when the project uses them. */
+/** The user's style notes, style samples, craft packs and reference examples, each when the project uses them. */
 function styleParts(record: CardRecord, settings: CowriterSettings, ai: AiSettings): ContextPart[] {
   const ids = new Set([...(settings.styleSampleIds ?? []), ...cardSampleIds(record.card.data)]);
   const samples = (ai.styleSamples ?? []).filter((s) => ids.has(s.id));
   const packs = activePacks(settings, packsWith(ai.craftPacks));
+  const notes = ai.styleNotes ?? [];
   return [
+    ...(notes.length
+      ? [{ key: "notes", title: "The user's style notes", text: `Follow these in everything you write:\n${notes.map((n) => `- ${n}`).join("\n")}` }]
+      : []),
     ...(samples.length ? [{ key: "style", title: "Style to imitate", text: styleContext(samples) }] : []),
     ...(packs.length ? [{ key: "craft", title: "Genre craft notes", text: craftContext(packs) }] : []),
     ...(settings.referenceExamples !== false ? [{ key: "examples", title: "Reference examples", text: REFERENCE_EXAMPLES }] : []),

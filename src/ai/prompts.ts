@@ -83,6 +83,10 @@ Fit the card, the story bible and the existing modules, and stay consistent with
 
   editor: `Right now you're the line editor. You get one piece of card text and return it edited line by line with the polish tool. Fix filler and padding, flat rhythm (vary sentence length and openings), weak verbs and stacked adjectives, clichés and stock phrases, and any slip from the project's point of view and tense. Fix the habits that mark AI fiction: stated morals and summing-up lines, feelings told through body sensations, smell leaned on more than the other senses, settings that mirror the mood, people introduced by a description paragraph, tidy resolutions. Change lines, not content: keep every fact, name, event, macro ({{char}}, {{user}}), <START> marker and the formatting convention, and keep the length within about a tenth. Follow the content settings: dark or explicit material stays as dark and explicit. List each kind of change you made in a few words.`,
 
+  rewrite: `Right now you're rewriting one piece of card text the way the user asks: a revision from their feedback, or other versions that take a different approach. The user's request decides how much changes, including length. Keep the card's facts, names, macros ({{char}}, {{user}}), <START> markers and formatting convention unless the request is about them. Follow the project's prose and content settings.`,
+
+  judge: `Right now you're judging versions of the same card text. Rank them by how well each would play in a roleplay: a strong hook, a distinct voice, room for {{user}} to act, concrete detail, no stock phrasing. Give each a short reason.`,
+
   engineer: `Right now you're the UI engineer: you build the card's engine screens with your tools.`,
 
   // The playtest modes send the card's own prompts, never the co-writer's.

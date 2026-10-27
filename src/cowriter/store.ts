@@ -3,7 +3,7 @@
  * sends messages, runs the model's tool calls as proposals, and applies the ones the user accepts.
  */
 import { create } from "zustand";
-import { getChat, loreChatKey, saveChat, deleteChat } from "../db/db";
+import { getChat, loreChatKey, saveChat, deleteChat, type CardRecord } from "../db/db";
 import { useEditor } from "../editor/store";
 import { newChat, type ChatRecord, type Proposal } from "../ai/records";
 import { composeUserMessage, CRITIC_REQUEST, systemPrompt } from "../ai/prompts";
@@ -21,6 +21,8 @@ import { useAiSettings } from "../ai/settings";
 import { DEFAULT_SLOP_PHRASES } from "../editor/slop";
 import { newId } from "../lib/id";
 import { trackPhrases } from "../editor/phraseStats";
+import { countFeedback, feedbackLabel, reasonLabel, reviseText } from "./learn";
+import { rankVariants, writeVariants } from "./variants";
 
 /** Most model calls in one turn (each tool round is one call). */
 const MAX_ROUNDS = 6;
@@ -66,6 +68,18 @@ export interface ChatState {
   polish: (proposalId: string) => Promise<void>;
   /** Proposes a polished version of a card field. */
   polishField: (field: string, label: string) => Promise<void>;
+  /** Rewrites a pending proposal with a feedback chip. */
+  revise: (proposalId: string, feedback: string) => Promise<void>;
+  /** Records why the user rejected a proposal. */
+  giveReason: (proposalId: string, reason: string) => void;
+  /** Writes other versions of a pending proposal's text. */
+  writeVariants: (proposalId: string) => Promise<void>;
+  /** Has the judge rank a proposal's variants. */
+  rankVariants: (proposalId: string) => Promise<void>;
+  /** Puts a variant's text, or lines merged from several, in the proposal. */
+  useVariant: (proposalId: string, text: string, label: string) => void;
+  /** Marks an accepted edit's hand changes as dealt with. */
+  markLearned: (proposalId: string) => void;
 }
 
 function createChatStore(channel: Channel) {
@@ -121,6 +135,34 @@ function createChatStore(channel: Channel) {
         }
       });
       return { chat: { ...chat, proposals }, results };
+    }
+
+    /** Runs a model call on one pending proposal while the chat shows it is busy. */
+    async function onProposal(proposalId: string, work: (p: Proposal, record: CardRecord, signal: AbortSignal) => Promise<void>) {
+      const record = useEditor.getState().record;
+      const proposal = get().chat?.proposals.find((p) => p.id === proposalId);
+      if (!record || !proposal || proposal.status !== "pending" || get().busy) return;
+      set({ busy: true, error: undefined });
+      try {
+        controller = new AbortController();
+        await work(proposal, record, controller.signal);
+      } catch (e) {
+        if (!isAbort(e)) set({ error: (e as Error).message || "Something went wrong" });
+      } finally {
+        controller = undefined;
+        set({ busy: false });
+      }
+    }
+
+    /** Changes one proposal, with a note for the co-writer when there is one. */
+    function updateProposal(proposalId: string, change: (p: Proposal) => Proposal, note?: string) {
+      const chat = get().chat;
+      if (!chat) return;
+      commit({
+        ...chat,
+        proposals: chat.proposals.map((p) => (p.id === proposalId ? change(p) : p)),
+        unreported: note ? [...chat.unreported, note] : chat.unreported,
+      });
     }
 
     return {
@@ -237,26 +279,71 @@ function createChatStore(channel: Channel) {
       },
 
       async polish(proposalId) {
-        const record = useEditor.getState().record;
+        await onProposal(proposalId, async (proposal, record, signal) => {
+          const text = textOf(proposal.call);
+          if (!text) return;
+          const polished = await polishText(record, text, whereOf(proposal.call), signal);
+          updateProposal(
+            proposalId,
+            (p) => ({ ...p, call: withText(p.call, polished.text), polished: polished.changes }),
+            `The user had the line editor polish edit ${proposal.number}; it is still waiting for their decision.`,
+          );
+        });
+      },
+
+      async revise(proposalId, feedback) {
+        await onProposal(proposalId, async (proposal, record, signal) => {
+          const text = textOf(proposal.call);
+          if (!text) return;
+          const revised = await reviseText(record, text, whereOf(proposal.call), [feedback], signal);
+          updateProposal(
+            proposalId,
+            (p) => ({ ...p, call: withText(p.call, revised.text), revised: [...(p.revised ?? []), feedback] }),
+            `The user had edit ${proposal.number} revised: ${feedbackLabel(feedback).toLowerCase()}. It is still waiting for their decision. Keep this preference in mind.`,
+          );
+          void countFeedback(feedback);
+        });
+      },
+
+      giveReason(proposalId, reason) {
         const proposal = get().chat?.proposals.find((p) => p.id === proposalId);
-        const text = proposal && textOf(proposal.call);
-        if (!record || !proposal || proposal.status !== "pending" || !text || get().busy) return;
-        set({ busy: true, error: undefined });
-        try {
-          controller = new AbortController();
-          const polished = await polishText(record, text, whereOf(proposal.call), controller.signal);
-          const chat = get().chat!;
-          commit({
-            ...chat,
-            proposals: chat.proposals.map((p) => (p.id === proposalId ? { ...p, call: withText(p.call, polished.text), polished: polished.changes } : p)),
-            unreported: [...chat.unreported, `The user had the line editor polish edit ${proposal.number}; it is still waiting for their decision.`],
-          });
-        } catch (e) {
-          if (!isAbort(e)) set({ error: (e as Error).message || "Something went wrong" });
-        } finally {
-          controller = undefined;
-          set({ busy: false });
-        }
+        if (!proposal || proposal.status !== "rejected") return;
+        updateProposal(
+          proposalId,
+          (p) => ({ ...p, reason }),
+          `The user rejected edit ${proposal.number} because: ${reasonLabel(reason).toLowerCase()}. Keep this in mind for what you write next.`,
+        );
+        void countFeedback(reason);
+      },
+
+      async writeVariants(proposalId) {
+        await onProposal(proposalId, async (proposal, record, signal) => {
+          const variants = await writeVariants(record, { ...proposal.call, input: { ...proposal.call.input } }, signal);
+          // The first draft is the text as it is now, even after a polish or revision.
+          updateProposal(proposalId, (p) => ({ ...p, variants }));
+        });
+      },
+
+      async rankVariants(proposalId) {
+        await onProposal(proposalId, async (proposal, _record, signal) => {
+          if (!proposal.variants?.length) return;
+          const ranked = await rankVariants(proposal.variants, signal);
+          updateProposal(proposalId, (p) => ({ ...p, variants: ranked }));
+        });
+      },
+
+      useVariant(proposalId, text, label) {
+        const proposal = get().chat?.proposals.find((p) => p.id === proposalId);
+        if (!proposal || proposal.status !== "pending" || !text.trim()) return;
+        updateProposal(
+          proposalId,
+          (p) => ({ ...p, call: withText(p.call, text) }),
+          `The user put ${label} in edit ${proposal.number}; it is still waiting for their decision.`,
+        );
+      },
+
+      markLearned(proposalId) {
+        updateProposal(proposalId, (p) => ({ ...p, learned: true }));
       },
 
       async polishField(field, label) {

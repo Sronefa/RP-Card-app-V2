@@ -32,6 +32,8 @@ const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
   { mode: "lore", label: "Lorebook brainstorm", help: "Pitches lorebook entries." },
   { mode: "critic", label: "Critic", help: "Reads the card as the roleplay model would and flags weak spots." },
   { mode: "editor", label: "Prose editor", help: "Polishes drafted text line by line and rewrites overused phrases. A strong prose model works best." },
+  { mode: "rewrite", label: "Revisions and variants", help: "Revises a proposal from your feedback and writes other versions of it. Use your best prose model." },
+  { mode: "judge", label: "Variant judge", help: "Ranks variants when you ask. A cheaper model works well." },
   { mode: "image", label: "Image prompts", help: "Writes prompts for image generators." },
   { mode: "world", label: "World pages", help: "Pitches NPCs, places, money, items and shops." },
   { mode: "arc", label: "Story arcs", help: "Plans the story arc and builds the antagonist. Use a strong model." },

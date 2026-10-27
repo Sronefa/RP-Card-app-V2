@@ -95,6 +95,10 @@ export interface AiSettings {
   engineerSkills?: { edited: Record<string, string>; removed: string[] };
   /** Rewrite overused phrases in proposals before they reach the user; on unless turned off. */
   slopRewrite?: boolean;
+  /** Standing preferences the co-writer reads in everything it writes, learned from the user's feedback and edits. */
+  styleNotes?: string[];
+  /** How often each kind of feedback was given, and which were already offered as style notes. */
+  feedback?: { counts: Record<string, number>; offered: string[] };
   /** Passages the user loves, for the co-writer to imitate. */
   styleSamples?: StyleSample[];
   /** The user's craft packs, and their edits to the built-in ones (same id). */
