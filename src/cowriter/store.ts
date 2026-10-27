@@ -10,6 +10,7 @@ import { composeUserMessage, CRITIC_REQUEST, systemPrompt } from "../ai/prompts"
 import { applyEdit, CARD_TOOLS, describeEdit, LORE_TOOLS, planEdit, ToolInputError } from "../ai/tools";
 import type { ChatMessage, ModeId, ToolCall, ToolDef, ToolResult } from "../ai/types";
 import { aKind, KINDS, plainFields, type TypedKind } from "../editor/world";
+import { useUsage } from "../ai/usage";
 import { complete, gatherContext, isAbort, partsText } from "./engine";
 import { addCall } from "./worldScan";
 
@@ -129,6 +130,7 @@ function createChatStore(channel: Channel) {
         if (!record || !chat || chat.cardId !== channel.key(record.id) || get().busy) return;
         // Busy right away, so a second tap can't send twice while the context is gathered.
         set({ busy: true, error: undefined, streaming: "" });
+        useUsage.getState().startTurn("cowriter");
         try {
           const parts = await gatherContext(record);
           // Decisions made while the context was gathered are in the latest chat.

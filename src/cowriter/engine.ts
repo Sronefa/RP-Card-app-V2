@@ -4,7 +4,9 @@
  */
 import { DEFAULT_COWRITER } from "../ai/records";
 import { bibleContext, cardContext, personasContext, settingsContext, worldContext } from "../ai/prompts";
-import { createProvider, jailbreakText, modelKey, resolveModel, useAiSettings } from "../ai/settings";
+import { createProvider, jailbreakText, modelInfo, modelKey, resolveModel, useAiSettings } from "../ai/settings";
+import { scopeOf, useUsage } from "../ai/usage";
+import { useEditor } from "../editor/store";
 import {
   DEFAULT_TIMEOUT_SEC,
   ToolsUnsupportedError,
@@ -58,7 +60,17 @@ export async function complete(
     const timeout = AbortSignal.timeout(seconds * 1000);
     const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
     try {
-      return await provider.complete({ ...request, signal, model: resolved.choice.model, useTools });
+      const result = await provider.complete({ ...request, signal, model: resolved.choice.model, useTools });
+      if (result.usage)
+        useUsage
+          .getState()
+          .record(
+            scopeOf(mode),
+            result.usage,
+            modelInfo(useAiSettings.getState().settings, resolved.choice),
+            useEditor.getState().record?.projectId,
+          );
+      return result;
     } catch (e) {
       if (timeout.aborted && !request.signal?.aborted)
         throw new Error(

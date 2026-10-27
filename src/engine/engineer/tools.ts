@@ -337,6 +337,8 @@ export interface EngineerContext {
   library?: EngineModule[];
   /** World entries to propose in the co-writer chat (add_npc and the like). */
   cardCalls?: ToolCall[];
+  /** False when the model gets no screenshots (it can't see, or the user skipped them). */
+  shots?: boolean;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -439,11 +441,12 @@ async function render(ctx: EngineerContext, call: ToolCall): Promise<ToolResult>
       throw new ToolInputError(`There's no module "${id}" that is on.`);
     await preview.open(id);
   }
-  const shot = await preview.capture();
+  const shots = ctx.shots !== false;
+  const shot = shots ? await preview.capture() : undefined;
   const screens = await preview.inspect();
   const { problems } = preview.take();
   const findings = screenFindings(screens, device);
-  let budget = 140;
+  let budget = shots ? 140 : 240;
   const outline = screens
     .map((s) => {
       const lines = s.outline.slice(0, Math.max(0, budget));
@@ -451,15 +454,20 @@ async function render(ctx: EngineerContext, call: ToolCall): Promise<ToolResult>
       return `${s.screen} (${s.width}×${s.height}):\n${lines.map((l) => `  ${l}`).join("\n") || "  (nothing)"}`;
     })
     .join("\n");
+  const { width, height } = preview.size;
   return {
     id: call.id,
     content: [
-      `Screenshot of the ${device} (${shot.width}×${shot.height}) attached.`,
+      shot
+        ? `Screenshot of the ${device} (${shot.width}×${shot.height}) attached.`
+        : `No screenshot: a layout report of the ${device} (${width}×${height}) instead. Each line is an element, its text, its size and where it is (left,top in px); check that everything fits, lines up and reads well.`,
       problemsText(problems),
-      findings.length ? `Layout problems:\n${findingsText(findings)}` : "No sideways scrolling, contrast or tap target problems.",
+      findings.length
+        ? `Layout problems:\n${findingsText(findings)}`
+        : "No sideways scrolling, contrast, tap target, text size, overlap, empty image or hidden button problems.",
       `Screens:\n${outline}`,
     ].join("\n\n"),
-    images: [{ mediaType: "image/png", data: shot.image }],
+    ...(shot ? { images: [{ mediaType: "image/png" as const, data: shot.image }] } : {}),
   };
 }
 

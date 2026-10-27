@@ -5,7 +5,8 @@
  * save, so one undo takes it all back.
  */
 import { create } from "zustand";
-import { engineerSettings, useAiSettings } from "../../ai/settings";
+import { engineerSettings, modelInfo, resolveModel, useAiSettings } from "../../ai/settings";
+import { formatTokens, meterOf, totalTokens, useUsage } from "../../ai/usage";
 import { ToolInputError } from "../../ai/tools";
 import type { ChatMessage, ToolCall } from "../../ai/types";
 import { complete, isAbort } from "../../cowriter/engine";
@@ -69,6 +70,9 @@ interface EngineerState {
   error?: string;
   draft: string;
   setDraft: (draft: string) => void;
+  /** Skip screenshots for now: render_preview sends a text layout report instead. */
+  skipShots: boolean;
+  setSkipShots: (skip: boolean) => void;
   load: (cardId: string) => Promise<void>;
   send: (request: string) => Promise<void>;
   stop: () => void;
@@ -116,6 +120,8 @@ export const useEngineer = create<EngineerState>((set, get) => {
     round: 0,
     draft: "",
     setDraft: (draft) => set({ draft }),
+    skipShots: false,
+    setSkipShots: (skipShots) => set({ skipShots }),
 
     async load(cardId) {
       const key = engineerChatKey(cardId);
@@ -138,13 +144,21 @@ export const useEngineer = create<EngineerState>((set, get) => {
       set({ busy: true, error: undefined, streaming: "", round: 0 });
       await useAiSettings.getState().load();
       const settings = useAiSettings.getState().settings;
-      const { effort, maxRounds, maxTokens } = engineerSettings(settings);
+      const { effort, maxRounds, maxTokens, tokenLimit } = engineerSettings(settings);
       const skills = skillsWith(settings.engineerSkills);
+      const model = resolveModel(settings, "engineer");
+      const blind = model && modelInfo(settings, model.choice).vision === false;
+      const shots = !blind && !get().skipShots;
+      useUsage.getState().startTurn("engineer");
 
       // An open proposal is built on: the new turn starts from it, and its proposal replaces it.
       const open = chat.proposals.find((p) => p.status === "pending");
       let start: { config: EngineConfig; calls: ToolCall[] } = { config, calls: [] };
       const notes = [...chat.unreported];
+      if (!shots)
+        notes.push(
+          `No screenshots this turn (${blind ? "this model can't see images" : "the user turned them off"}): render_preview sends a text layout report instead. Check its outline, sizes and problem lists carefully.`,
+        );
       if (open) {
         try {
           start = { config: replay(config, open.calls).config, calls: open.calls };
@@ -170,6 +184,7 @@ export const useEngineer = create<EngineerState>((set, get) => {
         preview,
         libs: preview ? sandboxLibs : undefined,
         library: await loadModuleLibrary().catch(() => []),
+        shots,
       };
       const text = [
         `<engine>\n${engineSummary(ctx.draft, record.card.data.name)}\n</engine>`,
@@ -192,6 +207,13 @@ export const useEngineer = create<EngineerState>((set, get) => {
           if (round >= maxRounds) {
             set({
               error: `The engineer stopped after ${maxRounds} model calls, the loop limit. Its work so far is in the proposal; ask it to carry on, or raise the limit.`,
+            });
+            break;
+          }
+          const used = totalTokens(meterOf(useUsage.getState(), "engineer").turn);
+          if (tokenLimit > 0 && round > 0 && used >= tokenLimit) {
+            set({
+              error: `The engineer paused at ${formatTokens(used)} tokens, your limit for one message. Its work so far is in the proposal; ask it to carry on, or raise the limit.`,
             });
             break;
           }

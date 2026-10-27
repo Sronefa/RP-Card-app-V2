@@ -1369,7 +1369,11 @@
     var win = screen.win;
     var doc = win.document;
     var vw = doc.documentElement.clientWidth;
-    var report = { screen: screen.name, width: vw, height: doc.documentElement.scrollHeight, overflow: [], contrast: [], smallTargets: [], outline: [] };
+    var report = {
+      screen: screen.name, width: vw, height: doc.documentElement.scrollHeight,
+      overflow: [], contrast: [], smallTargets: [], outline: [], smallText: [], overlaps: [], emptyImages: [], hiddenButtons: [],
+    };
+    var leaves = [];
     if (doc.documentElement.scrollWidth > vw + 1)
       Array.prototype.forEach.call(doc.body ? doc.body.querySelectorAll("*") : [], function (el) {
         var r = el.getBoundingClientRect();
@@ -1382,8 +1386,26 @@
       var style = win.getComputedStyle(el);
       var r = el.getBoundingClientRect();
       var shown = r.width > 0 && r.height > 0 && style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0.05;
+      var tag = el.tagName;
+      var button = tag === "BUTTON" || el.getAttribute("role") === "button";
+      if (button && report.hiddenButtons.length < 6 && (el.textContent.trim() || el.getAttribute("aria-label"))) {
+        var why = !shown ? "is not visible" : r.right <= 0 || r.left >= vw || r.bottom <= 0 ? "is off screen" : "";
+        if (!why && doc.elementFromPoint) {
+          var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+          if (cy < win.innerHeight) {
+            var hit = doc.elementFromPoint(cx, cy);
+            if (hit && hit !== el && !el.contains(hit) && !hit.contains(el)) why = "is covered by " + describe(hit);
+          }
+        }
+        if (why) report.hiddenButtons.push(describe(el) + ' "' + (el.textContent.trim() || el.getAttribute("aria-label")).slice(0, 30) + '" ' + why);
+      }
       if (!shown) return;
       var own = Array.prototype.some.call(el.childNodes, function (n) { return n.nodeType === 3 && n.textContent.trim(); });
+      if (own && parseFloat(style.fontSize) < 12 && report.smallText.length < 6)
+        report.smallText.push(describe(el) + ' "' + el.textContent.trim().slice(0, 30) + '" ' + parseFloat(style.fontSize).toFixed(1) + "px");
+      if (tag === "IMG" && report.emptyImages.length < 6 && (!el.getAttribute("src") || (el.complete && !el.naturalWidth)))
+        report.emptyImages.push(describe(el) + (el.getAttribute("alt") ? ' "' + el.getAttribute("alt") + '"' : "") + (el.getAttribute("src") ? " failed to load" : " has no src"));
+      if ((own || button || tag === "INPUT" || tag === "IMG") && leaves.length < 200) leaves.push({ el: el, r: r });
       if (own && report.contrast.length < 8) {
         var fg = parseColor(style.color);
         var bg = backdrop(el, fallback);
@@ -1397,7 +1419,6 @@
             report.contrast.push(describe(el) + ' "' + el.textContent.trim().slice(0, 30) + '" ' + ratio.toFixed(2) + ":1");
         }
       }
-      var tag = el.tagName;
       if ((tag === "BUTTON" || tag === "A" || el.getAttribute("role") === "button" || tag === "SELECT" || (tag === "INPUT" && el.type !== "hidden")) && (r.width < 30 || r.height < 30) && report.smallTargets.length < 6)
         report.smallTargets.push(describe(el) + " " + Math.round(r.width) + "×" + Math.round(r.height) + "px");
       if (seen < 60 && (own || tag === "BUTTON" || tag === "INPUT" || tag === "IMG" || tag === "SELECT")) {
@@ -1406,6 +1427,17 @@
         report.outline.push(describe(el) + (label ? ' "' + label + '"' : "") + " " + Math.round(r.width) + "×" + Math.round(r.height) + " at " + Math.round(r.left) + "," + Math.round(r.top));
       }
     });
+    // Text and controls on top of each other (not nested), by more than a quarter of the smaller one.
+    for (var i = 0; i < leaves.length && report.overlaps.length < 6; i++)
+      for (var j = i + 1; j < leaves.length && report.overlaps.length < 6; j++) {
+        var a = leaves[i], b = leaves[j];
+        if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+        var w = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left);
+        var h = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
+        if (w <= 0 || h <= 0) continue;
+        var smaller = Math.min(a.r.width * a.r.height, b.r.width * b.r.height);
+        if (w * h > smaller / 4) report.overlaps.push(describe(a.el) + " and " + describe(b.el) + " overlap by " + Math.round(w) + "×" + Math.round(h) + "px");
+      }
     return report;
   }
 

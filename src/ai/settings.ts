@@ -6,7 +6,7 @@ import { create } from "zustand";
 import { getSetting, putSetting } from "../db/db";
 import { newId } from "../lib/id";
 import { openaiProvider } from "./openai";
-import type { Effort, ModeId, ModelChoice, Provider, ProviderConfig } from "./types";
+import type { Effort, ModeId, ModelChoice, ModelInfo, Provider, ProviderConfig } from "./types";
 
 export interface PromptPreset {
   id: string;
@@ -81,6 +81,8 @@ export interface AiSettings {
   modeModels: Partial<Record<ModeId, ModelChoice>>;
   /** `providerId/model` of models that can't call tools; they write edits as JSON instead. */
   noToolModels: string[];
+  /** What's known about each saved model, by `providerId/model`: images, context window, prices. */
+  modelInfo?: Record<string, ModelInfo>;
   presets: PromptPreset[];
   imageStyles: ImageStyle[];
   /** Overused phrases the card checker flags; the built-in list until the user edits it. */
@@ -97,9 +99,11 @@ export interface EngineerSettings {
   maxRounds: number;
   /** The longest single reply. */
   maxTokens: number;
+  /** The engineer stops and asks before one message's work goes over this many tokens; 0 for no limit. */
+  tokenLimit: number;
 }
 
-export const DEFAULT_ENGINEER: EngineerSettings = { effort: "max", maxRounds: 40, maxTokens: 64000 };
+export const DEFAULT_ENGINEER: EngineerSettings = { effort: "max", maxRounds: 40, maxTokens: 64000, tokenLimit: 0 };
 
 export const engineerSettings = (settings: AiSettings): EngineerSettings => ({ ...DEFAULT_ENGINEER, ...settings.engineer });
 
@@ -179,4 +183,16 @@ export function resolveModel(settings: AiSettings, mode: ModeId) {
   const config = choice && settings.providers.find((p) => p.id === choice.providerId);
   if (!choice || !config || !choice.model) return undefined;
   return { choice, config, useTools: !settings.noToolModels.includes(modelKey(choice)) };
+}
+
+/** A model's info with sensible guesses filled in; `guessed` says which numbers are guesses. */
+export function modelInfo(settings: AiSettings, choice: ModelChoice): ModelInfo & { context: number; guessed: boolean } {
+  const info = settings.modelInfo?.[modelKey(choice)] ?? {};
+  const claude = settings.providers.find((p) => p.id === choice.providerId)?.kind === "anthropic";
+  return {
+    ...info,
+    vision: info.vision ?? (claude ? true : undefined),
+    context: info.context ?? (claude ? 200_000 : 128_000),
+    guessed: !info.context,
+  };
 }

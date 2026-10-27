@@ -116,6 +116,16 @@ async function streamOnce(client: Anthropic, request: CompletionRequest, maxToke
     toolCalls,
     stop: STOP[message.stop_reason ?? ""] ?? "other",
     raw: { kind: "anthropic", content: echoContent(content) },
+    ...(message.usage
+      ? {
+          usage: {
+            input: message.usage.input_tokens,
+            output: message.usage.output_tokens,
+            cacheRead: message.usage.cache_read_input_tokens ?? 0,
+            cacheWrite: message.usage.cache_creation_input_tokens ?? 0,
+          },
+        }
+      : {}),
   };
 }
 
