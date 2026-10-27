@@ -2,6 +2,7 @@
  * App-wide co-writer settings: providers with their API keys, which model each mode uses,
  * and the prompt library. Stored on the device only.
  */
+import type { CraftPack, StyleSample } from "../cowriter/style";
 import { create } from "zustand";
 import { getSetting, putSetting } from "../db/db";
 import { newId } from "../lib/id";
@@ -92,6 +93,10 @@ export interface AiSettings {
   engineer?: Partial<EngineerSettings>;
   /** The user's changes to the UI engineer's skills. */
   engineerSkills?: { edited: Record<string, string>; removed: string[] };
+  /** Passages the user loves, for the co-writer to imitate. */
+  styleSamples?: StyleSample[];
+  /** The user's craft packs, and their edits to the built-in ones (same id). */
+  craftPacks?: CraftPack[];
   /** Image providers, separate from the text ones. */
   imageProviders?: ImageProviderConfig[];
   /** The image model for each kind of work; character art's is the fallback. */

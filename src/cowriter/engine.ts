@@ -3,10 +3,11 @@
  * context about the card and project that goes into user messages.
  */
 import { changesText, readChanges } from "./changeLog";
-import { withCowriterDefaults } from "../ai/records";
+import { withCowriterDefaults, type CowriterSettings } from "../ai/records";
+import { activePacks, cardSampleIds, craftContext, packsWith, REFERENCE_EXAMPLES, styleContext } from "./style";
 import { skillsWith } from "../engine/engineer/knowledge";
 import { bibleContext, cardContext, ENGINE_GUIDE, personasContext, settingsContext, worldContext } from "../ai/prompts";
-import { createProvider, jailbreakText, modelInfo, modelKey, resolveModel, useAiSettings } from "../ai/settings";
+import { createProvider, jailbreakText, type AiSettings, modelInfo, modelKey, resolveModel, useAiSettings } from "../ai/settings";
 import { scopeOf, useUsage } from "../ai/usage";
 import { useEditor } from "../editor/store";
 import {
@@ -112,6 +113,7 @@ export interface ContextPart {
 /** Everything the co-writer should know about the card and its project, in parts. */
 export async function gatherContext(record: CardRecord): Promise<ContextPart[]> {
   const { project, settings, presets, guide } = await projectSettings(record.projectId);
+  const ai = useAiSettings.getState().settings;
   const world = record.kind === "character" ? (await listCards(record.projectId)).find((c) => c.kind === "world") : undefined;
   const personas = (await listPersonas()).filter((p) => project?.personaIds.includes(p.id));
   const bible = (await getInterview(record.id))?.bible;
@@ -122,9 +124,22 @@ export async function gatherContext(record: CardRecord): Promise<ContextPart[]> 
     { key: "card", title: "The card as it is now", text: cardContext(record.card.data, record.kind) },
     ...(world ? [{ key: "world", title: "The project's world", text: worldContext(world) }] : []),
     ...(personas.length ? [{ key: "personas", title: "The user's personas", text: personasContext(personas) }] : []),
+    ...styleParts(record, settings, ai),
     ...(engineer
       ? [{ key: "engineer_changes", title: "What the UI engineer changed (the user accepted these)", text: engineer }]
       : []),
+  ];
+}
+
+/** Style samples, craft packs and reference examples, each when the project uses them. */
+function styleParts(record: CardRecord, settings: CowriterSettings, ai: AiSettings): ContextPart[] {
+  const ids = new Set([...(settings.styleSampleIds ?? []), ...cardSampleIds(record.card.data)]);
+  const samples = (ai.styleSamples ?? []).filter((s) => ids.has(s.id));
+  const packs = activePacks(settings, packsWith(ai.craftPacks));
+  return [
+    ...(samples.length ? [{ key: "style", title: "Style to imitate", text: styleContext(samples) }] : []),
+    ...(packs.length ? [{ key: "craft", title: "Genre craft notes", text: craftContext(packs) }] : []),
+    ...(settings.referenceExamples !== false ? [{ key: "examples", title: "Reference examples", text: REFERENCE_EXAMPLES }] : []),
   ];
 }
 

@@ -31,6 +31,12 @@ export interface CowriterSettings {
   dark: DarkLevel;
   unhinged: UnhingedLevel;
   prose?: ProseSettings;
+  /** Style samples from the library the co-writer imitates in this project. */
+  styleSampleIds?: string[];
+  /** Craft packs turned on by hand, besides the ones the genre and tone load. */
+  craftPackIds?: string[];
+  /** Show the co-writer reference examples of strong card writing; on unless turned off. */
+  referenceExamples?: boolean;
   /** One of the listed tones, or the user's own words. Empty means no preference. */
   tone: string;
   genre: string;

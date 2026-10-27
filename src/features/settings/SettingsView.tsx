@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ImageProviders } from "./ImageProviders";
+import { WritingStyle } from "./WritingStyle";
 import {
   createProvider,
   modelKey,
@@ -306,6 +307,8 @@ export function SettingsView() {
       </section>
 
       <ImageProviders />
+
+      <WritingStyle />
 
       <SlopPhrases
         phrases={settings.slopPhrases ?? DEFAULT_SLOP_PHRASES}
