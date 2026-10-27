@@ -10,6 +10,7 @@ import { EngineView } from "../features/engine/EngineView";
 import { Icon } from "../components/Icon";
 import { Toaster } from "../components/toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { ActivityChip } from "../features/activity/ActivityChip";
 import { SECTIONS, SETTINGS_ICON, type SectionId } from "./sections";
 import { usePrefs } from "./prefs";
 import { useUi } from "./store";
@@ -128,6 +129,10 @@ export default function App() {
           />
         ))}
       </nav>
+      {/* Background work: in the phone header next to Settings, top right of the content on larger screens. */}
+      <div className="pointer-events-none fixed top-[calc(env(safe-area-inset-top)+0.5rem)] right-14 z-40 md:top-3 md:right-4 lg:right-[25rem]">
+        <ActivityChip className="pointer-events-auto" />
+      </div>
       <ProjectLine />
       <Toaster />
     </div>

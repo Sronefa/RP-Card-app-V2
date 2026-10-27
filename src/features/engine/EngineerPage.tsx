@@ -9,7 +9,9 @@ import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { useEditor } from "../../editor/store";
 import { BUILT_IN_SKILLS, EMPTY_OVERRIDES, skillsWith, type SkillOverrides } from "../../engine/engineer/knowledge";
 import { useEngineer, type EngineerProposal } from "../../engine/engineer/session";
+import { useActivity } from "../../app/activity";
 import type { WorkerRun } from "../../engine/engineer/worker";
+import { WorkerLive, WorkerSteps } from "./WorkerSteps";
 import { describeCall } from "../../engine/engineer/tools";
 import type { FileChange } from "../../engine/engineer/workspace";
 import { diffLines } from "../../lib/diff";
@@ -35,7 +37,8 @@ const STATUS: Record<EngineerProposal["status"], string> = {
 /** The UI engineer: a chat that builds and tests the engine's screens, one proposal per turn. */
 export function EngineerPage() {
   const record = useEditor((s) => s.record);
-  const { chat, busy, streaming, round, worker, error, draft, setDraft, load, send, stop, decide, clear } = useEngineer();
+  const { chat, busy: running, runningCardId, streaming, round, worker, error, draft, setDraft, load, send, stop, decide, clear } = useEngineer();
+  const activity = useActivity((s) => s.items);
   const end = useRef<HTMLDivElement>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [zoom, setZoom] = useState<string>();
@@ -47,9 +50,13 @@ export function EngineerPage() {
   const count = chat?.messages.length ?? 0;
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end" });
-  }, [count, streaming, busy, chat?.proposals.length, worker?.steps.length]);
+  }, [count, streaming, running, chat?.proposals.length, worker?.steps.length]);
 
   if (!record) return null;
+  // A turn on another card runs on in the background; this card's messages wait in line.
+  const busy = running && runningCardId === record.id;
+  const elsewhere = running && runningCardId !== record.id ? activity.find((i) => i.status === "running") : undefined;
+  const queued = activity.filter((i) => i.status === "queued" && i.kind === "engineer" && i.cardId === record.id);
 
   const results = new Map<string, ToolResult>();
   for (const m of chat?.messages ?? []) if (m.role === "tool") for (const r of m.results) results.set(r.id, r);
@@ -58,7 +65,7 @@ export function EngineerPage() {
 
   function submit(text = draft) {
     const request = text.trim();
-    if (!request || busy) return;
+    if (!request) return;
     setDraft("");
     void send(request);
   }
@@ -100,6 +107,23 @@ export function EngineerPage() {
           {worker && <WorkerLive worker={worker} />}
         </div>
       )}
+      {queued.length > 0 && (
+        <ul className="flex flex-col gap-1 text-sm" aria-label="Waiting in line">
+          {queued.map((q) => (
+            <li key={q.id} className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-ink-muted">Waiting: {q.label}</span>
+              <Button variant="ghost" aria-label={`Take "${q.label}" out of the queue`} onClick={() => useActivity.getState().cancel(q.id)}>
+                Cancel
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {elsewhere && (
+        <p className="text-xs text-ink-muted" aria-live="polite">
+          The engineer is working on {elsewhere.cardName || "another card"} right now. Messages you send here wait in line and run after it.
+        </p>
+      )}
       {error && (
         <p role="alert" className="rounded-lg border border-red-500/40 p-2 text-sm text-red-300">
           {error}
@@ -124,11 +148,10 @@ export function EngineerPage() {
             }
           }}
         />
-        {busy ? (
-          <Button onClick={stop}>Stop</Button>
-        ) : (
+        {busy && <Button onClick={stop}>Stop</Button>}
+        {(!busy || draft.trim()) && (
           <Button variant="primary" disabled={!draft.trim()} onClick={() => submit()}>
-            Send
+            {running ? "Queue" : "Send"}
           </Button>
         )}
         </div>
@@ -231,32 +254,6 @@ function EngineerControls({ onSkills, onClear }: { onSkills: () => void; onClear
         thinking and {DEFAULT_ENGINEER.maxRounds} steps are the defaults.
       </span>
     </div>
-  );
-}
-
-/** The worker's steps as they happen. */
-function WorkerLive({ worker }: { worker: WorkerRun & { streaming: string } }) {
-  return (
-    <section className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-raised p-3" aria-label="Worker">
-      <span className="text-xs font-medium text-ink">
-        Worker, step {worker.steps.length + 1}: {worker.task.split("\n")[0]}
-      </span>
-      <WorkerSteps steps={worker.steps} />
-      {worker.streaming && <span className="text-xs leading-relaxed whitespace-pre-wrap">{worker.streaming}</span>}
-    </section>
-  );
-}
-
-function WorkerSteps({ steps }: { steps: WorkerRun["steps"] }) {
-  if (!steps.length) return null;
-  return (
-    <ol className="flex flex-col gap-0.5 text-xs text-ink-muted" aria-label="Worker steps">
-      {steps.map((st, n) => (
-        <li key={n} className={st.error ? "text-red-300" : ""}>
-          {st.label}
-        </li>
-      ))}
-    </ol>
   );
 }
 
