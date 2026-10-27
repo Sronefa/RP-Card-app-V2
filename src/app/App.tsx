@@ -13,6 +13,9 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { SECTIONS, SETTINGS_ICON, type SectionId } from "./sections";
 import { usePrefs } from "./prefs";
 import { useUi } from "./store";
+import { projectHue } from "./theme";
+import { useAppTheme } from "./useAppTheme";
+import { useEditor } from "../editor/store";
 
 const VIEWS: Record<Exclude<SectionId, "cowriter">, () => React.JSX.Element | null> = {
   library: LibraryView,
@@ -35,6 +38,7 @@ export default function App() {
   const setSection = useUi((s) => s.setSection);
   const mainRef = useRef<HTMLElement>(null);
   const glow = usePrefs((p) => p.engineGlow);
+  useAppTheme();
 
   // Each section starts at the top instead of keeping the previous section's scroll position.
   useEffect(() => {
@@ -124,8 +128,24 @@ export default function App() {
           />
         ))}
       </nav>
+      <ProjectLine />
       <Toaster />
     </div>
+  );
+}
+
+/** A thin line in the open card's project colour, so projects are told apart at a glance. */
+function ProjectLine() {
+  const on = usePrefs((p) => p.projectLine);
+  const projectId = useEditor((s) => s.record?.projectId);
+  if (!on || !projectId) return null;
+  return (
+    <div
+      data-testid="project-line"
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5"
+      style={{ background: `hsl(${projectHue(projectId)} 75% 60%)` }}
+    />
   );
 }
 

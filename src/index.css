@@ -51,7 +51,7 @@ input[type="radio"] {
 @property --rgb-angle {
   syntax: "<angle>";
   initial-value: 0deg;
-  inherits: false;
+  inherits: true;
 }
 .rgb-glow {
   position: relative;
@@ -71,4 +71,90 @@ input[type="radio"] {
     animation: none;
     --rgb-angle: 280deg;
   }
+}
+
+/* ---------------------------------------------------------------- app themes (src/app/theme.ts) */
+
+/* RGB Drift: the accent (and maybe the borders, or a faint aurora) slowly turns round the colour wheel. */
+html.drift {
+  animation: rgb-spin var(--drift-duration, 600s) steps(720) infinite;
+}
+html.drift-paused {
+  animation-play-state: paused;
+}
+html.drift-aurora body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 45% at 15% 0%, hsl(var(--drift-hue) var(--drift-sat) 55% / 0.14), transparent 70%),
+    radial-gradient(50% 40% at 90% 100%, hsl(calc(var(--drift-hue) + 120deg) var(--drift-sat) 55% / 0.1), transparent 70%);
+}
+html.drift-aurora body {
+  background: transparent;
+}
+html.drift-aurora {
+  background: var(--color-surface);
+}
+@media (prefers-reduced-motion: reduce) {
+  html.drift {
+    animation: none;
+  }
+}
+
+/* Light themes: the status colours used for text get darker so they still read on paper. */
+html.theme-light {
+  --color-red-300: #b42318;
+  --color-amber-300: #9a5b00;
+  --color-emerald-200: #116a3c;
+  --color-emerald-300: #116a3c;
+}
+
+/* Light textures, drawn over everything without catching taps. */
+html[class*="texture-"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+html.texture-paper body::after {
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+html.texture-scanlines body::after {
+  background: repeating-linear-gradient(to bottom, rgb(0 0 0 / 0.12) 0 1px, transparent 1px 3px);
+}
+html.texture-stars body::after {
+  opacity: 0.5;
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+    radial-gradient(1px 1px at 120px 80px, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 200px 160px, #fff, transparent),
+    radial-gradient(1px 1px at 60px 190px, #fff, transparent),
+    radial-gradient(1px 1px at 250px 40px, #fff, transparent);
+  background-size: 280px 220px;
+  animation: stars-drift 240s linear infinite;
+}
+@keyframes stars-drift {
+  to {
+    background-position: -280px 220px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.texture-stars body::after {
+    animation: none;
+  }
+}
+
+/* Fonts */
+html.serif-writing textarea {
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, "Noto Serif", serif;
+}
+html.mono body,
+html.mono textarea,
+html.mono input {
+  font-family: ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }
