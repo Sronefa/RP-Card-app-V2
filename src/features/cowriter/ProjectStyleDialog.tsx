@@ -129,6 +129,20 @@ export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: s
             <summary className="cursor-pointer font-medium">Prose</summary>
             <p className="mt-1 text-xs text-ink-muted">How the card's writing reads. Anything left on "Any" is the co-writer's choice.</p>
             <div className="mt-3 flex flex-col gap-3">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4"
+                  checked={!!settings.autoPolish}
+                  onChange={(e) => change({ autoPolish: e.target.checked || undefined })}
+                />
+                <span>
+                  Polish every draft
+                  <span className="block text-xs text-ink-muted">
+                    The prose editor goes over each drafted field line by line before you see it. One extra call per field.
+                  </span>
+                </span>
+              </label>
               {PROSE_OPTIONS.filter((o) => o.key !== "explicitness" || settings.unhinged !== "off").map((o) => (
                 <Segmented
                   key={o.key}

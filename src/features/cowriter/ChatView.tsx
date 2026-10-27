@@ -9,6 +9,7 @@ import { useEditor } from "../../editor/store";
 import { properNouns, uncoveredIn } from "../../editor/coverage";
 import { scanNames } from "../../cowriter/worldScan";
 import { ProposalCard } from "./ProposalCard";
+import { textOf } from "../../cowriter/polish";
 import { useRun } from "./useRun";
 import { UsageMeter } from "../usage/UsageMeter";
 
@@ -102,6 +103,7 @@ export function ChatView({
                         void send(`Use idea ${p.number} ("${String(p.call.input.title)}"). Work it into the card.`);
                     }}
                     onRetype={(kind) => retype(p.id, kind)}
+                    onPolish={!busy && textOf(p.call) ? () => void store.getState().polish(p.id) : undefined}
                     onMore={
                       moreLikeThis && p.call.name === "add_lore_entry" && !busy
                         ? () => void send(`More like edit ${p.number} ("${String(p.call.input.title)}").`)

@@ -10,6 +10,7 @@ import { bibleContext, cardContext, ENGINE_GUIDE, personasContext, settingsConte
 import { createProvider, jailbreakText, type AiSettings, modelInfo, modelKey, resolveModel, useAiSettings } from "../ai/settings";
 import { scopeOf, useUsage } from "../ai/usage";
 import { useEditor } from "../editor/store";
+import { DEFAULT_SLOP_PHRASES } from "../editor/slop";
 import {
   DEFAULT_TIMEOUT_SEC,
   ToolsUnsupportedError,
@@ -58,6 +59,10 @@ export async function complete(
   const provider = createProvider(resolved.config);
   const jailbreak = jailbreakText(useAiSettings.getState().settings);
   if (jailbreak) request = { ...request, messages: withJailbreak(request.messages, jailbreak) };
+  if (resolved.config.banPhrases && mode !== "engineer") {
+    const phrases = (useAiSettings.getState().settings.slopPhrases ?? DEFAULT_SLOP_PHRASES).filter((p) => !p.includes("*"));
+    request = { ...request, bannedPhrases: phrases };
+  }
   const seconds = resolved.config.timeoutSec ?? DEFAULT_TIMEOUT_SEC;
   const run = async (useTools: boolean) => {
     const timeout = AbortSignal.timeout(seconds * 1000);

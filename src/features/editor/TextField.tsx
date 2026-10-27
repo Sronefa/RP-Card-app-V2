@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AutoTextarea, Button, TextInput } from "../../components/ui";
-import { askCowriter } from "../../cowriter/ask";
+import { askCowriter, polishField } from "../../cowriter/ask";
 import { useEditor } from "../../editor/store";
 import { estimateTokens } from "../../lib/tokens";
 import type { FieldInfo } from "./fields";
@@ -54,6 +54,18 @@ export function TextField({ info }: { info: FieldInfo }) {
               {label}
             </button>
           ))}
+          {tokens > 20 && (
+            <button
+              type="button"
+              className="rounded-full border border-border px-3 py-1 text-sm text-ink-muted hover:border-accent hover:text-ink"
+              onClick={() => {
+                setAsking(false);
+                void polishField(info.field, name);
+              }}
+            >
+              Polish
+            </button>
+          )}
           {tokens > 20 && (
             <button
               type="button"

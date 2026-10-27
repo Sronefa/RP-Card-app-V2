@@ -3,6 +3,9 @@
  * the story bible, then drafting the card one field group at a time. The draft lands in the
  * co-writer chat as proposals. How many passes run depends on the project's interview depth.
  */
+import { cleanCalls, polishCalls } from "./polish";
+import { useAiSettings } from "../ai/settings";
+import { DEFAULT_SLOP_PHRASES } from "../editor/slop";
 import { create } from "zustand";
 import { useUi } from "../app/store";
 import {
@@ -222,8 +225,15 @@ export const useInterview = create<InterviewState>((set, get) => {
         onText,
       });
       check(result);
+      let calls = result.toolCalls;
+      if (settings.autoPolish) {
+        set({ status: `Polishing the ${group.label}…`, streaming: "" });
+        calls = await polishCalls(record, calls, controller?.signal);
+      }
+      const ai = useAiSettings.getState().settings;
+      if (ai.slopRewrite !== false) calls = (await cleanCalls(record, calls, ai.slopPhrases ?? DEFAULT_SLOP_PHRASES, controller?.signal)).calls;
       // Saved after each step, so a failure later on doesn't redo the steps already written.
-      iv = commit({ ...iv, draft: { groups: [...iv.draft.groups, group.id], calls: [...iv.draft.calls, ...result.toolCalls] } });
+      iv = commit({ ...iv, draft: { groups: [...iv.draft.groups, group.id], calls: [...iv.draft.calls, ...calls] } });
     }
     const count = iv.draft.calls.length;
     await useCowriter

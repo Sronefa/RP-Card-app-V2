@@ -24,6 +24,7 @@ export function ProposalCard({
   onDecide,
   onMore,
   onRetype,
+  onPolish,
 }: {
   proposal: Proposal;
   data: CardDataV3 | undefined;
@@ -32,6 +33,8 @@ export function ProposalCard({
   onMore?: () => void;
   /** Files a plain lore entry under a world page instead. */
   onRetype?: (kind: TypedKind) => void;
+  /** Runs the prose editor over the proposed text. */
+  onPolish?: () => void;
 }) {
   let edit: Edit | undefined;
   let problem: string | undefined;
@@ -74,6 +77,10 @@ export function ProposalCard({
       {proposal.error && <p className="text-xs text-red-300">{proposal.error}</p>}
       {pending && problem && <p className="text-xs text-amber-300">This edit no longer fits the card: {problem}</p>}
       {pending && edit && <EditPreview edit={edit} />}
+      {pending && proposal.fixed && (
+        <p className="text-xs text-ink-muted">Rewrote overused phrasing: {proposal.fixed.map((f) => `"${f}"`).join(", ")}</p>
+      )}
+      {pending && proposal.polished && <p className="text-xs text-ink-muted">Polished: {proposal.polished.join("; ") || "line edits"}</p>}
       {!pending && onMore && (
         <Button variant="ghost" className="self-end" onClick={onMore}>
           More like this
@@ -89,6 +96,11 @@ export function ProposalCard({
           {guess && (
             <Button variant="ghost" className={onMore ? "" : "mr-auto"} onClick={() => onRetype!(guess)}>
               Save as {guess === "npc" ? "NPC" : KINDS[guess].label}
+            </Button>
+          )}
+          {onPolish && !problem && (
+            <Button variant="ghost" aria-label={`Polish edit ${proposal.number}`} onClick={onPolish}>
+              ✦ Polish
             </Button>
           )}
           <Button variant="ghost" onClick={() => onDecide(false)}>

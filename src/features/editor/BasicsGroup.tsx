@@ -5,6 +5,7 @@ import { useEditor } from "../../editor/store";
 import { pickFiles, toPng } from "../../lib/files";
 import { ImagePromptDialog } from "../images/ImagePromptDialog";
 import { CardAvatar } from "../library/CardTile";
+import { NameHelper } from "./NameHelper";
 
 export function BasicsGroup() {
   const record = useEditor((s) => s.record!);
@@ -70,7 +71,10 @@ export function BasicsGroup() {
         </span>
       </div>
 
-      {row("Name", <TextInput value={d.name} onChange={(e) => setField("name", e.target.value)} />)}
+      <div className="flex flex-col gap-1">
+        {row("Name", <TextInput value={d.name} onChange={(e) => setField("name", e.target.value)} />)}
+        <NameHelper />
+      </div>
       {row(
         "Nickname",
         <TextInput value={d.nickname ?? ""} onChange={(e) => setField("nickname", e.target.value || undefined)} />,

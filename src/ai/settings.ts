@@ -93,6 +93,8 @@ export interface AiSettings {
   engineer?: Partial<EngineerSettings>;
   /** The user's changes to the UI engineer's skills. */
   engineerSkills?: { edited: Record<string, string>; removed: string[] };
+  /** Rewrite overused phrases in proposals before they reach the user; on unless turned off. */
+  slopRewrite?: boolean;
   /** Passages the user loves, for the co-writer to imitate. */
   styleSamples?: StyleSample[];
   /** The user's craft packs, and their edits to the built-in ones (same id). */

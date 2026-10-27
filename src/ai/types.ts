@@ -17,6 +17,8 @@ export interface ProviderConfig {
   models?: string[];
   /** Seconds to wait for a reply before giving up. */
   timeoutSec?: number;
+  /** A local backend that bans phrases while generating (KoboldCpp): the slop list goes with each request. */
+  banPhrases?: boolean;
 }
 
 /** How long a model call may take when the provider doesn't say otherwise. */
@@ -28,7 +30,7 @@ export interface ModelChoice {
 }
 
 /** Co-writer modes. Each has its own system prompt and can use its own model. */
-export type ModeId = "refine" | "interview" | "gap" | "draft" | "suggest" | "lore" | "critic" | "image" | "planner" | "world" | "arc" | "mechanics" | "engineer" | "playtest" | "player" | "sidecall";
+export type ModeId = "refine" | "interview" | "gap" | "draft" | "suggest" | "lore" | "critic" | "editor" | "image" | "planner" | "world" | "arc" | "mechanics" | "engineer" | "playtest" | "player" | "sidecall";
 
 /** How hard a model thinks before it answers, where the provider supports it. */
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -83,6 +85,8 @@ export interface CompletionRequest {
   effort?: Effort;
   /** The longest reply allowed; left out, the provider's default. */
   maxTokens?: number;
+  /** Phrases a local backend bans while generating. */
+  bannedPhrases?: string[];
   signal?: AbortSignal;
   onText?: (delta: string) => void;
 }
