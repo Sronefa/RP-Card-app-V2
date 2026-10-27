@@ -16,10 +16,11 @@ const SOURCES: Record<string, string> = {
   read_values: "Module files",
   read_theme: "Module files",
   read_card: "Module files",
+  run_worker: "Worker reports",
 };
 
 export function contextBreakdown(system: string, messages: ChatMessage[]): { label: string; tokens: number }[] {
-  const out: Record<string, number> = { "System prompt": estimateTokens(system), "Chat history": 0, Docs: 0, "Module files": 0, Screenshots: 0, "Tool results": 0 };
+  const out: Record<string, number> = { "System prompt": estimateTokens(system), "Chat history": 0, Docs: 0, "Module files": 0, "Worker reports": 0, Screenshots: 0, "Tool results": 0 };
   const names = new Map<string, string>();
   for (const m of messages) {
     if (m.role === "user") out["Chat history"] += estimateTokens(m.text);

@@ -89,6 +89,8 @@ Fit the card, the story bible and the existing modules, and stay consistent with
 
   engineer: `Right now you're the UI engineer: you build the card's engine screens with your tools.`,
 
+  worker: `Right now you're the UI engineer's worker: you build one task of the card's engine screens with your tools.`,
+
   // The playtest modes send the card's own prompts, never the co-writer's.
   playtest: "",
   player: "",

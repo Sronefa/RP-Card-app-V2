@@ -472,7 +472,7 @@ function cardText(data: CardDataV3): string {
     .join("\n\n");
 }
 
-function loreSources(ctx: EngineerContext): LoreSource[] {
+export function loreSources(ctx: EngineerContext): LoreSource[] {
   return [
     { prefix: "c", label: "The card's lorebook", data: ctx.data },
     ...(ctx.world ? [{ prefix: "w" as const, label: "The project world's lorebook", data: ctx.world }] : []),
@@ -906,6 +906,8 @@ export function describeCall(call: ToolCall): string {
       return "Played a turn";
     case "lint":
       return "Ran the checks";
+    case "run_worker":
+      return `Worker: ${s(i.task).split("\n")[0].slice(0, 120)}`;
     default:
       return call.name.replace(/_/g, " ");
   }

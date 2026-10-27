@@ -32,7 +32,7 @@ export const jailbreakText = (settings: AiSettings) =>
     .join("\n\n");
 
 /** Tasks that write the engine's code. They get no jailbreak unless the user opts in. */
-export const ENGINEER_MODES: readonly ModeId[] = ["engineer"];
+export const ENGINEER_MODES: readonly ModeId[] = ["engineer", "worker"];
 
 /**
  * The jailbreak for one task's request. The UI engineer builds code, not fiction, and a jailbreak on
@@ -215,8 +215,9 @@ export function defaultChoice(settings: AiSettings): ModelChoice | undefined {
 
 /** The provider and model a mode runs on, or undefined when none is set up. */
 export function resolveModel(settings: AiSettings, mode: ModeId) {
-  const own = settings.modeModels[mode];
-  const choice = usable(settings, own) ? own : defaultChoice(settings);
+  // The engineer's worker runs on the engineer's model unless it has its own.
+  const own = [settings.modeModels[mode], ...(mode === "worker" ? [settings.modeModels.engineer] : [])].find((c) => usable(settings, c));
+  const choice = own ?? defaultChoice(settings);
   const config = choice && settings.providers.find((p) => p.id === choice.providerId);
   if (!choice || !config || !choice.model) return undefined;
   return { choice, config, useTools: !settings.noToolModels.includes(modelKey(choice)) };

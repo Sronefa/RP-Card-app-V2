@@ -1,7 +1,7 @@
 /**
- * The UI engineer's conversation about the open card. Each message starts a turn: the engineer
- * reads, writes and tests in a loop on a draft of the engine, and when it stops, everything it
- * changed becomes one proposal. Accepting replays the edits onto the engine as it is then, in one
+ * The UI engineer's conversation about the open card. Each message starts a turn: the lead engineer
+ * plans and hands tasks to a worker, one at a time, who builds and tests on a draft of the engine in
+ * its own context. When the lead stops, everything the workers changed becomes one proposal. Accepting replays the edits onto the engine as it is then, in one
  * save, so one undo takes it all back.
  */
 import { finishConversion } from "../convert";
@@ -20,9 +20,10 @@ import { applyEngine, readEngine, type EngineConfig } from "../sheet";
 import { skillsWith } from "./knowledge";
 import { lintConfig } from "./lint";
 import { EnginePreview } from "./preview";
-import { engineSummary, engineerSystemPrompt } from "./prompt";
+import { engineSummary, engineerSystemPrompt, workerSystemPrompt } from "./prompt";
 import { useCowriter } from "../../cowriter/store";
-import { ENGINEER_TOOLS, runEngineerTool, type EngineerContext, type SampleState } from "./tools";
+import { runEngineerTool, type EngineerContext, type SampleState } from "./tools";
+import { isLeadTool, LEAD_TOOLS, runWorker, type WorkerRun } from "./worker";
 import { diffConfigs, replay, type FileChange } from "./workspace";
 import { loadModuleLibrary } from "../../features/engine/moduleLibrary";
 
@@ -54,6 +55,8 @@ export interface EngineerChat {
   unreported: string[];
   /** When the engineer last saw the co-writer's changes to the card. */
   changesSeen?: number;
+  /** Each worker's task and steps, by the lead's run_worker call id, for the activity list. */
+  workerRuns?: Record<string, WorkerRun>;
   updatedAt: number;
 }
 
@@ -89,6 +92,8 @@ interface EngineerState {
   streaming: string;
   /** Model calls so far in this turn. */
   round: number;
+  /** The worker running right now, with what it's writing. */
+  worker?: WorkerRun & { streaming: string };
   error?: string;
   draft: string;
   setDraft: (draft: string) => void;
@@ -168,7 +173,8 @@ export const useEngineer = create<EngineerState>((set, get) => {
       const settings = useAiSettings.getState().settings;
       const { effort, maxRounds, maxTokens, tokenLimit } = engineerSettings(settings);
       const skills = skillsWith(settings.engineerSkills);
-      const model = resolveModel(settings, "engineer");
+      // The worker renders and looks at screenshots, so its model decides.
+      const model = resolveModel(settings, "worker");
       const blind = model && modelInfo(settings, model.choice).vision === false;
       const shots = !blind && !get().skipShots;
       useUsage.getState().startTurn("engineer");
@@ -233,6 +239,13 @@ export const useEngineer = create<EngineerState>((set, get) => {
 
       controller = new AbortController();
       const system = engineerSystemPrompt(skills);
+      const workerSystem = workerSystemPrompt(skills);
+      const overLimit = () => {
+        const used = totalTokens(meterOf(useUsage.getState(), "engineer").turn);
+        return tokenLimit > 0 && used >= tokenLimit
+          ? `The engineer paused at ${formatTokens(used)} tokens, your limit for one message. Its work so far is in the proposal; ask it to carry on, or raise the limit.`
+          : undefined;
+      };
       try {
         for (let round = 0; ; round++) {
           if (round >= maxRounds) {
@@ -241,18 +254,16 @@ export const useEngineer = create<EngineerState>((set, get) => {
             });
             break;
           }
-          const used = totalTokens(meterOf(useUsage.getState(), "engineer").turn);
-          if (tokenLimit > 0 && round > 0 && used >= tokenLimit) {
-            set({
-              error: `The engineer paused at ${formatTokens(used)} tokens, your limit for one message. Its work so far is in the proposal; ask it to carry on, or raise the limit.`,
-            });
+          const limited = round > 0 ? overLimit() : undefined;
+          if (limited) {
+            set({ error: limited });
             break;
           }
           set({ round: round + 1 });
           const result = await complete("engineer", {
             system,
             messages: chat.messages,
-            tools: ENGINEER_TOOLS,
+            tools: LEAD_TOOLS,
             effort,
             maxTokens,
             signal: controller.signal,
@@ -269,14 +280,45 @@ export const useEngineer = create<EngineerState>((set, get) => {
           set({ streaming: "" });
           if (result.toolCalls.length) {
             const results = [];
+            const runs: Record<string, WorkerRun> = {};
             for (const call of result.toolCalls) {
               if (controller.signal.aborted) break;
-              results.push(await runEngineerTool(ctx, call));
+              if (call.name === "run_worker") {
+                const { run, ...out } = await runWorker(ctx, call, {
+                  skills,
+                  system: workerSystem,
+                  effort,
+                  maxTokens,
+                  maxRounds,
+                  signal: controller.signal,
+                  notes: shots ? [] : [notes.find((n) => n.startsWith("No screenshots"))!],
+                  limit: overLimit,
+                  onRun: (r) => set({ worker: { ...r, streaming: "" } }),
+                  onText: (delta) => {
+                    const w = get().worker;
+                    if (w) set({ worker: { ...w, streaming: w.streaming + delta } });
+                  },
+                });
+                runs[call.id] = run;
+                set({ worker: undefined });
+                results.push(out);
+              } else if (isLeadTool(call.name)) results.push(await runEngineerTool(ctx, call));
+              else
+                results.push({
+                  id: call.id,
+                  content: `${call.name} is a worker's tool. Hand the building to a worker with run_worker.`,
+                  isError: true,
+                });
             }
             // Calls cut off by Stop still need an answer, or the chat can't continue.
             for (const call of result.toolCalls.slice(results.length))
               results.push({ id: call.id, content: "Stopped by the user.", isError: true });
-            chat = commit({ ...chat, sample: ctx.sample, messages: [...chat.messages, { role: "tool", results }] });
+            chat = commit({
+              ...chat,
+              sample: ctx.sample,
+              messages: [...chat.messages, { role: "tool", results }],
+              ...(Object.keys(runs).length ? { workerRuns: { ...chat.workerRuns, ...runs } } : {}),
+            });
           }
           if (result.stop === "refusal") {
             set({ error: "The model declined this request. Rephrase it, or pick another model in Settings." });
@@ -333,7 +375,7 @@ export const useEngineer = create<EngineerState>((set, get) => {
             ],
           });
         }
-        set({ busy: false, streaming: "", round: 0 });
+        set({ busy: false, streaming: "", round: 0, worker: undefined });
       }
     },
 

@@ -19,7 +19,7 @@ export interface SamplingSettings {
 }
 
 /** Tasks that check, sort or fill in structure rather than write prose. */
-export const STRUCTURED: ModeId[] = ["gap", "critic", "judge", "planner", "mechanics", "engineer", "sidecall"];
+export const STRUCTURED: ModeId[] = ["gap", "critic", "judge", "planner", "mechanics", "engineer", "worker", "sidecall"];
 
 /** Tasks that write card prose, which think first when the model can. */
 export const WRITING: ModeId[] = ["refine", "interview", "draft", "lore", "editor", "rewrite", "world", "arc"];

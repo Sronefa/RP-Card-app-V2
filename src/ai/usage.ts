@@ -41,7 +41,7 @@ export interface Meter {
 const EMPTY_METER: Meter = { turn: EMPTY_USAGE, session: EMPTY_USAGE };
 
 export const scopeOf = (mode: ModeId): UsageScope =>
-  mode === "engineer" ? "engineer" : mode === "playtest" || mode === "player" || mode === "sidecall" ? "playtest" : "cowriter";
+  mode === "engineer" || mode === "worker" ? "engineer" : mode === "playtest" || mode === "player" || mode === "sidecall" ? "playtest" : "cowriter";
 
 export const promptTokens = (u: Pick<CallUsage, "input" | "cacheRead" | "cacheWrite">) => u.input + u.cacheRead + u.cacheWrite;
 export const totalTokens = (u: Usage) => promptTokens(u) + u.output;
