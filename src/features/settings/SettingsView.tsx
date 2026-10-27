@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ImageProviders } from "./ImageProviders";
 import { WritingStyle } from "./WritingStyle";
+import { SamplingSettings } from "./SamplingSettings";
 import { ignorePhrase, repeatedPhrases } from "../../editor/phraseStats";
 import {
   createProvider,
@@ -237,6 +238,8 @@ export function SettingsView() {
           </div>
         </details>
       )}
+
+      <SamplingSettings modes={MODE_LABELS} />
 
       <UsageTotals />
 

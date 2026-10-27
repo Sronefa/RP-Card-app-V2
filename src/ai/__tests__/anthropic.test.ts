@@ -137,6 +137,24 @@ describe("Claude provider", () => {
     expect(retry.output_config).toBeUndefined();
   });
 
+  it("sends temperature only without thinking, and drops it when the model refuses it", async () => {
+    const stream = () => claudeStream("claude-haiku-4-5", [{ type: "text", text: "" }], [{ index: 0, delta: { type: "text_delta", text: "ok" } }], "end_turn");
+    const req = { model: "claude-haiku-4-5", system: "s", useTools: true, tools: [], messages: [{ role: "user" as const, text: "hi" }], sampling: { temperature: 1.3, minP: 0.05 } };
+    fetchMock.fn.mockResolvedValueOnce(stream()).mockResolvedValueOnce(stream());
+    await provider.complete(req);
+    await provider.complete({ ...req, effort: "medium" });
+    const [plain, thinking] = fetchMock.fn.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect([plain.temperature, plain.min_p, plain.top_p]).toEqual([1, undefined, undefined]);
+    expect(thinking.temperature).toBeUndefined();
+
+    fetchMock.fn.mockReset();
+    fetchMock.fn
+      .mockResolvedValueOnce(new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "temperature is not supported for this model" } }), { status: 400, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(stream());
+    expect((await provider.complete(req)).text).toBe("ok");
+    expect(JSON.parse(fetchMock.fn.mock.calls[1][1].body).temperature).toBeUndefined();
+  });
+
   it("leaves out the tool list for calls without tools", async () => {
     fetchMock.fn.mockResolvedValue(claudeStream("claude-haiku-5-5", [{ type: "text", text: "" }], [{ index: 0, delta: { type: "text_delta", text: "ok" } }], "end_turn"));
     await provider.complete({ model: "claude-haiku-5-5", system: "s", useTools: true, tools: [], messages: [{ role: "user", text: "review" }] });

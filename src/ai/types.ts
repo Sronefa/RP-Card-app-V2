@@ -87,6 +87,8 @@ export interface CompletionRequest {
   maxTokens?: number;
   /** Phrases a local backend bans while generating. */
   bannedPhrases?: string[];
+  /** Temperature, top-p and min-p; each left out uses the provider's default. */
+  sampling?: { temperature?: number; topP?: number; minP?: number };
   signal?: AbortSignal;
   onText?: (delta: string) => void;
 }
