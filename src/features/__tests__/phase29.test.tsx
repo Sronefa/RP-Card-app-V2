@@ -122,7 +122,7 @@ describe("usage from providers", () => {
 describe("model details in Settings", () => {
   it("are filled from the provider and editable, including whether a model sees images", async () => {
     render(<SettingsView />);
-    fireEvent.click(screen.getByRole("button", { name: "Test and load models" }));
+    fireEvent.click(screen.getByRole("button", { name: "Load models" }));
     await waitFor(() => expect(useAiSettings.getState().settings.modelInfo?.["p/vis"]).toMatchObject({ vision: true, context: 10000, inPrice: 2 }));
     // Adding a model the provider described takes its details.
     fireEvent.change(screen.getByRole("combobox", { name: "Add a model to Nano" }), { target: { value: "blind" } });

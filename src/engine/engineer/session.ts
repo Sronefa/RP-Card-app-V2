@@ -12,7 +12,7 @@ import { formatTokens, meterOf, totalTokens, useUsage } from "../../ai/usage";
 import { ToolInputError } from "../../ai/tools";
 import type { ChatMessage, ToolCall } from "../../ai/types";
 import { complete, isAbort } from "../../cowriter/engine";
-import { deleteChat, engineerChatKey, getRecord, saveRecord } from "../../db/db";
+import { deleteChat, engineerChatKey, getRecord, listCards, saveRecord } from "../../db/db";
 import { useEditor } from "../../editor/store";
 import { newId } from "../../lib/id";
 import { loadSandboxLibs, type SandboxLibs } from "../sandbox/sandbox";
@@ -198,8 +198,13 @@ export const useEngineer = create<EngineerState>((set, get) => {
       }
 
       const preview = engineerHooks.preview ? engineerHooks.preview() : typeof document !== "undefined" ? new EnginePreview() : undefined;
+      const world =
+        record.kind === "character"
+          ? (await listCards(record.projectId).catch(() => [])).find((c) => c.kind === "world")?.card.data
+          : undefined;
       const ctx: EngineerContext = {
         data: record.card.data,
+        world,
         draft: start.config,
         ops: [...start.calls],
         skills,

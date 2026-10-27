@@ -31,6 +31,16 @@ export const jailbreakText = (settings: AiSettings) =>
     .map((p) => p.text.trim())
     .join("\n\n");
 
+/** Tasks that write the engine's code. They get no jailbreak unless the user opts in. */
+export const ENGINEER_MODES: readonly ModeId[] = ["engineer"];
+
+/**
+ * The jailbreak for one task's request. The UI engineer builds code, not fiction, and a jailbreak on
+ * its last message would also break the prompt cache on every round, so it goes without by default.
+ */
+export const jailbreakFor = (settings: AiSettings, mode: ModeId) =>
+  ENGINEER_MODES.includes(mode) && !settings.engineerJailbreak ? "" : jailbreakText(settings);
+
 /** A reusable look for image prompts. */
 export interface ImageStyle {
   id: string;
@@ -92,6 +102,8 @@ export interface AiSettings {
   slopPhrases?: string[];
   /** How hard the UI engineer works; the defaults until the user changes them. */
   engineer?: Partial<EngineerSettings>;
+  /** Send the jailbreak to the UI engineer too, for strict models that refuse screens for dark cards; off unless turned on. */
+  engineerJailbreak?: boolean;
   /** The user's changes to the UI engineer's skills. */
   engineerSkills?: { edited: Record<string, string>; removed: string[] };
   /** Rewrite overused phrases in proposals before they reach the user; on unless turned off. */

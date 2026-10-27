@@ -20,6 +20,7 @@ import { allParts, hasPart, installParts, partsText, searchParts } from "../part
 import { docsIndex, examplesIndex, readDoc, readExample, searchDocsText, skillsIndex, type Skill } from "./knowledge";
 import { findingsText, lintConfig, screenFindings, type Finding } from "./lint";
 import type { EnginePreview, PreviewDevice } from "./preview";
+import { arcText, listLoreText, readLoreText, visualText, type LoreSource } from "./lore";
 import { applyOp, listModulesText, MODULE_FILES, readModuleText } from "./workspace";
 
 const str = (description: string) => ({ type: "string", description });
@@ -66,6 +67,28 @@ export const READ_TOOLS: ToolDef[] = [
   tool(
     "read_light_card",
     "Read the card's light-card state (status tracker, relationship stages, mechanics, NPCs and places) and the values converting it would add. Read it before convert_light_card and tell the user the plan.",
+  ),
+];
+
+/** The story behind the screens: the lorebooks, world pages, arc and visual bible, read on demand. */
+export const LORE_TOOLS: ToolDef[] = [
+  tool(
+    "list_lore",
+    "List every lorebook entry, the card's and the project world's: id, title, kind (NPC, place, item, shop, money, story arc, other), size in tokens, whether it's constant, and its keys.",
+  ),
+  tool(
+    "read_lore",
+    "Read lorebook entries in full: by ids from list_lore, or a search across every entry's title, keys and text. NPCs, places, items and shops come as their world page fields.",
+    obj({
+      ids: { type: "array", items: { type: "string" }, description: 'Entry ids, like ["c3", "w0"]' },
+      query: str("Words to search for instead, like 'harbor shop' or a name"),
+    }),
+  ),
+  tool("read_arc", "Read the story arc: its settings (difficulty, death, pacing…), beats and antagonist. A secret arc shows only its settings."),
+  tool(
+    "read_visual",
+    "Read the Image Studio's visual bible: how each character, place and item looks (signature traits, features, palette, outfits), so screens match the art.",
+    obj({ subject: str("Only this character, place or item, by name") }),
   ),
 ];
 
@@ -371,6 +394,7 @@ export const CARD_TEXT_TOOLS: ToolDef[] = CARD_TOOLS.filter((t) => t.name === "s
 
 export const ENGINEER_TOOLS: ToolDef[] = [
   ...READ_TOOLS,
+  ...LORE_TOOLS,
   ...KNOWLEDGE_TOOLS,
   ...WRITE_TOOLS,
   ...CONVERT_TOOLS,
@@ -389,6 +413,8 @@ export interface SampleState {
 /** What one turn works on. Write tools change `draft` and add to `ops`. */
 export interface EngineerContext {
   data: CardDataV3;
+  /** The project's world card, for a character card in a project that has one. */
+  world?: CardDataV3;
   draft: EngineConfig;
   ops: ToolCall[];
   skills: Skill[];
@@ -439,15 +465,18 @@ function cardText(data: CardDataV3): string {
     data.scenario && `Scenario:\n${cut(data.scenario, 800)}`,
     data.first_mes && `First message:\n${cut(data.first_mes, 1200)}`,
     data.character_book?.entries.length
-      ? `Lorebook entries: ${data.character_book.entries
-          .map((e) => e.comment || e.keys[0])
-          .filter(Boolean)
-          .slice(0, 40)
-          .join(", ")}`
+      ? `Lorebook: ${data.character_book.entries.length} entries. list_lore lists them, read_lore reads them.`
       : "",
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function loreSources(ctx: EngineerContext): LoreSource[] {
+  return [
+    { prefix: "c", label: "The card's lorebook", data: ctx.data },
+    ...(ctx.world ? [{ prefix: "w" as const, label: "The project world's lorebook", data: ctx.world }] : []),
+  ];
 }
 
 function partText(ctx: EngineerContext, id: string): string {
@@ -592,6 +621,14 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
       }
       case "read_card":
         return text(call.id, cardText(ctx.data));
+      case "list_lore":
+        return text(call.id, listLoreText(loreSources(ctx)));
+      case "read_lore":
+        return text(call.id, readLoreText(loreSources(ctx), input));
+      case "read_arc":
+        return text(call.id, arcText(ctx.data));
+      case "read_visual":
+        return text(call.id, visualText(loreSources(ctx), typeof input.subject === "string" ? input.subject : undefined));
       case "list_assets": {
         const kind = typeof input.kind === "string" && input.kind ? input.kind : undefined;
         const list = assetManifest(ctx.data).filter((e) => !kind || e.k === kind);
@@ -813,6 +850,16 @@ export function describeCall(call: ToolCall): string {
       return "Read the card";
     case "read_light_card":
       return "Read the light card";
+    case "list_lore":
+      return "Listed the lorebook";
+    case "read_lore":
+      return Array.isArray(i.ids) && i.ids.length
+        ? `Read ${i.ids.length === 1 ? "a lorebook entry" : `${i.ids.length} lorebook entries`}`
+        : `Searched the lorebook for "${s(i.query)}"`;
+    case "read_arc":
+      return "Read the story arc";
+    case "read_visual":
+      return s(i.subject) ? `Read how ${s(i.subject)} looks` : "Read the visual bible";
     case "list_assets":
       return "Listed the card's art";
     case "request_asset":
