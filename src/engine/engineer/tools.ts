@@ -3,6 +3,7 @@
  * the result on a hidden sandbox page. Writes change only the turn's draft; the finished turn
  * becomes one proposal.
  */
+import { conversionOps, planConversion, planText } from "../convert";
 import YAML from "yaml";
 import type { CardDataV3 } from "../../card";
 import { applyEdit, CARD_TOOLS, describeEdit, isWorldTool, planEdit, ToolInputError, WORLD_TOOLS } from "../../ai/tools";
@@ -59,6 +60,26 @@ export const READ_TOOLS: ToolDef[] = [
   ),
   tool("read_theme", "Read the card theme: the preset, the user's overrides, and the resolved light and dark tokens."),
   tool("read_card", "Read the card's name, description, scenario and first message, for the setting and the characters' names."),
+  tool(
+    "read_light_card",
+    "Read the card's light-card state (status tracker, relationship stages, mechanics, NPCs and places) and the values converting it would add. Read it before convert_light_card and tell the user the plan.",
+  ),
+];
+
+/** Converting a light card. Not a WRITE_TOOLS op: it reads the card, then writes plain set_value ops. */
+export const CONVERT_TOOLS: ToolDef[] = [
+  tool(
+    "convert_light_card",
+    "Turn the light card's tracker, stages and mechanics into engine values, as part of your proposal. Only after the user confirmed the plan from read_light_card in this chat. The tracker is turned off on accept and comes back if the engine is turned off; the stages become tiers of the affection value.",
+    obj(
+      {
+        confirmed: bool("True only when the user said yes to the plan in this chat"),
+        people: bool("Also a value per NPC for where {{user}} stands with them"),
+        places: bool("Also a location value with the places as its options"),
+      },
+      ["confirmed"],
+    ),
+  ),
 ];
 
 export const KNOWLEDGE_TOOLS: ToolDef[] = [
@@ -327,6 +348,7 @@ export const ENGINEER_TOOLS: ToolDef[] = [
   ...READ_TOOLS,
   ...KNOWLEDGE_TOOLS,
   ...WRITE_TOOLS,
+  ...CONVERT_TOOLS,
   ...CARD_WORLD_TOOLS,
   ...CARD_TEXT_TOOLS,
   ...TEST_TOOLS,
@@ -542,6 +564,32 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
       }
       case "read_card":
         return text(call.id, cardText(ctx.data));
+      case "read_light_card":
+        return text(
+          call.id,
+          `${planText(ctx.data, planConversion(ctx.data, { people: true, places: true }))}\n\nThe People and World values are optional. Tell the user the plan in a few lines and ask before calling convert_light_card.`,
+        );
+      case "convert_light_card": {
+        if (input.confirmed !== true)
+          throw new ToolInputError("Ask the user first: tell them the plan from read_light_card and wait for their yes.");
+        const plan = planConversion(ctx.data, {
+          people: input.people === true,
+          places: input.places === true,
+        });
+        // Values the draft already has (from earlier this turn) are skipped.
+        const have = new Set(ctx.draft.vars.map((v) => `${v.group}.${v.name}`.toLowerCase()));
+        plan.values = plan.values.filter((v) => !have.has(`${v.group}.${v.name}`.toLowerCase()));
+        const ops = conversionOps(plan, call.id);
+        if (!ops.length) throw new ToolInputError("There's nothing to convert: no tracker, stages or mechanics values.");
+        for (const op of ops) {
+          ctx.draft = applyOp(ctx.draft, op).config;
+          ctx.ops.push(op);
+        }
+        return text(
+          call.id,
+          `Converted: ${plan.values.length} values${plan.stages ? `, and the stages become tiers of ${plan.stages.variable} on accept` : ""}. ${plan.notes.join(" ")} Build on it (a panel, the hub) or stop to let the user review the proposal.`,
+        );
+      }
       case "search_docs":
         return text(call.id, searchDocsText(String(input.query ?? "")));
       case "read_doc": {
@@ -722,6 +770,10 @@ export function describeCall(call: ToolCall): string {
       return "Read the theme";
     case "read_card":
       return "Read the card";
+    case "read_light_card":
+      return "Read the light card";
+    case "convert_light_card":
+      return "Converted the light card";
     case "search_docs":
       return `Searched the docs for "${s(i.query)}"`;
     case "read_doc":

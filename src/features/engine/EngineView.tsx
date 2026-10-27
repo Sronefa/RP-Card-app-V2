@@ -31,6 +31,8 @@ import { ModulesPage } from "./ModulesPage";
 import { PlaytestPage } from "./PlaytestPage";
 import { SandboxPage } from "./SandboxPage";
 import { useEngineer } from "../../engine/engineer/session";
+import { turnEngineOff } from "../../engine/convert";
+import { readMechanics } from "../../editor/mechanics";
 import { nameProblem, summary, VarEditor } from "./VarEditor";
 
 const TABS = { vars: "Variables", modules: "Modules", look: "Look", engineer: "Engineer", test: "Test", sandbox: "Sandbox", playtest: "Playtest" } as const;
@@ -67,6 +69,18 @@ function EngineBody() {
     toast(`Imported ${tracker.fields.length} values from the status tracker and turned the tracker off`);
   };
 
+  const light = (tracker?.fields.length ?? 0) > 0 || readMechanics(data).length > 0;
+  /** Turns the engine on empty and has the engineer plan the conversion; it asks before changing anything. */
+  const convert = async () => {
+    save(newEngine());
+    setTab("engineer");
+    const engineer = useEngineer.getState();
+    await engineer.load(useEditor.getState().record!.id);
+    await engineer.send(
+      "Convert this light card into an engine card. Read it first, tell me the plan, and ask me before converting.",
+    );
+  };
+
   return (
     <div className="flex min-h-full flex-col">
       <div className="sticky top-0 z-10 border-b border-border bg-surface/95 pb-3 backdrop-blur">
@@ -90,6 +104,7 @@ function EngineBody() {
               <Button variant="primary" onClick={() => save({ ...newEngine(), vars: [starterVar()] })}>
                 Turn on the engine
               </Button>
+              {light && <Button onClick={() => void convert()}>✦ Convert with the UI engineer</Button>}
               {tracker && tracker.fields.length > 0 && (
                 <Button onClick={importTracker}>Start from the status tracker</Button>
               )}
@@ -142,6 +157,7 @@ function EngineBody() {
         <div className="flex flex-col gap-3">
           <p className="text-sm">
             This takes the engine's script, lorebook entries and regex scripts out of the card. Undo brings them back.
+            {config?.light?.tracker && " The card was converted from a light card, so its status tracker comes back."}
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setConfirmOff(false)}>
@@ -150,7 +166,7 @@ function EngineBody() {
             <Button
               variant="danger"
               onClick={() => {
-                save(undefined);
+                useEditor.getState().replaceData(turnEngineOff(useEditor.getState().record!.card.data));
                 setConfirmOff(false);
               }}
             >

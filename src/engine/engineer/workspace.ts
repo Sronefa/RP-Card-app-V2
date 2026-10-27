@@ -233,6 +233,15 @@ export function applyOp(config: EngineConfig, call: ToolCall): { config: EngineC
       const label = [group.trim(), name].filter(Boolean).join(".");
       return { config: owner.put(vars), summary: `${old ? "Change" : "Add"} the value ${label}` };
     }
+    case "keep_light_backup": {
+      // Written by convert_light_card, not called by the model directly.
+      const tracker = (input.tracker ?? null) as NonNullable<EngineConfig["light"]>["tracker"];
+      const stages = (input.stages ?? null) as NonNullable<EngineConfig["light"]>["stages"];
+      return {
+        config: { ...config, light: { tracker, stages } },
+        summary: tracker ? "Keep the status tracker, to bring back if the engine is turned off" : "Turn the stages into tiers",
+      };
+    }
     case "remove_value": {
       const owner = valuesOwner(config, input.module);
       const group = str(input, "group", true) ?? "";
