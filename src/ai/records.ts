@@ -14,6 +14,8 @@ export interface CowriterSettings {
   suggestions: SuggestionLevel;
   /** Prompt-library presets layered on top of the co-writer's own prompt. */
   presetIds: string[];
+  /** "Built for the Immersive Engine": the co-writer writes for an MVU engine card from the start. */
+  engineMode?: boolean;
 }
 
 export const DEFAULT_COWRITER: CowriterSettings = {

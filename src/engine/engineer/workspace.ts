@@ -3,7 +3,7 @@
  * tools make. Edits are kept as the tool calls themselves, so a finished turn can be shown as one
  * proposal and replayed onto the engine as it is when the user accepts it (one undo step).
  */
-import { ToolInputError } from "../../ai/tools";
+import { ToolInputError } from "../../ai/toolError";
 import type { ToolCall } from "../../ai/types";
 import { BUILT_IN_SCREENS, coreModules, modulesOf, newModule } from "../modules/compile";
 import { addModules, cleanModule } from "../modules/pack";

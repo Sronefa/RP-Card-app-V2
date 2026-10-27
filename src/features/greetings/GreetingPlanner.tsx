@@ -1,3 +1,4 @@
+import { readEngine } from "../../engine/sheet";
 import { useEffect, useRef, useState } from "react";
 import { readGreetingTags, SORT_GREETINGS } from "../../ai/interviewTools";
 import { greetingFillRequest, greetingSortRequest, systemPrompt } from "../../ai/prompts";
@@ -69,7 +70,8 @@ export function GreetingPlanner({ onClose }: { onClose: () => void }) {
 
   function fill(cells: { mood: string; stage: string; place?: string }[]) {
     onClose();
-    void askCowriter({ send: greetingFillRequest(cells) });
+    const engine = !!readEngine(useEditor.getState().record!.card.data);
+    void askCowriter({ send: greetingFillRequest(cells, engine) });
   }
 
   /** Spreads the picks over the grid instead of taking one row. */

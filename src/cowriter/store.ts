@@ -11,8 +11,11 @@ import { applyEdit, CARD_TOOLS, describeEdit, LORE_TOOLS, planEdit, ToolInputErr
 import type { ChatMessage, ModeId, ToolCall, ToolDef, ToolResult } from "../ai/types";
 import { aKind, KINDS, plainFields, type TypedKind } from "../editor/world";
 import { useUsage } from "../ai/usage";
-import { complete, gatherContext, isAbort, partsText } from "./engine";
+import { complete, gatherContext, isAbort, partsText, projectSettings } from "./engine";
+import { ENGINE_TOOLS } from "../ai/engineTools";
+import { readEngine } from "../engine/sheet";
 import { addCall } from "./worldScan";
+import { logChange } from "./changeLog";
 
 /** Most model calls in one turn (each tool round is one call). */
 const MAX_ROUNDS = 6;
@@ -133,6 +136,8 @@ function createChatStore(channel: Channel) {
         useUsage.getState().startTurn("cowriter");
         try {
           const parts = await gatherContext(record);
+          const engineAware = !!readEngine(record.card.data) || !!(await projectSettings(record.projectId)).settings.engineMode;
+          const tools = engineAware ? [...channel.tools, ...ENGINE_TOOLS] : channel.tools;
           // Decisions made while the context was gathered are in the latest chat.
           chat = get().chat?.cardId === chat.cardId ? get().chat! : chat;
           const composed = composeUserMessage(request, parts, chat.sentContext, chat.unreported);
@@ -148,7 +153,7 @@ function createChatStore(channel: Channel) {
             const result = await complete(channel.mode, {
               system: systemPrompt(channel.mode),
               messages: chat.messages,
-              tools: channel.tools,
+              tools,
               signal: controller.signal,
               onText: (delta) => set({ streaming: get().streaming + delta }),
             });
@@ -260,7 +265,10 @@ function createChatStore(channel: Channel) {
             // Re-plan against the card as it is now: earlier edits may have changed it.
             const edit = planEdit(editor.record.card.data, proposal.call);
             summary = describeEdit(edit);
-            if (accept && edit.kind !== "pitch") editor.replaceData(applyEdit(editor.record.card.data, edit));
+            if (accept && edit.kind !== "pitch") {
+              editor.replaceData(applyEdit(editor.record.card.data, edit));
+              void logChange(editor.record.id, "cowriter", [summary]);
+            }
           } catch (e) {
             if (!(e instanceof ToolInputError)) throw e;
             if (accept) {

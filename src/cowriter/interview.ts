@@ -23,7 +23,7 @@ import {
   BIBLE_REQUEST,
   cardContext,
   digDeeperRequest,
-  DRAFT_GROUPS,
+  draftGroups,
   draftRequest,
   draftSource,
   gapRequest,
@@ -33,6 +33,7 @@ import {
 } from "../ai/prompts";
 import { newInterview, type InterviewRecord, type InterviewStage } from "../ai/records";
 import { applyEdit, DRAFT_TOOLS, planEdit, ToolInputError } from "../ai/tools";
+import { ENGINE_TOOLS } from "../ai/engineTools";
 import type { ChatMessage, CompletionResult, ToolCall, ToolResult } from "../ai/types";
 import type { CardDataV3 } from "../card";
 import { deleteInterview, getInterview, saveInterview, type CardRecord } from "../db/db";
@@ -205,17 +206,18 @@ export const useInterview = create<InterviewState>((set, get) => {
   }
 
   async function draftStep(iv: InterviewRecord, record: CardRecord): Promise<InterviewRecord> {
-    const { settings, presets } = await projectSettings(record.projectId);
+    const { settings, presets, guide } = await projectSettings(record.projectId);
     const source = draftSource(iv.bible, iv.rounds, iv.facts);
-    for (const [i, group] of DRAFT_GROUPS.entries()) {
+    const groups = draftGroups(!!settings.engineMode);
+    for (const [i, group] of groups.entries()) {
       if (iv.draft.groups.includes(group.id)) continue;
-      set({ status: `Drafting the ${group.label} (${i + 1} of ${DRAFT_GROUPS.length})…`, streaming: "" });
+      set({ status: `Drafting the ${group.label} (${i + 1} of ${groups.length})…`, streaming: "" });
       const card = cardContext(withDraft(record.card.data, iv.draft.calls), record.kind);
-      const text = `<settings>\n${settingsContext(settings, presets)}\n</settings>\n\n${draftRequest(group.id, record.kind, source, card)}`;
+      const text = `<settings>\n${settingsContext(settings, presets, guide)}\n</settings>\n\n${draftRequest(group.id, record.kind, source, card, settings.engineMode)}`;
       const result = await complete("draft", {
         system: systemPrompt("draft"),
         messages: [{ role: "user", text }],
-        tools: DRAFT_TOOLS,
+        tools: settings.engineMode ? [...DRAFT_TOOLS, ...ENGINE_TOOLS] : DRAFT_TOOLS,
         signal: controller?.signal,
         onText,
       });

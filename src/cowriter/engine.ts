@@ -2,8 +2,10 @@
  * Shared plumbing for every co-writer session: the model for a mode, the tool fallback, and the
  * context about the card and project that goes into user messages.
  */
+import { changesText, readChanges } from "./changeLog";
 import { DEFAULT_COWRITER } from "../ai/records";
-import { bibleContext, cardContext, personasContext, settingsContext, worldContext } from "../ai/prompts";
+import { skillsWith } from "../engine/engineer/knowledge";
+import { bibleContext, cardContext, ENGINE_GUIDE, personasContext, settingsContext, worldContext } from "../ai/prompts";
 import { createProvider, jailbreakText, modelInfo, modelKey, resolveModel, useAiSettings } from "../ai/settings";
 import { scopeOf, useUsage } from "../ai/usage";
 import { useEditor } from "../editor/store";
@@ -94,8 +96,11 @@ export async function projectSettings(projectId: string) {
   const project = await getProject(projectId);
   const settings = { ...DEFAULT_COWRITER, ...project?.cowriter };
   await useAiSettings.getState().load();
-  const presets = useAiSettings.getState().settings.presets.filter((p) => p.kind !== "jailbreak" && settings.presetIds.includes(p.id));
-  return { project, settings, presets };
+  const ai = useAiSettings.getState().settings;
+  const presets = ai.presets.filter((p) => p.kind !== "jailbreak" && settings.presetIds.includes(p.id));
+  // The engine card guide is a UI engineer skill, with the user's edits.
+  const guide = skillsWith(ai.engineerSkills).find((s) => s.id === "engine-card-writing")?.text ?? ENGINE_GUIDE;
+  return { project, settings, presets, guide };
 }
 
 export interface ContextPart {
@@ -106,16 +111,20 @@ export interface ContextPart {
 
 /** Everything the co-writer should know about the card and its project, in parts. */
 export async function gatherContext(record: CardRecord): Promise<ContextPart[]> {
-  const { project, settings, presets } = await projectSettings(record.projectId);
+  const { project, settings, presets, guide } = await projectSettings(record.projectId);
   const world = record.kind === "character" ? (await listCards(record.projectId)).find((c) => c.kind === "world") : undefined;
   const personas = (await listPersonas()).filter((p) => project?.personaIds.includes(p.id));
   const bible = (await getInterview(record.id))?.bible;
+  const engineer = changesText(await readChanges(record.id), "engineer");
   return [
-    { key: "settings", title: "Project settings", text: settingsContext(settings, presets) },
+    { key: "settings", title: "Project settings", text: settingsContext(settings, presets, guide) },
     ...(bible?.trim() ? [{ key: "bible", title: "Story bible", text: bibleContext(bible) }] : []),
     { key: "card", title: "The card as it is now", text: cardContext(record.card.data, record.kind) },
     ...(world ? [{ key: "world", title: "The project's world", text: worldContext(world) }] : []),
     ...(personas.length ? [{ key: "personas", title: "The user's personas", text: personasContext(personas) }] : []),
+    ...(engineer
+      ? [{ key: "engineer_changes", title: "What the UI engineer changed (the user accepted these)", text: engineer }]
+      : []),
   ];
 }
 

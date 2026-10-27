@@ -10,6 +10,7 @@ import { coverageRequest, findUncovered } from "./coverage";
 import { constantTokens } from "./arc";
 import { entryTitle, isRegexKey, regexError } from "./lorebook";
 import { findSlop, slopRequest } from "./slop";
+import { engineReadyIssues } from "./engineReady";
 
 export type IssueLevel = "error" | "warning" | "tip";
 
@@ -17,7 +18,8 @@ export type IssueLevel = "error" | "warning" | "tip";
 export type IssueTarget =
   | { section: "editor"; group: GroupId }
   | { section: "lorebook"; entry?: number }
-  | { section: "assets" };
+  | { section: "assets" }
+  | { section: "engine" };
 
 export interface Issue {
   level: IssueLevel;
@@ -26,7 +28,7 @@ export interface Issue {
   /** Only the user can fix it; the co-writer can't (images, tags, asset files). */
   manual?: boolean;
   /** Overused phrasing or a name without a lorebook entry; other issues come from the checks below. */
-  kind?: "slop" | "coverage";
+  kind?: "slop" | "coverage" | "engine";
   /** What the Fix button asks the co-writer, when it isn't the message itself. */
   request?: string;
   /** For a name without a lorebook entry: the name, so an empty entry can be added for it. */
@@ -159,6 +161,9 @@ export function checkCard(record: CardRecord, options: CheckOptions = {}): Issue
   for (const [type, count] of mains)
     if (count > 1) add("warning", `${count} ${type} assets are named "main". Only one per type should be.`, { section: "assets" });
 
+  // Engine-ready
+  issues.push(...engineReadyIssues(d));
+
   // Writing quality
   if (options.slopPhrases)
     for (const hit of findSlop(d, options.slopPhrases))
@@ -216,7 +221,7 @@ export function cardHealth(issues: Issue[]): Health {
   const warnings = count((i) => i.level === "warning");
   const slop = count((i) => i.kind === "slop");
   const uncovered = count((i) => i.kind === "coverage");
-  const tips = count((i) => i.level === "tip" && !i.kind);
+  const tips = count((i) => i.level === "tip" && (!i.kind || i.kind === "engine"));
   const penalty =
     errors * 15 + warnings * 6 + Math.min(tips * 2, 10) + Math.min(slop * 3, 20) + Math.min(uncovered * 3, 15);
   return { score: Math.max(0, 100 - penalty), problems: errors + warnings, slop, uncovered, tips };

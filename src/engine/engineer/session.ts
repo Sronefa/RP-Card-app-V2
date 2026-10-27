@@ -4,6 +4,7 @@
  * changed becomes one proposal. Accepting replays the edits onto the engine as it is then, in one
  * save, so one undo takes it all back.
  */
+import { changesText, logChange, readChanges } from "../../cowriter/changeLog";
 import { create } from "zustand";
 import { engineerSettings, modelInfo, resolveModel, useAiSettings } from "../../ai/settings";
 import { formatTokens, meterOf, totalTokens, useUsage } from "../../ai/usage";
@@ -50,6 +51,8 @@ export interface EngineerChat {
   sample?: SampleState;
   /** Decisions the engineer hasn't been told about. */
   unreported: string[];
+  /** When the engineer last saw the co-writer's changes to the card. */
+  changesSeen?: number;
   updatedAt: number;
 }
 
@@ -155,6 +158,8 @@ export const useEngineer = create<EngineerState>((set, get) => {
       const open = chat.proposals.find((p) => p.status === "pending");
       let start: { config: EngineConfig; calls: ToolCall[] } = { config, calls: [] };
       const notes = [...chat.unreported];
+      const cowriter = changesText(await readChanges(record.id), "cowriter", chat.changesSeen ?? 0);
+      if (cowriter) notes.push(`The co-writer changed the card since your last turn (the user accepted these):\n${cowriter}`);
       if (!shots)
         notes.push(
           `No screenshots this turn (${blind ? "this model can't see images" : "the user turned them off"}): render_preview sends a text layout report instead. Check its outline, sizes and problem lists carefully.`,
@@ -198,6 +203,7 @@ export const useEngineer = create<EngineerState>((set, get) => {
         messages: [...withoutOldImages(chat.messages), { role: "user", text, display: request }],
         proposals: chat.proposals.map((p) => (p === open ? { ...p, status: "replaced" } : p)),
         unreported: [],
+        changesSeen: Date.now(),
       });
 
       controller = new AbortController();
@@ -289,8 +295,8 @@ export const useEngineer = create<EngineerState>((set, get) => {
             .getState()
             .addTurn(
               record.id,
-              `The UI engineer added ${n === 1 ? "this" : "these"} to the world pages while working on: ${request}`,
-              `From the UI engineer: ${n === 1 ? "an addition" : `${n} additions`} to the world pages`,
+              `The UI engineer proposed ${n === 1 ? "this change" : "these changes"} to the card while working on: ${request}`,
+              `From the UI engineer: ${n === 1 ? "a change" : `${n} changes`} to the card`,
               [{ text: "", toolCalls: ctx.cardCalls }],
             )
             .catch(() => undefined);
@@ -298,7 +304,7 @@ export const useEngineer = create<EngineerState>((set, get) => {
             ...(get().chat?.cardId === chat.cardId ? get().chat! : chat),
             unreported: [
               ...(get().chat?.unreported ?? []),
-              `Your ${n === 1 ? "world addition is" : `${n} world additions are`} waiting for the user in the co-writer chat.`,
+              `Your ${n === 1 ? "card change is" : `${n} card changes are`} waiting for the user in the co-writer chat.`,
             ],
           });
         }
@@ -323,6 +329,7 @@ export const useEngineer = create<EngineerState>((set, get) => {
         try {
           if (!data || !config) throw new ToolInputError("The engine is off.");
           editor.replaceData(applyEngine(data, replay(config, proposal.calls).config));
+          if (editor.record) void logChange(editor.record.id, "engineer", proposal.summaries);
         } catch (e) {
           if (!(e instanceof ToolInputError)) throw e;
           status = "failed";

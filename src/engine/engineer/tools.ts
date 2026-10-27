@@ -5,7 +5,7 @@
  */
 import YAML from "yaml";
 import type { CardDataV3 } from "../../card";
-import { applyEdit, describeEdit, isWorldTool, planEdit, ToolInputError, WORLD_TOOLS } from "../../ai/tools";
+import { applyEdit, CARD_TOOLS, describeEdit, isWorldTool, planEdit, ToolInputError, WORLD_TOOLS } from "../../ai/tools";
 import type { ToolCall, ToolDef, ToolResult } from "../../ai/types";
 import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { SandboxLibs } from "../sandbox/sandbox";
@@ -314,7 +314,23 @@ export const CARD_WORLD_TOOLS: ToolDef[] = WORLD_TOOLS.filter((t) => isWorldTool
   description: `${t.description} It goes to the user as a proposal in the co-writer chat when your turn ends.`,
 }));
 
-export const ENGINEER_TOOLS: ToolDef[] = [...READ_TOOLS, ...KNOWLEDGE_TOOLS, ...WRITE_TOOLS, ...CARD_WORLD_TOOLS, ...TEST_TOOLS];
+/**
+ * Card text the engine needs (a greeting that sets the scene for a value, a line in the description
+ * about the status panel) goes to the co-writer chat as a proposal too, so the user sees it there.
+ */
+export const CARD_TEXT_TOOLS: ToolDef[] = CARD_TOOLS.filter((t) => t.name === "set_field" || t.name === "patch_field").map((t) => ({
+  ...t,
+  description: `${t.description} Card text only, never engine values or numbers the engine tracks. It goes to the user as a proposal in the co-writer chat when your turn ends.`,
+}));
+
+export const ENGINEER_TOOLS: ToolDef[] = [
+  ...READ_TOOLS,
+  ...KNOWLEDGE_TOOLS,
+  ...WRITE_TOOLS,
+  ...CARD_WORLD_TOOLS,
+  ...CARD_TEXT_TOOLS,
+  ...TEST_TOOLS,
+];
 export const WRITE_NAMES = new Set(WRITE_TOOLS.map((t) => t.name));
 
 export interface SampleState {
@@ -607,7 +623,9 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
       case "add_npc":
       case "add_place":
       case "add_item":
-      case "add_shop": {
+      case "add_shop": 
+      case "set_field":
+      case "patch_field": {
         // Checked against the card with this turn's earlier additions, so names don't repeat.
         const calls = (ctx.cardCalls ??= []);
         const data = calls.reduce((d, c) => applyEdit(d, planEdit(d, c)), ctx.data);
