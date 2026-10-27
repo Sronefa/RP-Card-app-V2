@@ -26,6 +26,7 @@ export function WritingStyle() {
 
   return (
     <>
+      <StyleNotes />
       <section className="flex flex-col gap-3" aria-label="Style samples">
         <h2 className="font-medium">Style samples</h2>
         <p className="text-sm text-ink-muted">
@@ -122,5 +123,47 @@ export function WritingStyle() {
         )}
       </section>
     </>
+  );
+}
+
+/** The user's standing preferences, learned from feedback and hand edits or written here. */
+function StyleNotes() {
+  const { settings, update } = useAiSettings();
+  const notes = settings.styleNotes ?? [];
+  const [note, setNote] = useState("");
+  const add = () => {
+    if (note.trim() && !notes.includes(note.trim())) void update({ styleNotes: [...notes, note.trim()] });
+    setNote("");
+  };
+  return (
+    <section className="flex flex-col gap-3" aria-label="Style notes">
+      <h2 className="font-medium">Style notes</h2>
+      <p className="text-sm text-ink-muted">
+        Preferences the co-writer follows in everything it writes, in every project. It offers new ones when you keep giving the same
+        feedback or change its edits by hand.
+      </p>
+      <ul className="flex flex-col gap-2">
+        {notes.map((n) => (
+          <li key={n} className="flex items-center gap-2 rounded-lg bg-surface-raised p-2 text-sm">
+            <span className="min-w-0 flex-1">{n}</span>
+            <Button variant="ghost" aria-label={`Delete note: ${n}`} onClick={() => void update({ styleNotes: notes.filter((x) => x !== n) })}>
+              Delete
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-2">
+        <TextInput
+          aria-label="New style note"
+          placeholder="e.g. Never describe eye color"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <Button disabled={!note.trim()} onClick={add}>
+          Add note
+        </Button>
+      </div>
+    </section>
   );
 }

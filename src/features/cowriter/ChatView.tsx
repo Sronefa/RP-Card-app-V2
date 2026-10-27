@@ -10,6 +10,8 @@ import { properNouns, uncoveredIn } from "../../editor/coverage";
 import { scanNames } from "../../cowriter/worldScan";
 import { ProposalCard } from "./ProposalCard";
 import { textOf } from "../../cowriter/polish";
+import { variantKind } from "../../cowriter/variants";
+import { LearnPrompt } from "./LearnPrompt";
 import { useRun } from "./useRun";
 import { UsageMeter } from "../usage/UsageMeter";
 
@@ -104,6 +106,12 @@ export function ChatView({
                     }}
                     onRetype={(kind) => retype(p.id, kind)}
                     onPolish={!busy && textOf(p.call) ? () => void store.getState().polish(p.id) : undefined}
+                    busy={busy}
+                    onRevise={textOf(p.call) ? (f) => void store.getState().revise(p.id, f) : undefined}
+                    onReason={(r) => store.getState().giveReason(p.id, r)}
+                    onVariants={variantKind(p.call) ? () => void store.getState().writeVariants(p.id) : undefined}
+                    onRank={() => void store.getState().rankVariants(p.id)}
+                    onUseVariant={(text, label) => store.getState().useVariant(p.id, text, label)}
                     onMore={
                       moreLikeThis && p.call.name === "add_lore_entry" && !busy
                         ? () => void send(`More like edit ${p.number} ("${String(p.call.input.title)}").`)
@@ -125,6 +133,7 @@ export function ChatView({
             {error}
           </p>
         )}
+        {!busy && chat && <LearnPrompt chat={chat} data={record.card.data} onLearned={(id) => store.getState().markLearned(id)} />}
         {!busy && chat && <MentionedNames chat={chat} data={record.card.data} addTurn={addTurn} cardId={record.id} />}
         <div ref={end} />
       </div>
