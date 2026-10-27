@@ -3,6 +3,8 @@ import { withCowriterDefaults, type CowriterSettings, type DarkLevel, type Prose
 import { useAiSettings } from "../../ai/settings";
 import { Button, Dialog, TextInput } from "../../components/ui";
 import { getProject, saveProject } from "../../db/db";
+import { useEditor } from "../../editor/store";
+import { cardSampleIds, matchedPacks, packsWith, writeCardSamples } from "../../cowriter/style";
 
 const DARK_LEVELS: { value: Exclude<DarkLevel, "off">; label: string; help: string }[] = [
   { value: "dark", label: "Dark", help: "Violence, cruelty, moral rot and bleak outcomes written in where they fit." },
@@ -140,6 +142,8 @@ export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: s
             </div>
           </details>
 
+          <StyleAnchors projectId={projectId!} settings={settings} change={change} />
+
           <Segmented
             label="Interview depth"
             help="How many rounds of questions the interview asks before drafting."
@@ -181,6 +185,85 @@ export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: s
         </div>
       )}
     </Dialog>
+  );
+}
+
+/** Style samples for the project and the open card, craft packs, and the reference examples. */
+function StyleAnchors({ projectId, settings, change }: { projectId: string; settings: CowriterSettings; change: (patch: Partial<CowriterSettings>) => void }) {
+  const ai = useAiSettings((s) => s.settings);
+  const record = useEditor((s) => s.record);
+  const card = record?.projectId === projectId ? record : undefined;
+  const samples = ai.styleSamples ?? [];
+  const packs = packsWith(ai.craftPacks);
+  const matched = new Set(matchedPacks(settings, packs).map((p) => p.id));
+  const projectIds = settings.styleSampleIds ?? [];
+  const cardIds = card ? cardSampleIds(card.card.data) : [];
+  const toggle = (list: string[], id: string, on: boolean) => (on ? [...list, id] : list.filter((x) => x !== id));
+  return (
+    <details className="rounded-xl border border-border p-3">
+      <summary className="cursor-pointer font-medium">Style samples and craft packs</summary>
+      <div className="mt-3 flex flex-col gap-4 text-sm">
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1 font-medium">Style samples</legend>
+          {samples.length === 0 && <p className="text-ink-muted">Add passages you love in Settings → Style samples.</p>}
+          {samples.map((s) => (
+            <div key={s.id} className="flex flex-wrap items-center gap-3">
+              <span className="min-w-0 flex-1 truncate">{s.label}</span>
+              <label className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  aria-label={`${s.label} for this project`}
+                  checked={projectIds.includes(s.id)}
+                  onChange={(e) => change({ styleSampleIds: toggle(projectIds, s.id, e.target.checked) })}
+                />
+                Project
+              </label>
+              {card && (
+                <label className="flex items-center gap-1 text-xs">
+                  <input
+                    type="checkbox"
+                    className="size-4"
+                    aria-label={`${s.label} for this card`}
+                    checked={cardIds.includes(s.id)}
+                    onChange={(e) => useEditor.getState().replaceData(writeCardSamples(card.card.data, toggle(cardIds, s.id, e.target.checked)))}
+                  />
+                  This card
+                </label>
+              )}
+            </div>
+          ))}
+        </fieldset>
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1 font-medium">Craft packs</legend>
+          {packs.map((p) => (
+            <label key={p.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="size-4"
+                disabled={matched.has(p.id)}
+                checked={matched.has(p.id) || (settings.craftPackIds ?? []).includes(p.id)}
+                onChange={(e) => change({ craftPackIds: toggle(settings.craftPackIds ?? [], p.id, e.target.checked) })}
+              />
+              {p.name}
+              {matched.has(p.id) && <span className="text-xs text-ink-muted">from the genre or tone</span>}
+            </label>
+          ))}
+        </fieldset>
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4"
+            checked={settings.referenceExamples !== false}
+            onChange={(e) => change({ referenceExamples: e.target.checked ? undefined : false })}
+          />
+          <span>
+            Show the co-writer reference examples
+            <span className="block text-xs text-ink-muted">A strong greeting, description and example dialogue as the quality target (about 400 tokens per chat).</span>
+          </span>
+        </label>
+      </div>
+    </details>
   );
 }
 
