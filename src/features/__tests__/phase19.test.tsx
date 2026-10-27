@@ -28,6 +28,8 @@ async function openSandbox() {
   fireEvent.click(screen.getByRole("button", { name: "Turn on the engine" }));
   fireEvent.click(screen.getByRole("tab", { name: "Sandbox" }));
   const frame = (await screen.findByTitle("Sandbox")) as HTMLIFrameElement;
+  // Hot reload settles the card half a second after an edit and starts the page over; let it, so reports aren't wiped.
+  await act(() => new Promise((r) => setTimeout(r, 600)));
   const sent: unknown[] = [];
   vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation((m: unknown) => void sent.push((m as { cfCommand: unknown }).cfCommand));
   const report = (cfSandbox: unknown) =>
@@ -89,7 +91,7 @@ describe("engine sandbox", () => {
   it("puts errors over the frame and logs actions", async () => {
     const { report } = await openSandbox();
     report({ kind: "error", source: "TH-message--1--0", message: "Blocked a network request to https://cdn.example.com/x.js.", line: 7, column: 1, code: "<script src=…>", stack: "" });
-    expect(screen.getByRole("alert")).toHaveTextContent("An error in TH-message--1--0, line 7");
+    expect(await screen.findByRole("alert")).toHaveTextContent("An error in TH-message--1--0, line 7");
     report({ kind: "log", source: "TH-message--1--0", action: "triggerSlash", detail: "/send hi" });
     fireEvent.click(screen.getByRole("tab", { name: "Actions (1)" }));
     expect(screen.getByRole("list", { name: "Action log" })).toHaveTextContent("triggerSlash");

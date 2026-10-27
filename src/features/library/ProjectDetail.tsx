@@ -20,7 +20,8 @@ import {
 import { embeddedPath } from "../../card";
 import { useEditor } from "../../editor/store";
 import { CARD_FILE_ACCEPT, exportRecord, importCard, kindOf, type ExportFormat } from "../../lib/cardFiles";
-import { pickFiles, readFileBytes } from "../../lib/files";
+import { pickFiles, readFileBytes, safeFileName, saveFile } from "../../lib/files";
+import { BUNDLE_EXT, exportBundle } from "../../lib/bundle";
 import { REMIXES, remixRequest, type RemixKind } from "../../ai/prompts";
 import { askCowriter } from "../../cowriter/ask";
 import { useInterview } from "../../cowriter/interview";
@@ -145,6 +146,22 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         warnings.push("SillyTavern ignores images inside PNG cards, so export as CHARX to keep them");
       if (warnings) toast(warnings.length ? `Exported with notes: ${warnings.join("; ")}` : "Exported");
       if (warnings && project?.guide?.on) await markStep(projectId, "export", true).then((p) => p && setProject(p));
+    } catch (e) {
+      toast(`Export failed: ${(e as Error).message}`, "error");
+    }
+  }
+
+  async function exportProject() {
+    await useEditor.getState().flush();
+    try {
+      const bytes = await exportBundle(projectId);
+      if (!bytes) return;
+      const saved = await saveFile(`${safeFileName(project!.name, "project")}.${BUNDLE_EXT}`, bytes, {
+        filterName: "CardForge project",
+        extensions: [BUNDLE_EXT],
+        mime: "application/zip",
+      });
+      if (saved) toast(`Exported ${project!.name}`);
     } catch (e) {
       toast(`Export failed: ${(e as Error).message}`, "error");
     }
@@ -289,6 +306,17 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         <p className="text-sm text-ink-muted">Content mode, tone, genre and how proactive the co-writer is in this project.</p>
         <Button className="self-start" onClick={() => setStyling(true)}>
           Co-writer settings
+        </Button>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Move this project</h2>
+        <p className="text-sm text-ink-muted">
+          One file with every card, lorebook, world page, engine, asset, persona, story bible and the history, to open on
+          another device with Import project.
+        </p>
+        <Button className="self-start" onClick={() => void exportProject()}>
+          Export project
         </Button>
       </section>
 

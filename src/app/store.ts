@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { GroupId } from "../features/editor/fields";
 import type { SectionId } from "./sections";
 
-export type LibraryTab = "projects" | "personas";
+export type LibraryTab = "projects" | "personas" | "libraries";
 export type CowriterTab = "chat" | "interview";
 
 interface UiState {

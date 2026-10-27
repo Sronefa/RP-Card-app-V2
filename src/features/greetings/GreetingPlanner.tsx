@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { readGreetingTags, SORT_GREETINGS } from "../../ai/interviewTools";
 import { greetingFillRequest, greetingSortRequest, systemPrompt } from "../../ai/prompts";
 import { Button, Dialog, TextInput } from "../../components/ui";
+import { FromLibrary, SaveToLibrary } from "../library/LibraryButtons";
 import { askCowriter } from "../../cowriter/ask";
 import { complete, isAbort } from "../../cowriter/engine";
 import {
@@ -110,6 +111,23 @@ export function GreetingPlanner({ onClose }: { onClose: () => void }) {
             {error}
           </p>
         )}
+
+        <div className="flex flex-wrap gap-2">
+          <SaveToLibrary
+            kind="greetings"
+            name={`${data.name || "Card"} grid`}
+            label="Save the grid"
+            payload={() => ({ moods: plan.moods, places: plan.places, stages: plan.stages })}
+          />
+          <FromLibrary
+            kind="greetings"
+            label="Use a saved grid"
+            onUse={(item) => {
+              update({ ...plan, moods: item.payload.moods, places: item.payload.places, stages: item.payload.stages });
+              setPlace("");
+            }}
+          />
+        </div>
 
         <label className="flex flex-col gap-1 text-sm">
           Place

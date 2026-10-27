@@ -10,6 +10,8 @@ import { fillSheet } from "../../images/fill";
 import { writePrompt } from "../../images/prompt";
 import { useImageQueue } from "../../images/queue";
 import { GeneratePanel } from "./GeneratePanel";
+import { FromLibrary, SaveToLibrary } from "../library/LibraryButtons";
+import { shotsFor, type Payloads } from "../../lib/libraries";
 import {
   customShot,
   duplicateWith,
@@ -224,7 +226,23 @@ function SheetEditor({ subject }: { subject: Subject }) {
         <Button variant="primary" disabled={busy} onClick={() => void fill()}>
           {busy ? "Filling…" : questions.length ? "✦ Answer and fill" : "✦ Fill from the card"}
         </Button>
-        <span className="text-xs text-ink-muted">{gaps ? `${gaps} empty fields` : "Every field is filled"}</span>
+        <span className="flex-1 text-xs text-ink-muted">{gaps ? `${gaps} empty fields` : "Every field is filled"}</span>
+        <SaveToLibrary
+          kind="sheet"
+          name={subject.name}
+          payload={() => {
+            const { reference: _r, referenceSeed: _s, ...rest } = sheetOf(useEditor.getState().record!.card.data, subject);
+            return rest;
+          }}
+        />
+        <FromLibrary
+          kind="sheet"
+          onUse={(item) => {
+            if (item.payload.kind !== sheet.kind) return toast(`${item.name} is a ${item.payload.kind} sheet; this one is a ${sheet.kind}.`);
+            save({ ...structuredClone(item.payload), reference: sheet.reference, referenceSeed: sheet.referenceSeed });
+            toast(`${subject.name} has the look of ${item.name} now`);
+          }}
+        />
       </div>
       {error && <p className="text-sm text-red-300">{error}</p>}
       {questions.length > 0 && (
@@ -439,6 +457,28 @@ function ShotList({
   const setShot = (id: string, patch: Partial<Shot>) => setShots(shots.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   const planned = shots.filter((s) => !s.skip).length;
 
+  /** A saved setup: its shots for this card's subjects, its emotion set, and its ComfyUI workflows on the first ComfyUI provider. */
+  function applySetup(setup: Payloads["image"]) {
+    const subjects = new Set(subjectsOf(data, record.kind).map((x) => x.key));
+    change((s) => ({
+      ...s,
+      shots: mergeShots(s.shots, shotsFor(setup.shots, subjects)),
+      emotionSet: setup.emotionSet,
+      customEmotions: setup.customEmotions,
+    }));
+    setLabels(setup.customEmotions.join(", "));
+    const ai = useAiSettings.getState();
+    const providers = ai.settings.imageProviders ?? [];
+    const comfy = providers.find((p) => p.kind === "comfyui");
+    if (comfy && setup.workflows.length) {
+      const ids = new Set((comfy.workflows ?? []).map((w) => w.id));
+      const added = setup.workflows.filter((w) => !ids.has(w.id));
+      if (added.length)
+        void ai.update({ imageProviders: providers.map((p) => (p === comfy ? { ...p, workflows: [...(p.workflows ?? []), ...added] } : p)) });
+    }
+    toast(`Added the setup's shots`);
+  }
+
   function propose() {
     const next = mergeShots(shots, proposeShots(data, record.kind, { emotions: emotionsOf(studio) }));
     toast(next.length > shots.length ? `Added ${next.length - shots.length} shots` : "The list already has every suggested shot");
@@ -493,6 +533,18 @@ function ShotList({
         <Button variant="primary" onClick={propose}>
           ✦ Suggest shots from the card
         </Button>
+        <SaveToLibrary
+          kind="image"
+          name={`${data.name || "Card"} shots`}
+          label="Save as a setup"
+          payload={() => ({
+            shots,
+            emotionSet: studio.emotionSet,
+            customEmotions: studio.customEmotions,
+            workflows: (useAiSettings.getState().settings.imageProviders ?? []).flatMap((p) => p.workflows ?? []),
+          })}
+        />
+        <FromLibrary kind="image" label="Use a setup" onUse={(item) => applySetup(item.payload)} />
         <span className="text-sm text-ink-muted" aria-live="polite">
           {planned} {planned === 1 ? "image" : "images"} planned · cost shows once an image provider is set up
         </span>

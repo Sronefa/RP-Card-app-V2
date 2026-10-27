@@ -11,6 +11,7 @@ import { isKind, KINDS, setCastList, syncCast, worldEntry, worldMeta, type World
 import { estimateTokens } from "../../lib/tokens";
 import { BulkItems, CurrencyInterview } from "./EconomyTools";
 import { park } from "../../app/inbox";
+import { FromLibrary, SaveToLibrary } from "../library/LibraryButtons";
 import { toast } from "../../components/toast";
 
 function useBook() {
@@ -95,6 +96,15 @@ export function WorldPage({
       {!(single && items.length > 0) && (
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setOpen(add({ name: "" }))}>Add {def.label}</Button>
+          {kind === "npc" && (
+            <FromLibrary
+              kind="npc"
+              onUse={(item) => {
+                setOpen(add(item.payload.fields));
+                toast(`${item.name} joined this world`);
+              }}
+            />
+          )}
         </div>
       )}
       <Pitches
@@ -196,11 +206,14 @@ function WorldItem({
             Triggers on: {entry.keys.join(", ") || "nothing yet, add a name"}. The lorebook entry is written from these
             fields.
           </p>
-          {onDelete && (
-            <Button variant="danger" className="self-start" onClick={onDelete}>
-              Delete {def.label}
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {onDelete && (
+              <Button variant="danger" onClick={onDelete}>
+                Delete {def.label}
+              </Button>
+            )}
+            {kind === "npc" && <SaveToLibrary kind="npc" name={fields.name || "NPC"} payload={() => ({ fields })} />}
+          </div>
         </div>
       )}
     </div>

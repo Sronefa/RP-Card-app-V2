@@ -1,4 +1,5 @@
 import { useUi, type LibraryTab } from "../../app/store";
+import { LibrariesPage } from "./LibrariesPage";
 import { PersonaLibrary } from "./PersonaLibrary";
 import { ProjectDetail } from "./ProjectDetail";
 import { ProjectList } from "./ProjectList";
@@ -6,6 +7,7 @@ import { ProjectList } from "./ProjectList";
 const TABS: { id: LibraryTab; label: string }[] = [
   { id: "projects", label: "Projects" },
   { id: "personas", label: "Personas" },
+  { id: "libraries", label: "Libraries" },
 ];
 
 export function LibraryView() {
@@ -26,7 +28,7 @@ export function LibraryView() {
           </button>
         ))}
       </div>
-      {libraryTab === "personas" ? <PersonaLibrary /> : projectId ? <ProjectDetail projectId={projectId} /> : <ProjectList />}
+      {libraryTab === "libraries" ? <LibrariesPage /> : libraryTab === "personas" ? <PersonaLibrary /> : projectId ? <ProjectDetail projectId={projectId} /> : <ProjectList />}
     </div>
   );
 }
