@@ -167,7 +167,7 @@ function links() { return list("Case._Links").map(function (l) { var m = /^(.*?)
 function pinned(who) { return links().filter(function (k) { return k.who === who; }).map(function (k) { return k.clue; }); }
 function face(n) {
   var s = S.suspects.filter(function (x) { return x.name.trim() === n; })[0];
-  return ui.avatar(s && s.avatar ? app.asset(s.avatar) : null, n);
+  return ui.avatar(s && s.avatar ? app.asset(s.avatar) : CF.assets.portrait(n), n);
 }
 function dread() { return S.dread ? Number(app.state("Case." + S.dread)) || 0 : 0; }
 function act(payload, text) { app.send("case", payload, text).then(function () { app.toast("In your message box: send it when you're ready"); }); }

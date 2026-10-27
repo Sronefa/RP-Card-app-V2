@@ -6,6 +6,7 @@ import { AutoTextarea, Button, TextInput } from "../../components/ui";
 import { getProject, type CardRecord } from "../../db/db";
 import { useEditor } from "../../editor/store";
 import { useObjectUrl } from "../../lib/useObjectUrl";
+import { withFreshArt } from "../../images/engineArt";
 import { fileCandidate } from "../../images/filing";
 import { writePrompt } from "../../images/prompt";
 import { estimateCost, modelFor, taskOf, useImageQueue, type Job } from "../../images/queue";
@@ -68,7 +69,7 @@ export function GeneratePanel({
     if (!current || current.id !== record.id) return;
     const filed = await fileCandidate(current.card.data, current.files, shot, candidate);
     editor.addFiles(filed.files);
-    editor.replaceData(filed.data);
+    editor.replaceData(withFreshArt(filed.data));
     change((s) => ({
       ...s,
       candidates: {

@@ -23,6 +23,8 @@ import { menuModule } from "../modules/menu";
 import { notifyModule } from "../modules/notify";
 import { addModules, cleanModule } from "../modules/pack";
 import { peopleModule, peopleSettings, valueKey } from "../modules/people";
+import { stageModule, stageSettings } from "../modules/stage";
+import { assetManifest, taggedFile } from "../../images/manifest";
 import { phoneModule, phoneSettings } from "../modules/phone";
 import { questsModule } from "../modules/quests";
 import { routesModule, routesSettings } from "../modules/routes";
@@ -32,7 +34,7 @@ import { shipModule } from "../modules/ship";
 import { timeModule } from "../modules/time";
 import { titleModule, titleSettings, TITLE_TAG } from "../modules/title";
 import type { EngineModule } from "../modules/types";
-import { isStarterVar, type EngineConfig } from "../sheet";
+import { isStarterVar, readEngine, type EngineConfig } from "../sheet";
 import type { CardTheme } from "../theme";
 
 type Settings = Record<string, unknown>;
@@ -80,6 +82,9 @@ const images = (data: CardDataV3) => (data.assets ?? []).filter((a) => IMAGE.tes
 /** A card image named after someone ("mina.png", "Mina_smile.webp"), for their portrait. */
 export function portraitFor(data: CardDataV3, name: string): string {
   const key = name.trim().toLowerCase();
+  // The Image Studio's portrait of them comes first.
+  const tagged = taggedFile(data, (e) => e.k === "portrait" && e.s.toLowerCase() === key);
+  if (tagged) return tagged;
   const hit = images(data).find((a) => a.name.toLowerCase() === key) ?? images(data).find((a) => a.name.toLowerCase().startsWith(key));
   return hit ? fileOf(hit) : "";
 }
@@ -137,7 +142,7 @@ export function fillTitle(raw: Settings, data: CardDataV3): Settings {
     ...raw,
     title: s.title || data.name,
     premise: s.premise || premiseOf(data.scenario || data.description || ""),
-    art: s.art || (art ? fileOf(art) : ""),
+    art: s.art || taggedFile(data, (e) => e.v === "title") || (art ? fileOf(art) : ""),
     cast: mergeByName(s.cast, cast).slice(0, 6),
   };
 }
@@ -222,6 +227,21 @@ export function fillMap(raw: Settings, data: CardDataV3): Settings {
  * own rows are kept), with their portraits, and the example case goes with them: its truth names
  * people who aren't in this card.
  */
+/** The cast with emotion art, each with the moods it has pictures for, and where the scene is. */
+export function fillStage(raw: Settings, data: CardDataV3): Settings {
+  const s = stageSettings(raw);
+  const moods = new Map<string, Set<string>>();
+  for (const e of assetManifest(data))
+    if (e.k === "emotion" && e.s && e.v) moods.set(e.s, (moods.get(e.s) ?? new Set()).add(e.v));
+  const cast = [...moods].map(([name, set]) => ({ name, moods: [...set] }));
+  const location = (readEngine(data)?.vars ?? []).find((v) => v.name.trim().toLowerCase() === "location");
+  return {
+    ...raw,
+    cast: mergeByName(s.cast, cast),
+    place: location ? `${location.group.trim() ? `${location.group.trim()}.` : ""}${location.name.trim()}` : s.place,
+  };
+}
+
 export function fillCase(raw: Settings, data: CardDataV3): Settings {
   const s = caseSettings(raw);
   const world = worldOf(data, "npc");
@@ -320,6 +340,18 @@ export const BUILT_IN_PARTS: Part[] = [
     generic: (s) => ({ ...s, people: [] }),
     previewSettings: { people: [{ name: "Mina", role: "Runs the harbor café", avatar: "", about: "Freckles, ink-stained fingers, a laugh you hear across the room.", likes: "Rain, strong tea, old maps" }] },
     sample: { Mina: { Affection: 52, Learned: ["Hates the sea since the wreck", "Keeps her father's compass"] }, Time: { _Whereabouts: "Mina: the café (until 22:00)" } },
+  },
+  {
+    id: "stage",
+    name: "Stage",
+    summary: "A visual-novel scene in the status panel: the place's background at the time of day, and each character's sprite in their current mood, from the Image Studio's art.",
+    tags: ["shared", "art", "visual novel", "panel"],
+    requires: [],
+    source: "built-in",
+    make: (s) => stageModule(s),
+    tailor: "Check the cast and the value that says where the scene is.",
+    fill: fillStage,
+    generic: (s) => ({ ...s, cast: [] }),
   },
   {
     id: "events",

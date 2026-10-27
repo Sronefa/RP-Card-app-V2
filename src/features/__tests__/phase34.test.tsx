@@ -216,10 +216,10 @@ describe("pages", () => {
     expect(await screen.findByText(/0 shots still need images/)).toBeTruthy();
     const gallery = await screen.findByRole("region", { name: "Images for Sera: portrait" });
     fireEvent.click(within(gallery).getByRole("button", { name: "Pick image 1 for Sera: portrait" }));
-    await waitFor(() => expect(useEditor.getState().record!.card.data.assets!.some((a) => a.name === "sera-portrait")).toBe(true));
+    await waitFor(() => expect(useEditor.getState().record!.card.data.assets!.some((a) => a.name === "sera_portrait")).toBe(true));
     fireEvent.click(await within(gallery).findByRole("button", { name: "Use as reference" }));
     const sheet = readSheets(useEditor.getState().record!.card.data).card;
-    expect(sheet.reference).toMatch(/sera-portrait/);
+    expect(sheet.reference).toMatch(/sera_portrait/);
     expect(sheet.referenceSeed).toBe(9);
   });
 

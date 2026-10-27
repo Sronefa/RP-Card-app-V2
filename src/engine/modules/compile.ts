@@ -19,6 +19,7 @@ import { mapModule } from "./map";
 import { menuModule } from "./menu";
 import { notifyModule } from "./notify";
 import { peopleModule, valueKey } from "./people";
+import { stageModule } from "./stage";
 import { phoneModule, phoneSettings } from "./phone";
 import { questsModule } from "./quests";
 import { routesModule } from "./routes";
@@ -87,6 +88,7 @@ export function resolveModule(m: EngineModule, all: EngineModule[] = []): Engine
   // Jumps on the star chart burn the ship's fuel.
   if (m.core === "ship") return shipModule(m.settings, m.enabled, all.some((o) => o.core === "map" && o.enabled));
   if (m.core === "case") return caseModule(m.settings, m.enabled);
+  if (m.core === "stage") return stageModule(m.settings, m.enabled);
   return m;
 }
 

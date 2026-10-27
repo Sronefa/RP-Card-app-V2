@@ -229,7 +229,7 @@ function panel() {
 function draw() {
   var list = S.places.filter(shown);
   root.innerHTML = ui.appBar(S.title) + '<div class="cf-appbody cf-stack">' +
-    '<div class="mp-board">' + (S.art ? '<img class="mp-art" alt="" src="' + esc(app.asset(S.art)) + '" onerror="this.remove()">' : "") + svg() + "</div>" +
+    '<div class="mp-board">' + ((S.art || CF.assets.scene("map")) ? '<img class="mp-art" alt="" src="' + esc(S.art ? app.asset(S.art) : CF.assets.scene("map")) + '" onerror="this.remove()">' : "") + svg() + "</div>" +
     panel() +
     '<div class="mp-chips">' + list.map(function (p) { return '<button type="button" class="cf-chip' + (p.name === (picked || here()) ? " on" : "") + '" data-place="' + esc(p.name) + '">' + esc(p.name) + "</button>"; }).join("") + "</div>" +
     (S.fog && list.length < S.places.length ? '<p class="cf-small cf-muted">' + (S.places.length - list.length) + " places still in the fog.</p>" : "") + "</div>";

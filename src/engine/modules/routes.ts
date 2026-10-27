@@ -266,7 +266,7 @@ function act(payload, say) {
   app.send("routes", payload, say).then(function () { app.toast("In your message box: send it when you're ready"); });
 }
 function portrait(p, big) {
-  return '<span class="rt-av' + (big ? " big" : "") + '">' + ui.avatar(p.avatar ? app.asset(p.avatar) : null, p.name) + "</span>";
+  return '<span class="rt-av' + (big ? " big" : "") + '">' + ui.avatar(p.avatar ? app.asset(p.avatar) : CF.assets.portrait(p.name), p.name) + "</span>";
 }
 function hearts(v) {
   var full = Math.round(v / 20);

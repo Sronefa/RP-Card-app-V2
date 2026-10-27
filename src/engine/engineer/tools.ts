@@ -3,6 +3,9 @@
  * the result on a hidden sandbox page. Writes change only the turn's draft; the finished turn
  * becomes one proposal.
  */
+import { assetCall, requestedShot } from "../../images/engineArt";
+import { assetManifest } from "../../images/manifest";
+import { mergeShots, updateStudio } from "../../images/shots";
 import { conversionOps, planConversion, planText } from "../convert";
 import YAML from "yaml";
 import type { CardDataV3 } from "../../card";
@@ -63,6 +66,28 @@ export const READ_TOOLS: ToolDef[] = [
   tool(
     "read_light_card",
     "Read the card's light-card state (status tracker, relationship stages, mechanics, NPCs and places) and the values converting it would add. Read it before convert_light_card and tell the user the plan.",
+  ),
+];
+
+/** The card's art: what the Image Studio has filed, and new shots for the user to make. */
+export const ART_TOOLS: ToolDef[] = [
+  tool(
+    "list_assets",
+    "List the card's tagged images by kind, subject and variant, with the CF.assets call that finds each. Screens ask for art by meaning: CF.assets.portrait(name, { emotion, outfit }), CF.assets.background(place, time), CF.assets.icon(item), CF.assets.scene(\"title\" | \"map\" | \"wallpaper\"), CF.assets.find({ kind, subject, variant }). Each returns a URL or null.",
+    obj({ kind: str("Only this kind: portrait, emotion, outfit, background, scene, icon or ui") }),
+  ),
+  tool(
+    "request_asset",
+    "Ask for an image a screen needs: it goes on the Image Studio's shot list for the user to generate and pick. Until then its CF.assets call returns null, so the screen must look right without it.",
+    obj(
+      {
+        kind: { type: "string", enum: ["portrait", "emotion", "background", "icon", "scene", "ui"], description: "What it is" },
+        subject: str("Whose or what: a character, place or item name from the card; empty for engine art"),
+        variant: str("The emotion, the time of day, or for scene and ui art what it is (title, map, wallpaper, frame)"),
+        description: str("What the picture shows, in a sentence"),
+      },
+      ["kind", "description"],
+    ),
   ),
 ];
 
@@ -349,6 +374,7 @@ export const ENGINEER_TOOLS: ToolDef[] = [
   ...KNOWLEDGE_TOOLS,
   ...WRITE_TOOLS,
   ...CONVERT_TOOLS,
+  ...ART_TOOLS,
   ...CARD_WORLD_TOOLS,
   ...CARD_TEXT_TOOLS,
   ...TEST_TOOLS,
@@ -375,6 +401,8 @@ export interface EngineerContext {
   library?: EngineModule[];
   /** World entries to propose in the co-writer chat (add_npc and the like). */
   cardCalls?: ToolCall[];
+  /** The card being worked on, for the Image Studio's shot list. */
+  cardId?: string;
   /** False when the model gets no screenshots (it can't see, or the user skipped them). */
   shots?: boolean;
 }
@@ -564,6 +592,19 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
       }
       case "read_card":
         return text(call.id, cardText(ctx.data));
+      case "list_assets": {
+        const kind = typeof input.kind === "string" && input.kind ? input.kind : undefined;
+        const list = assetManifest(ctx.data).filter((e) => !kind || e.k === kind);
+        if (!list.length)
+          return text(call.id, `The card has no tagged ${kind ?? ""} images yet. Ask for what a screen needs with request_asset; screens must work without them.`);
+        return text(call.id, list.map((e) => `- ${e.k}${e.s ? ` of ${e.s}` : ""}${e.v ? `, ${e.v}` : ""}: ${assetCall(e)}`).join("\n"));
+      }
+      case "request_asset": {
+        if (!ctx.cardId) throw new ToolInputError("The shot list isn't available here.");
+        const shot = requestedShot(ctx.data, input);
+        await updateStudio(ctx.cardId, (st) => ({ ...st, shots: mergeShots(st.shots, [shot]) }));
+        return text(call.id, `"${shot.label}" is on the Image Studio's shot list for the user to make. Tell them in your reply. Until it's picked, the CF.assets call returns null.`);
+      }
       case "read_light_card":
         return text(
           call.id,
@@ -772,6 +813,10 @@ export function describeCall(call: ToolCall): string {
       return "Read the card";
     case "read_light_card":
       return "Read the light card";
+    case "list_assets":
+      return "Listed the card's art";
+    case "request_asset":
+      return `Asked for ${s(i.description)}`;
     case "convert_light_card":
       return "Converted the light card";
     case "search_docs":

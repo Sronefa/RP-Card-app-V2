@@ -22,6 +22,14 @@ interface UiState {
   /** Tab shown in the co-writer section. */
   cowriterTab: CowriterTab;
   setCowriterTab: (tab: CowriterTab) => void;
+  /** An engine art slot being filled: the Assets page shows the images that fit it. */
+  assetPick?: AssetPick;
+  setAssetPick: (pick: AssetPick | undefined) => void;
+}
+
+export interface AssetPick {
+  label: string;
+  tag: { kind: string; subject?: string; variant?: string };
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -35,4 +43,5 @@ export const useUi = create<UiState>((set) => ({
   setFocusEntry: (focusEntry) => set({ focusEntry }),
   cowriterTab: "chat",
   setCowriterTab: (cowriterTab) => set({ cowriterTab }),
+  setAssetPick: (assetPick) => set({ assetPick }),
 }));

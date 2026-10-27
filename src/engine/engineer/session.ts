@@ -208,6 +208,7 @@ export const useEngineer = create<EngineerState>((set, get) => {
         preview,
         libs: preview ? sandboxLibs : undefined,
         library: await loadModuleLibrary().catch(() => []),
+        cardId: record.id,
         shots,
       };
       const text = [
