@@ -152,3 +152,13 @@ export function findSlop(data: CardDataV3, phrases: string[]): SlopHit[] {
 /** The co-writer request that rewrites one flagged line. */
 export const slopRequest = (hit: SlopHit) =>
   `In ${hit.ref}, rewrite this line so it doesn't use the overused phrase "${hit.match}". Keep what it says and the voice, and change only this line: "${hit.line}"`;
+
+/** The slop phrases in one text, as written. */
+export function slopInText(text: string, phrases: string[]): string[] {
+  const out: string[] = [];
+  for (const p of phrases) {
+    const regex = phraseRegex(p);
+    if (regex) for (const m of text.matchAll(regex)) if (!out.includes(m[0])) out.push(m[0]);
+  }
+  return out;
+}

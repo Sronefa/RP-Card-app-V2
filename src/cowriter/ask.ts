@@ -15,3 +15,11 @@ export async function askCowriter({ send, draft }: { send?: string; draft?: stri
     await useCowriter.getState().send(send);
   }
 }
+
+/** Opens the co-writer chat and has the prose editor propose a polished version of a field. */
+export async function polishField(field: string, label: string) {
+  const ui = useUi.getState();
+  ui.setCowriterTab("chat");
+  ui.setSection("cowriter");
+  await useCowriter.getState().polishField(field, label);
+}

@@ -10,6 +10,7 @@ import { coverageRequest, findUncovered } from "./coverage";
 import { constantTokens } from "./arc";
 import { entryTitle, isRegexKey, regexError } from "./lorebook";
 import { findSlop, slopRequest } from "./slop";
+import { findPatterns, overusedNames, patternSources, sameOpenings } from "./patterns";
 import { engineReadyIssues } from "./engineReady";
 
 export type IssueLevel = "error" | "warning" | "tip";
@@ -174,6 +175,34 @@ export function checkCard(record: CardRecord, options: CheckOptions = {}): Issue
         target: hit.target,
         request: slopRequest(hit),
       });
+  if (options.slopPhrases) {
+    for (const src of patternSources(d))
+      for (const hit of findPatterns(src.text))
+        issues.push({
+          level: "tip",
+          kind: "slop",
+          message: `${src.where} has ${hit.pattern === "em-dash overuse" ? hit.match : `a ${hit.pattern}: "${hit.match}"`}.`,
+          target: { section: "editor", group: src.group },
+          request: `In ${src.ref}, rewrite the ${hit.pattern} ("${hit.match}") so it reads like a person wrote it. Keep what it says and the voice.`,
+        });
+    const opening = sameOpenings(d);
+    if (opening)
+      issues.push({
+        level: "tip",
+        kind: "slop",
+        message: `Most greetings open with "${opening}". Openings that differ make each greeting feel like its own scene.`,
+        target: { section: "editor", group: "greetings" },
+        request: `Most greetings open with "${opening}". Rewrite the openings of the alternate greetings so each starts differently (mid-action, dialogue, a detail of the place), keeping the rest.`,
+      });
+    for (const name of overusedNames(d))
+      issues.push({
+        level: "tip",
+        kind: "slop",
+        message: `"${name}" is a name AI models use constantly. A name that fits the setting's culture stands out more.`,
+        target: { section: "editor", group: "basics" },
+        request: `"${name}" is an overused AI name. Suggest five names that fit the setting's culture instead, then rename "${name}" everywhere in the card to the best one.`,
+      });
+  }
   if (options.coverage)
     for (const { name, count } of findUncovered(d, options.coverage.otherEntries))
       issues.push({

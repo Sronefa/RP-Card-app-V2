@@ -16,6 +16,11 @@ import { ENGINE_TOOLS } from "../ai/engineTools";
 import { readEngine } from "../engine/sheet";
 import { addCall } from "./worldScan";
 import { logChange } from "./changeLog";
+import { cleanCalls, polishText, textOf, whereOf, withText } from "./polish";
+import { useAiSettings } from "../ai/settings";
+import { DEFAULT_SLOP_PHRASES } from "../editor/slop";
+import { newId } from "../lib/id";
+import { trackPhrases } from "../editor/phraseStats";
 
 /** Most model calls in one turn (each tool round is one call). */
 const MAX_ROUNDS = 6;
@@ -57,6 +62,10 @@ export interface ChatState {
   retype: (proposalId: string, kind: TypedKind) => void;
   acceptAll: () => void;
   clear: () => Promise<void>;
+  /** Runs the prose editor over a pending proposal's text. */
+  polish: (proposalId: string) => Promise<void>;
+  /** Proposes a polished version of a card field. */
+  polishField: (field: string, label: string) => Promise<void>;
 }
 
 function createChatStore(channel: Channel) {
@@ -83,7 +92,7 @@ function createChatStore(channel: Channel) {
     }
 
     /** Turns the model's tool calls into proposals, and tells the model what happened to each. */
-    function runTools(chat: ChatRecord, calls: ToolCall[]): { chat: ChatRecord; results: ToolResult[] } {
+    function runTools(chat: ChatRecord, calls: ToolCall[], fixed: Record<string, string[]> = {}): { chat: ChatRecord; results: ToolResult[] } {
       const data = useEditor.getState().record?.card.data;
       const proposals = [...chat.proposals];
       const results = calls.map((call): ToolResult => {
@@ -96,13 +105,15 @@ function createChatStore(channel: Channel) {
         try {
           const edit = planEdit(data, call);
           const number = proposals.length + 1;
-          proposals.push({ id: call.id, number, call, status: "pending", summary: describeEdit(edit) });
+          const fixes = fixed[call.id]?.length ? fixed[call.id] : undefined;
+          proposals.push({ id: call.id, number, call, status: "pending", summary: describeEdit(edit), ...(fixes ? { fixed: fixes } : {}) });
           return {
             id: call.id,
             content:
-              edit.kind === "pitch"
+              (edit.kind === "pitch"
                 ? `Shown to the user as idea ${number}.`
-                : `Proposed to the user as edit ${number} (${describeEdit(edit)}). They will accept or reject it.`,
+                : `Proposed to the user as edit ${number} (${describeEdit(edit)}). They will accept or reject it.`) +
+              (fixes ? ` The line editor rewrote overused phrasing first: ${fixes.map((f) => `"${f}"`).join(", ")}. Write fresher wording next time.` : ""),
           };
         } catch (e) {
           if (e instanceof ToolInputError) return { id: call.id, content: e.message, isError: true };
@@ -168,7 +179,14 @@ function createChatStore(channel: Channel) {
               messages: [...chat.messages, reply],
             };
             if (result.toolCalls.length > 0) {
-              const ran = runTools(next, result.toolCalls);
+              const ai = useAiSettings.getState().settings;
+              const cleaned =
+                ai.slopRewrite === false
+                  ? { calls: result.toolCalls, fixed: {} }
+                  : await cleanCalls(record, result.toolCalls, ai.slopPhrases ?? DEFAULT_SLOP_PHRASES, controller.signal);
+              const ran = runTools(next, cleaned.calls, cleaned.fixed);
+              // What the model wrote before any rewrite, so its habits are counted.
+              void trackPhrases(result.toolCalls.map(textOf).filter((t): t is string => !!t), record.projectId);
               next = {
                 ...ran.chat,
                 messages: [...ran.chat.messages, { role: "tool", results: ran.results }],
@@ -216,6 +234,53 @@ function createChatStore(channel: Channel) {
           if (r.toolCalls.length) messages.push({ role: "tool", results: ran.results });
         }
         commit({ ...chat, messages });
+      },
+
+      async polish(proposalId) {
+        const record = useEditor.getState().record;
+        const proposal = get().chat?.proposals.find((p) => p.id === proposalId);
+        const text = proposal && textOf(proposal.call);
+        if (!record || !proposal || proposal.status !== "pending" || !text || get().busy) return;
+        set({ busy: true, error: undefined });
+        try {
+          controller = new AbortController();
+          const polished = await polishText(record, text, whereOf(proposal.call), controller.signal);
+          const chat = get().chat!;
+          commit({
+            ...chat,
+            proposals: chat.proposals.map((p) => (p.id === proposalId ? { ...p, call: withText(p.call, polished.text), polished: polished.changes } : p)),
+            unreported: [...chat.unreported, `The user had the line editor polish edit ${proposal.number}; it is still waiting for their decision.`],
+          });
+        } catch (e) {
+          if (!isAbort(e)) set({ error: (e as Error).message || "Something went wrong" });
+        } finally {
+          controller = undefined;
+          set({ busy: false });
+        }
+      },
+
+      async polishField(field, label) {
+        const record = useEditor.getState().record;
+        const text = record?.card.data[field as keyof typeof record.card.data];
+        if (!record || typeof text !== "string" || !text.trim() || get().busy) return;
+        await get().load(record.id);
+        set({ busy: true, error: undefined });
+        try {
+          controller = new AbortController();
+          const polished = await polishText(record, text, `the ${label}`, controller.signal);
+          set({ busy: false });
+          await get().addTurn(record.id, `Polish the ${label}.`, `Polish the ${label}`, [
+            {
+              text: polished.changes.length ? `Line edits: ${polished.changes.join("; ")}.` : "Line edits to the whole text.",
+              toolCalls: [{ id: newId(), name: "set_field", input: { field, text: polished.text } }],
+            },
+          ]);
+        } catch (e) {
+          if (!isAbort(e)) set({ error: (e as Error).message || "Something went wrong" });
+        } finally {
+          controller = undefined;
+          set({ busy: false });
+        }
       },
 
       async critique() {

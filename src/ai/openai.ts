@@ -105,6 +105,8 @@ export function openaiProvider(config: ProviderConfig): Provider {
       ...(usage ? { stream_options: { include_usage: true } } : {}),
       messages: toWire(request),
       ...(reasoning && request.effort ? { reasoning_effort: REASONING[request.effort] } : {}),
+      // KoboldCpp's phrase banning; other backends ignore unknown fields.
+      ...(request.bannedPhrases?.length ? { banned_tokens: request.bannedPhrases, banned_strings: request.bannedPhrases } : {}),
       ...(request.useTools && request.tools.length
         ? {
             tools: request.tools.map((t) => ({

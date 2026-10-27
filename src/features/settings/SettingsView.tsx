@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ImageProviders } from "./ImageProviders";
 import { WritingStyle } from "./WritingStyle";
+import { ignorePhrase, repeatedPhrases } from "../../editor/phraseStats";
 import {
   createProvider,
   modelKey,
@@ -30,6 +31,7 @@ const MODE_LABELS: { mode: ModeId; label: string; help: string }[] = [
   { mode: "draft", label: "Drafting", help: "Writes the card from the story bible. Use your best prose model." },
   { mode: "lore", label: "Lorebook brainstorm", help: "Pitches lorebook entries." },
   { mode: "critic", label: "Critic", help: "Reads the card as the roleplay model would and flags weak spots." },
+  { mode: "editor", label: "Prose editor", help: "Polishes drafted text line by line and rewrites overused phrases. A strong prose model works best." },
   { mode: "image", label: "Image prompts", help: "Writes prompts for image generators." },
   { mode: "world", label: "World pages", help: "Pitches NPCs, places, money, items and shops." },
   { mode: "arc", label: "Story arcs", help: "Plans the story arc and builds the antagonist. Use a strong model." },
@@ -177,6 +179,23 @@ export function SettingsView() {
                 }}
               />
             </label>
+            {p.kind !== "anthropic" && (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4"
+                  checked={!!p.banPhrases}
+                  onChange={(e) => setProvider({ ...p, banPhrases: e.target.checked || undefined })}
+                />
+                <span>
+                  Ban overused phrases while writing
+                  <span className="block text-xs text-ink-muted">
+                    For local backends that can ban phrases as they generate, like KoboldCpp. The overused phrases list is sent
+                    with each request (phrases with * are left out). Cloud APIs ignore or reject it.
+                  </span>
+                </span>
+              </label>
+            )}
             <div className="flex flex-wrap justify-between gap-2">
               <Button onClick={() => void loadModels(p)}>Test and load models</Button>
               <Button variant="danger" onClick={() => removeProvider(p)}>
@@ -314,6 +333,8 @@ export function SettingsView() {
         phrases={settings.slopPhrases ?? DEFAULT_SLOP_PHRASES}
         custom={!!settings.slopPhrases}
         onChange={(slopPhrases) => void update({ slopPhrases })}
+        rewrite={settings.slopRewrite !== false}
+        onRewrite={(on) => void update({ slopRewrite: on ? undefined : false })}
       />
 
       <Appearance />
@@ -637,13 +658,19 @@ function SlopPhrases({
   phrases,
   custom,
   onChange,
+  rewrite,
+  onRewrite,
 }: {
   phrases: string[];
   custom: boolean;
   onChange: (phrases: string[] | undefined) => void;
+  rewrite: boolean;
+  onRewrite: (on: boolean) => void;
 }) {
   const [text, setText] = useState(phrases.join("\n"));
   useEffect(() => setText(phrases.join("\n")), [phrases]);
+  const [repeated, setRepeated] = useState<{ phrase: string; count: number }[]>([]);
+  useEffect(() => void repeatedPhrases(phrases).then(setRepeated), [phrases]);
   const save = () => {
     const next = text
       .split("\n")
@@ -670,6 +697,41 @@ function SlopPhrases({
         <Button variant="ghost" className="self-start" onClick={() => onChange(undefined)}>
           Go back to the built-in list
         </Button>
+      )}
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-0.5 size-4" checked={rewrite} onChange={(e) => onRewrite(e.target.checked)} />
+        <span>
+          Rewrite them before you see a proposal
+          <span className="block text-xs text-ink-muted">
+            The prose editor fixes these phrases and AI patterns ("not X, but Y", stacked adjectives, em-dash runs) in the
+            co-writer's edits first, and the edit says what it fixed. Costs one extra call when something is found.
+          </span>
+        </span>
+      </label>
+      {repeated.length > 0 && (
+        <div className="flex flex-col gap-1" aria-label="Phrases your models repeat">
+          <span className="text-sm font-medium">Your models keep writing these</span>
+          <span className="text-xs text-ink-muted">Used five times or more across projects.</span>
+          <ul className="flex flex-col gap-1">
+            {repeated.map((r) => (
+              <li key={r.phrase} className="flex items-center gap-2 rounded-lg bg-surface-raised p-2 text-sm">
+                <span className="flex-1">
+                  "{r.phrase}" <span className="text-xs text-ink-muted">×{r.count}</span>
+                </span>
+                <Button variant="ghost" aria-label={`Add "${r.phrase}" to the list`} onClick={() => onChange([...phrases, r.phrase])}>
+                  Add
+                </Button>
+                <Button
+                  variant="ghost"
+                  aria-label={`Ignore "${r.phrase}"`}
+                  onClick={() => void ignorePhrase(r.phrase).then(() => setRepeated(repeated.filter((x) => x !== r)))}
+                >
+                  Ignore
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   );

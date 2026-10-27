@@ -35,6 +35,8 @@ export interface CowriterSettings {
   styleSampleIds?: string[];
   /** Craft packs turned on by hand, besides the ones the genre and tone load. */
   craftPackIds?: string[];
+  /** Run the prose editor over every drafted edit. */
+  autoPolish?: boolean;
   /** Show the co-writer reference examples of strong card writing; on unless turned off. */
   referenceExamples?: boolean;
   /** One of the listed tones, or the user's own words. Empty means no preference. */
@@ -94,6 +96,10 @@ export interface Proposal {
   summary?: string;
   /** Why an accepted edit couldn't be applied, e.g. the text it patched has changed. */
   error?: string;
+  /** Overused phrases rewritten before the user saw it. */
+  fixed?: string[];
+  /** The prose editor's changes, once polished. */
+  polished?: string[];
 }
 
 export interface ChatRecord {
