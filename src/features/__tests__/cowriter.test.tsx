@@ -92,7 +92,7 @@ describe("co-writer", () => {
     expect(first.useTools).toBe(true);
     expect(first.system).not.toContain("Sera");
     const sent = first.messages[0] as { text: string };
-    expect(sent.text).toContain("Content mode: Dark");
+    expect(sent.text).toContain("Content: Dark");
     expect(sent.text).toContain("Tone: grim.");
     expect(sent.text).toContain("Present tense.");
     expect(sent.text).toContain("Sera is kind.");

@@ -3,7 +3,7 @@
  * context about the card and project that goes into user messages.
  */
 import { changesText, readChanges } from "./changeLog";
-import { DEFAULT_COWRITER } from "../ai/records";
+import { withCowriterDefaults } from "../ai/records";
 import { skillsWith } from "../engine/engineer/knowledge";
 import { bibleContext, cardContext, ENGINE_GUIDE, personasContext, settingsContext, worldContext } from "../ai/prompts";
 import { createProvider, jailbreakText, modelInfo, modelKey, resolveModel, useAiSettings } from "../ai/settings";
@@ -94,7 +94,7 @@ export async function complete(
 /** The project's co-writer settings with the presets it uses. */
 export async function projectSettings(projectId: string) {
   const project = await getProject(projectId);
-  const settings = { ...DEFAULT_COWRITER, ...project?.cowriter };
+  const settings = withCowriterDefaults(project?.cowriter);
   await useAiSettings.getState().load();
   const ai = useAiSettings.getState().settings;
   const presets = ai.presets.filter((p) => p.kind !== "jailbreak" && settings.presetIds.includes(p.id));

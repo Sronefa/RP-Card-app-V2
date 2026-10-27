@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAiSettings } from "../../ai/settings";
-import { DEFAULT_COWRITER } from "../../ai/records";
+import { withCowriterDefaults } from "../../ai/records";
 import { toast } from "../../components/toast";
 import { AutoTextarea, Button, TextInput } from "../../components/ui";
 import { isAbort } from "../../cowriter/engine";
@@ -68,7 +68,7 @@ function useStyleLock(projectId: string) {
         p &&
         saveProject({
           ...p,
-          cowriter: { ...DEFAULT_COWRITER, ...p.cowriter, styleLock: next },
+          cowriter: { ...withCowriterDefaults(p.cowriter), styleLock: next },
         }),
     );
   };

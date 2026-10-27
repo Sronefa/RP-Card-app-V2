@@ -1,16 +1,58 @@
 import { useEffect, useState } from "react";
-import { DEFAULT_COWRITER, type ContentMode, type CowriterSettings, type InterviewDepth, type SuggestionLevel } from "../../ai/records";
+import { withCowriterDefaults, type CowriterSettings, type DarkLevel, type ProseSettings, type UnhingedLevel, type InterviewDepth, type SuggestionLevel } from "../../ai/records";
 import { useAiSettings } from "../../ai/settings";
 import { Button, Dialog, TextInput } from "../../components/ui";
 import { getProject, saveProject } from "../../db/db";
 
-const MODES: { value: ContentMode; label: string; help: string }[] = [
-  { value: "normal", label: "Normal", help: "Follows your premise, nothing forced." },
-  { value: "dark", label: "Dark", help: "Violence, horror, cruelty and bleak outcomes actively written in." },
+const DARK_LEVELS: { value: Exclude<DarkLevel, "off">; label: string; help: string }[] = [
+  { value: "dark", label: "Dark", help: "Violence, cruelty, moral rot and bleak outcomes written in where they fit." },
+  { value: "horror", label: "Horror", help: "Fear is the engine: dread, the unseen, escalating threat, body and psychological horror." },
+  { value: "deaddove", label: "Dead dove", help: "Disturbing and taboo themes written straight, with no rescue or redemption. Exports add a content warning." },
+];
+
+const UNHINGED_LEVELS: { value: Exclude<UnhingedLevel, "off">; label: string; help: string }[] = [
+  { value: "normal", label: "Unhinged", help: "Explicit NSFW written into every relevant field." },
   {
-    value: "unhinged",
-    label: "Unhinged",
-    help: "Explicit NSFW actively written into every relevant field. Characters are always adults, with ages stated.",
+    value: "absolute",
+    label: "Absolutely unhinged",
+    help: "Sex pushed into every field it can reach, kink-forward. The interview asks for your kinks and hard limits first.",
+  },
+];
+
+/** A choice per prose setting; "" leaves it to the co-writer. */
+const PROSE_OPTIONS: { key: keyof ProseSettings; label: string; options: { value: string; label: string }[] }[] = [
+  { key: "pov", label: "Point of view", options: [{ value: "second", label: "Second (you)" }, { value: "third", label: "Third" }] },
+  { key: "tense", label: "Tense", options: [{ value: "past", label: "Past" }, { value: "present", label: "Present" }] },
+  { key: "length", label: "Reply length", options: [{ value: "short", label: "Short" }, { value: "medium", label: "Medium" }, { value: "long", label: "Long" }] },
+  { key: "dialogue", label: "Dialogue", options: [{ value: "light", label: "Light" }, { value: "balanced", label: "Balanced" }, { value: "heavy", label: "Heavy" }] },
+  {
+    key: "register",
+    label: "Register",
+    options: [
+      { value: "plain", label: "Plain" },
+      { value: "literary", label: "Literary" },
+      { value: "pulpy", label: "Pulpy" },
+      { value: "poetic", label: "Poetic" },
+    ],
+  },
+  { key: "rhythm", label: "Sentence rhythm", options: [{ value: "varied", label: "Varied" }, { value: "punchy", label: "Punchy" }, { value: "flowing", label: "Flowing" }] },
+  {
+    key: "format",
+    label: "Formatting",
+    options: [
+      { value: "asterisks", label: "*Actions*" },
+      { value: "quotes", label: "Quotes only" },
+      { value: "plain", label: "Plain prose" },
+    ],
+  },
+  {
+    key: "explicitness",
+    label: "Explicitness",
+    options: [
+      { value: "suggestive", label: "Suggestive" },
+      { value: "explicit", label: "Explicit" },
+      { value: "graphic", label: "Graphic" },
+    ],
   },
 ];
 
@@ -41,7 +83,7 @@ export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: s
   useEffect(() => {
     if (!open || !projectId) return;
     void loadAi();
-    void getProject(projectId).then((p) => setSettings({ ...DEFAULT_COWRITER, ...p?.cowriter }));
+    void getProject(projectId).then((p) => setSettings(withCowriterDefaults(p?.cowriter)));
   }, [open, projectId, loadAi]);
 
   function change(patch: Partial<CowriterSettings>) {
@@ -59,29 +101,7 @@ export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: s
     <Dialog open={open && !!settings} title="Co-writer settings for this project" onClose={onClose}>
       {settings && (
         <div className="flex flex-col gap-5">
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 font-medium">Content mode</legend>
-            {MODES.map((m) => (
-              <label
-                key={m.value}
-                className={`flex cursor-pointer gap-3 rounded-xl border p-3 ${
-                  settings.contentMode === m.value ? "border-accent bg-accent/10" : "border-border"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="content-mode"
-                  className="mt-1 size-4"
-                  checked={settings.contentMode === m.value}
-                  onChange={() => change({ contentMode: m.value })}
-                />
-                <span className="flex flex-col">
-                  <span className="font-medium">{m.label}</span>
-                  <span className="text-xs text-ink-muted">{m.help}</span>
-                </span>
-              </label>
-            ))}
-          </fieldset>
+          <Content settings={settings} change={change} />
 
           <label className="flex items-start gap-3 rounded-xl border border-border p-3">
             <input
@@ -102,6 +122,23 @@ export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: s
 
           <ChoiceText label="Tone" options={TONES} value={settings.tone} onChange={(tone) => change({ tone })} />
           <ChoiceText label="Setting and genre" options={GENRES} value={settings.genre} onChange={(genre) => change({ genre })} />
+
+          <details className="rounded-xl border border-border p-3">
+            <summary className="cursor-pointer font-medium">Prose</summary>
+            <p className="mt-1 text-xs text-ink-muted">How the card's writing reads. Anything left on "Any" is the co-writer's choice.</p>
+            <div className="mt-3 flex flex-col gap-3">
+              {PROSE_OPTIONS.filter((o) => o.key !== "explicitness" || settings.unhinged !== "off").map((o) => (
+                <Segmented
+                  key={o.key}
+                  label={o.label}
+                  help=""
+                  options={[{ value: "", label: "Any" }, ...o.options]}
+                  value={settings.prose?.[o.key] ?? ""}
+                  onChange={(v) => change({ prose: { ...settings.prose, [o.key]: v || undefined } })}
+                />
+              ))}
+            </div>
+          </details>
 
           <Segmented
             label="Interview depth"
@@ -144,6 +181,69 @@ export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: s
         </div>
       )}
     </Dialog>
+  );
+}
+
+/** Normal, or Dark and Unhinged, each with its level; the two combine. */
+function Content({ settings, change }: { settings: CowriterSettings; change: (patch: Partial<CowriterSettings>) => void }) {
+  const box = (on: boolean) => `flex flex-col gap-2 rounded-xl border p-3 ${on ? "border-accent bg-accent/10" : "border-border"}`;
+  const normal = settings.dark === "off" && settings.unhinged === "off";
+  const levels = <T extends string>(name: string, list: { value: T; label: string; help: string }[], value: T, set: (v: T) => void) => (
+    <div role="radiogroup" aria-label={name} className="ml-7 flex flex-col gap-1.5">
+      {list.map((l) => (
+        <label key={l.value} className="flex cursor-pointer gap-2 text-sm">
+          <input type="radio" name={name} className="mt-0.5 size-4" checked={value === l.value} onChange={() => set(l.value)} />
+          <span className="flex flex-col">
+            <span>{l.label}</span>
+            <span className="text-xs text-ink-muted">{l.help}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-2 font-medium">Content</legend>
+      <label className={`${box(normal)} cursor-pointer`}>
+        <span className="flex gap-3">
+          <input type="checkbox" className="mt-1 size-4" checked={normal} onChange={() => change({ dark: "off", unhinged: "off" })} />
+          <span className="flex flex-col">
+            <span className="font-medium">Normal</span>
+            <span className="text-xs text-ink-muted">Follows your premise, nothing forced.</span>
+          </span>
+        </span>
+      </label>
+      <div className={box(settings.dark !== "off")}>
+        <label className="flex cursor-pointer gap-3">
+          <input
+            type="checkbox"
+            className="mt-1 size-4"
+            checked={settings.dark !== "off"}
+            onChange={(e) => change({ dark: e.target.checked ? "dark" : "off" })}
+          />
+          <span className="flex flex-col">
+            <span className="font-medium">Dark</span>
+            <span className="text-xs text-ink-muted">Darker writing actively pushed in. Combines with Unhinged.</span>
+          </span>
+        </label>
+        {settings.dark !== "off" && levels("Dark level", DARK_LEVELS, settings.dark, (dark) => change({ dark }))}
+      </div>
+      <div className={box(settings.unhinged !== "off")}>
+        <label className="flex cursor-pointer gap-3">
+          <input
+            type="checkbox"
+            className="mt-1 size-4"
+            checked={settings.unhinged !== "off"}
+            onChange={(e) => change({ unhinged: e.target.checked ? "normal" : "off" })}
+          />
+          <span className="flex flex-col">
+            <span className="font-medium">Unhinged</span>
+            <span className="text-xs text-ink-muted">Explicit NSFW. Characters are always adults, with ages stated.</span>
+          </span>
+        </label>
+        {settings.unhinged !== "off" && levels("Unhinged level", UNHINGED_LEVELS, settings.unhinged, (unhinged) => change({ unhinged }))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -198,7 +298,7 @@ function Segmented<T extends string>({
   return (
     <div className="flex flex-col gap-1.5">
       <span className="font-medium">{label}</span>
-      <span className="text-xs text-ink-muted">{help}</span>
+      {help && <span className="text-xs text-ink-muted">{help}</span>}
       <div role="radiogroup" aria-label={label} className="flex rounded-lg border border-border p-0.5">
         {options.map((o) => (
           <button

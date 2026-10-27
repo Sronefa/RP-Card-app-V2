@@ -285,7 +285,7 @@ describe("interview", () => {
     const req = script.requests.at(-1)!;
     expect(req.system).toContain("brainstorming the answer");
     expect(lastText(req)).toContain("The question: What does she guard?");
-    expect(lastText(req)).toContain("Content mode: Unhinged");
+    expect(lastText(req)).toContain("Content: Unhinged");
 
     script.replies.push(reply("", [["final_answer", { answer: "A door made of the first king's bones." }]]));
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "Pick Bones" }));

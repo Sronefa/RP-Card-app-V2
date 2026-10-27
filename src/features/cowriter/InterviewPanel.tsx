@@ -3,7 +3,7 @@ import { useUi } from "../../app/store";
 import { memoText } from "../../ai/interviewTools";
 import { factsText, transcript } from "../../ai/prompts";
 import {
-  DEFAULT_COWRITER,
+  withCowriterDefaults,
   type InterviewDepth,
   type InterviewRecord,
   type Question,
@@ -94,7 +94,7 @@ function StartForm({ projectId, kind }: { projectId: string; kind: "character" |
   const [depth, setDepth] = useState<InterviewDepth>();
 
   useEffect(() => {
-    void getProject(projectId).then((p) => setDepth({ ...DEFAULT_COWRITER, ...p?.cowriter }.depth));
+    void getProject(projectId).then((p) => setDepth(withCowriterDefaults(p?.cowriter).depth));
   }, [projectId]);
 
   return (

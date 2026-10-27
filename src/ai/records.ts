@@ -2,12 +2,35 @@
 import type { StyleLock } from "../images/visual";
 import type { ChatMessage, ToolCall } from "./types";
 
+/** The old single content mode, read only to migrate projects saved before the two levels. */
 export type ContentMode = "normal" | "dark" | "unhinged";
+/** How dark the writing goes. Off with unhinged off is Normal. */
+export type DarkLevel = "off" | "dark" | "horror" | "deaddove";
+/** How much sex the writing pushes. Combines with any dark level. */
+export type UnhingedLevel = "off" | "normal" | "absolute";
+
+/** How the prose reads. Missing values leave the choice to the co-writer. */
+export interface ProseSettings {
+  pov?: "second" | "third";
+  tense?: "past" | "present";
+  /** Target length of the character's replies, which the greetings set. */
+  length?: "short" | "medium" | "long";
+  dialogue?: "light" | "balanced" | "heavy";
+  register?: "plain" | "literary" | "pulpy" | "poetic";
+  rhythm?: "varied" | "punchy" | "flowing";
+  /** For NSFW projects. */
+  explicitness?: "suggestive" | "explicit" | "graphic";
+  format?: "asterisks" | "quotes" | "plain";
+}
 export type InterviewDepth = "quick" | "standard" | "deep";
 export type SuggestionLevel = "quiet" | "balanced" | "lots";
 
 export interface CowriterSettings {
-  contentMode: ContentMode;
+  /** Legacy: projects saved before the dark and unhinged levels. */
+  contentMode?: ContentMode;
+  dark: DarkLevel;
+  unhinged: UnhingedLevel;
+  prose?: ProseSettings;
   /** One of the listed tones, or the user's own words. Empty means no preference. */
   tone: string;
   genre: string;
@@ -22,13 +45,34 @@ export interface CowriterSettings {
 }
 
 export const DEFAULT_COWRITER: CowriterSettings = {
-  contentMode: "normal",
+  dark: "off",
+  unhinged: "off",
   tone: "",
   genre: "",
   depth: "standard",
   suggestions: "balanced",
   presetIds: [],
 };
+
+/** A project's stored co-writer settings with defaults filled in; old content modes become levels. */
+export function withCowriterDefaults(stored?: Partial<CowriterSettings>): CowriterSettings {
+  const { contentMode, ...rest } = stored ?? {};
+  return {
+    ...DEFAULT_COWRITER,
+    ...rest,
+    dark: rest.dark ?? (contentMode === "dark" ? "dark" : "off"),
+    unhinged: rest.unhinged ?? (contentMode === "unhinged" ? "normal" : "off"),
+  };
+}
+
+export const DARK_LABELS: Record<DarkLevel, string> = { off: "Off", dark: "Dark", horror: "Horror", deaddove: "Dead dove" };
+export const UNHINGED_LABELS: Record<UnhingedLevel, string> = { off: "Off", normal: "Unhinged", absolute: "Absolutely unhinged" };
+
+/** "Normal", "Horror", "Unhinged" or both, e.g. "Horror + Absolutely unhinged". */
+export function contentLabel(s: Pick<CowriterSettings, "dark" | "unhinged">): string {
+  const parts = [s.dark !== "off" && DARK_LABELS[s.dark], s.unhinged !== "off" && UNHINGED_LABELS[s.unhinged]].filter(Boolean);
+  return parts.join(" + ") || "Normal";
+}
 
 export type ProposalStatus = "pending" | "accepted" | "rejected" | "failed";
 

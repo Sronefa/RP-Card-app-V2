@@ -16,8 +16,8 @@ export interface ProjectRecord {
   name: string;
   /** Personas from the shared library used in this project. */
   personaIds: string[];
-  /** Co-writer settings for this project; defaults apply when missing. */
-  cowriter?: CowriterSettings;
+  /** Co-writer settings for this project, as stored: read them with `withCowriterDefaults`. */
+  cowriter?: Partial<CowriterSettings>;
   /** The guided path's switch, skipped steps and steps marked done. */
   guide?: GuideState;
   createdAt: number;
