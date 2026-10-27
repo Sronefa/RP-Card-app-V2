@@ -4,6 +4,7 @@
  * changed becomes one proposal. Accepting replays the edits onto the engine as it is then, in one
  * save, so one undo takes it all back.
  */
+import { finishConversion } from "../convert";
 import { changesText, logChange, readChanges } from "../../cowriter/changeLog";
 import { create } from "zustand";
 import { engineerSettings, modelInfo, resolveModel, useAiSettings } from "../../ai/settings";
@@ -54,6 +55,24 @@ export interface EngineerChat {
   /** When the engineer last saw the co-writer's changes to the card. */
   changesSeen?: number;
   updatedAt: number;
+}
+
+/** After a conversion, the co-writer offers each greeting its own starting values. */
+async function offerStartingStates(cardId: string) {
+  await useCowriter
+    .getState()
+    .addTurn(
+      cardId,
+      "The UI engineer converted this light card to the Immersive Engine and the user accepted it. Offer to give each greeting its starting state.",
+      "From the UI engineer: the card runs on the Immersive Engine now",
+      [
+        {
+          text: "The card runs on the engine now. Each greeting can start from its own values, so a reunion opening can begin warmer than a first meeting. Want me to propose a starting state for each greeting?",
+          toolCalls: [],
+        },
+      ],
+    )
+    .catch(() => undefined);
 }
 
 export const newEngineerChat = (cardId: string): EngineerChat => ({
@@ -328,7 +347,9 @@ export const useEngineer = create<EngineerState>((set, get) => {
         const config = data && readEngine(data);
         try {
           if (!data || !config) throw new ToolInputError("The engine is off.");
-          editor.replaceData(applyEngine(data, replay(config, proposal.calls).config));
+          const converted = proposal.calls.some((c) => c.name === "keep_light_backup");
+          editor.replaceData(finishConversion(applyEngine(data, replay(config, proposal.calls).config)));
+          if (converted && editor.record) void offerStartingStates(editor.record.id);
           if (editor.record) void logChange(editor.record.id, "engineer", proposal.summaries);
         } catch (e) {
           if (!(e instanceof ToolInputError)) throw e;

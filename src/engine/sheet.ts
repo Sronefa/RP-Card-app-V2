@@ -80,6 +80,14 @@ export interface EngineConfig {
   regexIds: string[];
   /** The sandbox's test turns, replayed after each change. */
   scenario?: ScenarioTurn[];
+  /**
+   * Set when the card was converted from a light card: its status tracker, brought back if the
+   * engine is turned off, and its relationship stages, which become tiers when the conversion is accepted.
+   */
+  light?: {
+    tracker: TrackerConfig | null;
+    stages: { variable: string; tiers: { from: number; to: number; name: string; behavior: string }[] } | null;
+  };
   /** Installed modules, the core ones included. Missing on cards from before modules. */
   modules?: EngineModule[];
   /** The card theme. Missing on cards from before themes: the panel's accent on the phone preset. */
