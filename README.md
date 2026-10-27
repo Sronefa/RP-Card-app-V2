@@ -57,7 +57,7 @@ CardForge's own PNG code.
   local servers). In the app, requests go through Tauri's HTTP plugin, so endpoints don't need CORS.
   API keys are stored on the device only.
 - The co-writer edits the card only through tool calls (`set_field`, `patch_field`, greetings, example dialogues,
-  lorebook entries, `pitch`). Each call becomes a proposal shown as a diff; accepting it is one undo step.
+  lorebook entries, typed `add_npc`, `add_place`, `add_item`, `add_shop` and `update_world_entry`, `pitch`). Each call becomes a proposal shown as a diff; accepting it is one undo step.
   Models without tool calling write the same edits as a JSON block instead; this is detected automatically.
 - The system prompt never changes during a chat. Project settings, the story bible, the card, the project's world and
   personas are sent in the user's message, only when they changed since the co-writer last saw them.
@@ -84,7 +84,12 @@ CardForge's own PNG code.
   mentions and add them all at once. The currency can be built with a short interview on the coin and the economy,
   and items or services can be made in bulk with settings for count, price, quality, rarity and where they're sold.
   Currency, item and shop entries are XML-tagged (`<item name="…" price="…" quality="…">`), like the arc and mechanics
-  entries.
+  entries. Wherever the co-writer writes (chat, interview draft, lorebook brainstorm, Remix, the UI engineer), people,
+  places, items and shops go through the typed tools, so they land on these pages and are changed by their fields. A
+  plain entry that reads like one can be saved as an NPC (or place, item) from its proposal card; "Sort my lorebook"
+  files existing plain entries with the co-writer or a quick offline guess (`src/cowriter/worldScan.ts`); and after a
+  turn, names it mentioned without an entry can be added in one tap. The story arc's antagonist shows on the NPC page,
+  masked while the arc is secret.
 - Trackers & regex (`src/editor/trackers.ts`): optional add-ons (stats, inventory and money, relationship stages,
   custom fields). The model ends each reply with a status block; CardForge writes a display regex script that turns it
   into an HTML panel, a prompt-only script that drops old blocks, an always-on reminder of the format at depth 1, and for
@@ -167,3 +172,4 @@ Publishing a GitHub Release attaches the installers and the APK to it. See [RELE
 25. Kits, batch 1: Modern life sim (phone hub, daily life with needs, a job, bills and skills, a lock-screen title), School / academy (school app with timetable, grades, exams, record, clubs and council requests, a seasonal school-gate title, an Academy theme) and Dating sim / VN (routes with hearts, dates, gifts, a gallery and endings kept across playthroughs, a choice menu, a title with the cast) (done)
 26. Kits, batch 2: Fantasy RPG (hero sheet with levels, stat points and skills; inventory with gear and merchants; quest board and guild ranks; a world map with fog and travel; a combat HUD under the reply), Dark fantasy / survival (needs at a camp, a scarce pack, contracts, deadly roads, an embers title, a Grimdark theme) and Isekai / system (a System status window with titles, an item box, a booting System title and theme) (done)
 27. Kits, batch 3: Cyberpunk (a neural HUD with RAM quickhacks, cyberware slots and a ripperdoc, gigs and street cred, a sprawl map, a phone with a Darknet app, a glitch title), Sci-fi / space (a ship with hull, shields, fuel, routed reactor power, crew and cargo; a star chart where jumps burn fuel; contracts; a warp title and a Starship theme) and Horror / mystery (a case file with clues, suspects, a red-string evidence board, accusations and a dread meter; a town at night; a VHS title and a Dread theme) (done)
+28. NPCs, places and items always land in the lorebook: typed co-writer tools, "Save as NPC" on plain entries, "Sort my lorebook", one-tap entries for names a turn mentioned, the engineer's world additions, the antagonist on the NPC page (done)

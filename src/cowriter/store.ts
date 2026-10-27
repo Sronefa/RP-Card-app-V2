@@ -9,7 +9,9 @@ import { newChat, type ChatRecord, type Proposal } from "../ai/records";
 import { composeUserMessage, CRITIC_REQUEST, systemPrompt } from "../ai/prompts";
 import { applyEdit, CARD_TOOLS, describeEdit, LORE_TOOLS, planEdit, ToolInputError } from "../ai/tools";
 import type { ChatMessage, ModeId, ToolCall, ToolDef, ToolResult } from "../ai/types";
+import { aKind, KINDS, plainFields, type TypedKind } from "../editor/world";
 import { complete, gatherContext, isAbort, partsText } from "./engine";
+import { addCall } from "./worldScan";
 
 /** Most model calls in one turn (each tool round is one call). */
 const MAX_ROUNDS = 6;
@@ -47,6 +49,8 @@ export interface ChatState {
   critique: () => Promise<void>;
   stop: () => void;
   decide: (proposalId: string, accept: boolean) => void;
+  /** Files a pending plain lore entry under a world page instead (an NPC, place, item or shop). */
+  retype: (proposalId: string, kind: TypedKind) => void;
   acceptAll: () => void;
   clear: () => Promise<void>;
 }
@@ -269,6 +273,26 @@ function createChatStore(channel: Channel) {
             ? `Edit ${proposal.number} (${summary}) couldn't be applied: ${error}`
             : `${proposal.call.name === "pitch" ? "Idea" : "Edit"} ${proposal.number} (${summary}): ${status}`;
         commit({ ...chat, proposals, unreported: [...chat.unreported, note] });
+      },
+
+      retype(proposalId, kind) {
+        const chat = get().chat;
+        const proposal = chat?.proposals.find((p) => p.id === proposalId);
+        if (!chat || !proposal || proposal.status !== "pending" || proposal.call.name !== "add_lore_entry") return;
+        const input = proposal.call.input;
+        const keys = Array.isArray(input.keys) ? input.keys.filter((k): k is string => typeof k === "string") : [];
+        const fields = plainFields(kind, String(input.title ?? ""), keys, String(input.content ?? ""));
+        if (typeof input.why === "string") fields.why = input.why;
+        const call = { ...addCall(kind, fields), id: proposal.call.id };
+        const label = KINDS[kind].label;
+        commit({
+          ...chat,
+          proposals: chat.proposals.map((p) => (p.id === proposalId ? { ...p, call, summary: `Add ${label} "${fields.name}"` } : p)),
+          unreported: [
+            ...chat.unreported,
+            `The user filed edit ${proposal.number} ("${fields.name}") as ${aKind(kind)} on the world pages; it is still waiting for their decision.`,
+          ],
+        });
       },
 
       acceptAll() {

@@ -1,9 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { describeEdit, planEdit, ToolInputError, type Edit } from "../../ai/tools";
+import type { ChatRecord } from "../../ai/records";
+import type { CardDataV3 } from "../../card";
 import type { StoreApi, UseBoundStore } from "zustand";
 import { AutoTextarea, Button } from "../../components/ui";
 import type { ChatState } from "../../cowriter/store";
 import { useEditor } from "../../editor/store";
+import { properNouns, uncoveredIn } from "../../editor/coverage";
+import { scanNames } from "../../cowriter/worldScan";
 import { ProposalCard } from "./ProposalCard";
+import { useRun } from "./useRun";
 
 /**
  * A co-writer conversation: messages, the proposals in them, and the message box.
@@ -25,7 +31,7 @@ export function ChatView({
   moreLikeThis?: boolean;
 }) {
   const record = useEditor((s) => s.record);
-  const { chat, busy, streaming, error, draft, setDraft, load, send, stop, decide, acceptAll } = store();
+  const { chat, busy, streaming, error, draft, setDraft, load, send, stop, decide, retype, acceptAll, addTurn } = store();
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,6 +100,7 @@ export function ChatView({
                       if (accept && p.call.name === "pitch")
                         void send(`Use idea ${p.number} ("${String(p.call.input.title)}"). Work it into the card.`);
                     }}
+                    onRetype={(kind) => retype(p.id, kind)}
                     onMore={
                       moreLikeThis && p.call.name === "add_lore_entry" && !busy
                         ? () => void send(`More like edit ${p.number} ("${String(p.call.input.title)}").`)
@@ -115,6 +122,7 @@ export function ChatView({
             {error}
           </p>
         )}
+        {!busy && chat && <MentionedNames chat={chat} data={record.card.data} addTurn={addTurn} cardId={record.id} />}
         <div ref={end} />
       </div>
 
@@ -156,4 +164,98 @@ export function ChatView({
       </div>
     </>
   );
+}
+
+/** What a turn's pending edits add, and what they replace, as text. */
+function pendingText(chat: ChatRecord, data: CardDataV3) {
+  const before: string[] = [];
+  const after: string[] = [];
+  const adds: Edit[] = [];
+  for (const p of chat.proposals) {
+    if (p.status !== "pending" || p.call.name === "pitch") continue;
+    let edit: Edit;
+    try {
+      edit = planEdit(data, p.call);
+    } catch (e) {
+      if (e instanceof ToolInputError) continue;
+      throw e;
+    }
+    if (edit.kind === "field" || edit.kind === "greeting") {
+      before.push(edit.before);
+      after.push(edit.after);
+    } else if (edit.kind === "lore" && edit.after) {
+      before.push(edit.before?.content ?? "");
+      after.push(edit.after.content);
+      if (edit.action === "add") adds.push(edit);
+    }
+  }
+  return { before: before.join("\n\n"), after: after.join("\n\n"), adds };
+}
+
+/**
+ * After a turn, names the co-writer's pending edits bring in with no lorebook entry, with one tap
+ * to add them to the world pages as proposals.
+ */
+function MentionedNames({
+  chat,
+  data,
+  cardId,
+  addTurn,
+}: {
+  chat: ChatRecord;
+  data: CardDataV3;
+  cardId: string;
+  addTurn: ChatState["addTurn"];
+}) {
+  const [dismissed, setDismissed] = useState("");
+  const { busy, run, status } = useRun();
+  const { before, after, adds } = pendingText(chat, data);
+  if (!after) return null;
+  const known = properNouns(before);
+  const entries = [...(data.character_book?.entries ?? []), ...adds.flatMap((e) => (e.kind === "lore" && e.after ? [e.after] : []))];
+  const names = uncoveredIn(after, data, entries).filter((n) => !known.has(n));
+  const key = names.join("|");
+  if (!names.length || (key === dismissed && !busy)) return status || null;
+  const n = names.length;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border p-3 text-sm">
+      <p className="text-ink-muted">
+        {n === 1 ? "This turn mentions a name" : `This turn mentions ${n} names`} with no lorebook entry: {names.join(", ")}.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          disabled={!!busy}
+          onClick={() =>
+            void run(`Adding ${n === 1 ? names[0] : `${n} names`} to the world pages…`, async (signal) => {
+              const record = useEditor.getState().record!;
+              const calls = await scanNames(record, names, after, signal);
+              if (!calls.length) throw new Error("The co-writer didn't file any of them as an NPC, place, item or shop.");
+              await addTurn(
+                cardId,
+                `Add ${names.join(", ")} to the world pages.`,
+                `Add ${n === 1 ? names[0] : `these ${n}`} to the world pages`,
+                [{ text: calls.map((c) => planDescription(record.card.data, c)).join("\n"), toolCalls: calls }],
+              );
+              setDismissed(key);
+            })
+          }
+        >
+          ✦ Add {n === 1 ? "it" : `these ${n}`} as NPCs, places or items
+        </Button>
+        <Button variant="ghost" disabled={!!busy} onClick={() => setDismissed(key)}>
+          Not now
+        </Button>
+      </div>
+      {status}
+    </div>
+  );
+}
+
+function planDescription(data: CardDataV3, call: Parameters<typeof planEdit>[1]): string {
+  try {
+    return `${describeEdit(planEdit(data, call))}.`;
+  } catch {
+    return "";
+  }
 }

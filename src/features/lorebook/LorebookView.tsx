@@ -19,6 +19,8 @@ import { NoCard } from "../editor/NoCard";
 import { EntryEditor } from "./EntryEditor";
 import { EconomyPage, WorldPage } from "../world/WorldPage";
 import { LoreBrainstorm } from "./LoreBrainstorm";
+import { SortLorebook } from "./SortLorebook";
+import { isPlainEntry } from "../../editor/world";
 import { ArcPage } from "../arc/ArcPage";
 import { arcHidden, constantTokens, isArcEntry } from "../../editor/arc";
 
@@ -38,7 +40,7 @@ export function LorebookView() {
   const { focusEntry, setFocusEntry } = useUi();
   const [open, setOpen] = useState<number | undefined>(focusEntry);
   const [query, setQuery] = useState("");
-  const [dialog, setDialog] = useState<"settings" | "export">();
+  const [dialog, setDialog] = useState<"settings" | "export" | "sort">();
   const [tab, setTab] = useState<Tab>("entries");
   const list = useRef<HTMLUListElement>(null);
 
@@ -129,6 +131,7 @@ export function LorebookView() {
         ) : tab === "npcs" ? (
           <WorldPage
             kind="npc"
+            onOpenArc={() => setTab("arc")}
             intro="Everyone the narrator may voice. Each NPC is a lorebook entry that comes up when they're named; the voice note keeps them from all sounding alike."
           />
         ) : tab === "places" ? (
@@ -155,6 +158,7 @@ export function LorebookView() {
                 Export
               </Button>
               <Button onClick={() => setDialog("settings")}>Book settings</Button>
+              {book.entries.some(isPlainEntry) && <Button onClick={() => setDialog("sort")}>✦ Sort my lorebook</Button>}
             </div>
             {book.entries.length > 3 && (
               <TextInput
@@ -226,6 +230,7 @@ export function LorebookView() {
       <Dialog open={dialog === "settings"} title="Book settings" onClose={() => setDialog(undefined)}>
         <BookSettings book={book} onChange={setBook} />
       </Dialog>
+      <SortLorebook open={dialog === "sort"} onClose={() => setDialog(undefined)} />
       <Dialog open={dialog === "export"} title="Export lorebook" onClose={() => setDialog(undefined)}>
         <p className="mb-4 text-sm text-ink-muted">
           The lorebook is already inside the card when you export it. Export it on its own to share it or to use it as a

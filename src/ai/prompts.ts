@@ -7,6 +7,7 @@ import type { CardKind, CardRecord, PersonaRecord } from "../db/db";
 import { ARC_OPTIONS, arcHidden, type ArcSettingKey, type ArcSettings } from "../editor/arc";
 import { entryTitle } from "../editor/lorebook";
 import { LOGIC_NAMES } from "../editor/mechanics";
+import { KINDS, pageMeta, worldFieldsText } from "../editor/world";
 import { estimateTokens } from "../lib/tokens";
 import { YOU_DECIDE, type ContentMode, type CowriterSettings, type InterviewDepth, type InterviewRound } from "./records";
 import { EDITABLE_FIELDS } from "./tools";
@@ -30,6 +31,7 @@ Writing principles:
 - Characters: want versus need, a wound or a lie they believe, flaws that create friction, a distinct voice, how they act under pressure, secrets that unlock through play.
 - Worlds: the card holds the tip of the iceberg and the lorebook the depth. Build from conflict; rules have costs; give sensory, daily-life texture.
 - Lorebook entries are self-contained facts of 50 to 200 tokens. Keys cover names, nicknames, plurals and related words, and are never generic ("the", "city"). Constant entries only for true always-on facts.
+- People, places, items and shops are typed: add them with add_npc, add_place, add_item and add_shop (never add_lore_entry), and change them with update_world_entry, so they land on the world pages. add_lore_entry is for everything else: factions, rules, history, secrets.
 
 Characters in sexual content are always adults. Never sexualize minors.`;
 
@@ -38,7 +40,7 @@ const TOOLS_NOTE = `Change the card only through your tools. Each call becomes a
 const MODES: Record<ModeId, string> = {
   refine: `Right now you're refining the card with the user. Do what they ask, and when an instruction is vague ("make her meaner"), make a clear choice and say what you chose.`,
 
-  lore: `Right now you're brainstorming lorebook entries with the user. Pitch entries one or two at a time with add_lore_entry, each with a "why". Check every pitch against the card, the story bible and the existing entries: no duplicates, no contradictions, and point out any conflict you notice. When the user asks for more like an entry, pitch new entries of the same kind. To tweak an entry the user hasn't accepted yet, pitch a corrected version; for accepted entries use update_lore_entry.`,
+  lore: `Right now you're brainstorming lorebook entries with the user. Pitch entries one or two at a time, each with a "why": add_npc, add_place, add_item or add_shop for people, places, items and shops, add_lore_entry for everything else. Check every pitch against the card, the story bible and the existing entries: no duplicates, no contradictions, and point out any conflict you notice. When the user asks for more like an entry, pitch new entries of the same kind. To tweak an entry the user hasn't accepted yet, pitch a corrected version; for accepted entries use update_lore_entry, or update_world_entry for NPCs, places, items and shops.`,
 
   interview: `Right now you're interviewing the user to build the card. Ask questions with ask_questions, a few per round, grouped by theme. Every question gets 3 or 4 suggested answers that are concrete, distinct and usable as they are, so the user can build the whole card by tapping. Suggestions follow the content mode, tone and genre. Build on earlier answers; never ask about something already decided. When an answer is "(You decide.)", decide it yourself and note what you chose. After each round of answers, record what is now decided with note_facts, then ask the next round. Call finish_interview when you know enough. Keep your own text to a sentence or two; the questions do the talking.`,
 
@@ -126,10 +128,13 @@ export function cardContext(data: CardDataV3, kind: CardKind): string {
   out.push(
     `## lorebook (${entries.length} entries)\n` +
       (entries
-        .map(
-          (e) =>
-            `[id ${String(e.id)}] ${entryTitle(e)}${e.constant ? " (constant)" : ""}${e.enabled ? "" : " (disabled)"}\nkeys: ${e.keys.join(", ") || "(none)"}\n${e.content}`,
-        )
+        .map((e) => {
+          const world = pageMeta(e);
+          const head = `[id ${String(e.id)}] ${world ? `${KINDS[world.kind].label}: ` : ""}${entryTitle(e)}${e.constant ? " (constant)" : ""}${e.enabled ? "" : " (disabled)"}`;
+          return world
+            ? `${head}\n${worldFieldsText(world)}`
+            : `${head}\nkeys: ${e.keys.join(", ") || "(none)"}\n${e.content}`;
+        })
         .join("\n\n") || "(empty)"),
   );
   if (arcHidden(data))
@@ -306,9 +311,9 @@ export const DRAFT_GROUPS: { id: string; label: string; brief: Record<CardKind, 
     label: "lorebook",
     brief: {
       character:
-        "Add 3 to 6 lorebook entries with add_lore_entry for things that matter only sometimes: people, places, history, secrets. Don't repeat what the description says.",
+        "Add 3 to 6 lorebook entries for things that matter only sometimes: people with add_npc, places with add_place, history and secrets with add_lore_entry. Don't repeat what the description says.",
       world:
-        "Add 6 to 12 lorebook entries with add_lore_entry: places, factions, notable people, rules, history. Each self-contained, with good keys.",
+        "Add 6 to 12 lorebook entries: notable people with add_npc, places with add_place, factions, rules and history with add_lore_entry. Each self-contained, with good keys.",
     },
   },
 ];
@@ -433,7 +438,7 @@ export function imagePromptRequest(opts: {
 
 /** Asks the lorebook brainstorm to fit a character card into this world. */
 export function bringInRequest(character: string): string {
-  return `<character_card>\n${character}\n</character_card>\n\nBring this character into this world. First, in a few short lines: where they fit (place, role, standing), their ties to people and factions already in the world, and what in their card clashes with the world and how you'd adapt it. Then pitch lorebook entries one or two at a time with add_lore_entry, starting with the character's own entry, then their ties, places and secrets. Keep them recognisable; adapt names, places and details that don't fit, and say what you changed. I'll steer before accepting.`;
+  return `<character_card>\n${character}\n</character_card>\n\nBring this character into this world. First, in a few short lines: where they fit (place, role, standing), their ties to people and factions already in the world, and what in their card clashes with the world and how you'd adapt it. Then pitch lorebook entries one or two at a time, starting with the character's own entry as an NPC (add_npc), then their ties, places and secrets. Keep them recognisable; adapt names, places and details that don't fit, and say what you changed. I'll steer before accepting.`;
 }
 
 /** Asks the planner to sort the greetings onto the user's axes. */
@@ -490,6 +495,21 @@ export function worldPitchRequest(opts: { many: string; existing: string[]; coun
       ? `Pitch ${opts.count} ${opts.many}. The user asks: ${opts.ask.trim()}`
       : `Pitch ${opts.count} ${opts.many} this world needs, starting with any the card mentions that aren't on the page yet.`,
   ].join("\n\n");
+}
+
+/** Asks the co-writer to file plain lorebook entries under the world pages. */
+export function sortLorebookRequest(entries: { id: string; title: string; keys: string[]; content: string }[]): string {
+  return [
+    entries
+      .map((e) => `<entry id="${e.id}" title="${e.title.replace(/"/g, "'")}" keys="${e.keys.join(", ").replace(/"/g, "'")}">\n${e.content}\n</entry>`)
+      .join("\n\n"),
+    "These lorebook entries were written as plain text. File each one with file_world: npc for a single person, location for a single place, item for an item or service, shop for a shop or trader, other for anything else (factions, groups, rules, events, history, several things at once). For npc, location, item and shop, fill the fields from the entry: keep every fact it states, in the field it fits, and put the rest in notes (details for a place). Don't invent anything. The name is what the entry is about; other names and keys it should trigger on go in aliases.",
+  ].join("\n\n");
+}
+
+/** Asks the co-writer to put names a turn mentioned onto the world pages. */
+export function mentionScanRequest(names: string[], newText: string): string {
+  return `<proposed_edits>\n${newText}\n</proposed_edits>\n\nThe card and the edits proposed for it mention ${names.map((n) => `"${n}"`).join(", ")}, with no lorebook entry yet. Add each one with file_world: an NPC for a person, a place, an item or a shop, or other for anything else. Fill the fields from what the card says about them; where it says nothing, keep the field short and consistent with the card, or leave it empty.`;
 }
 
 /** Asks for the NPCs the card already establishes, to fill the NPC page from it. */

@@ -4,6 +4,7 @@ import { Button } from "../../components/ui";
 import type { CardDataV3 } from "../../card";
 import { diffWords } from "../../lib/diff";
 import { estimateTokens } from "../../lib/tokens";
+import { guessWorldKind, KINDS, type TypedKind } from "../../editor/world";
 
 const STATUS: Record<Proposal["status"], string> = {
   pending: "",
@@ -21,12 +22,15 @@ export function ProposalCard({
   data,
   onDecide,
   onMore,
+  onRetype,
 }: {
   proposal: Proposal;
   data: CardDataV3 | undefined;
   onDecide: (accept: boolean) => void;
   /** Asks for more pitches like this one. */
   onMore?: () => void;
+  /** Files a plain lore entry under a world page instead. */
+  onRetype?: (kind: TypedKind) => void;
 }) {
   let edit: Edit | undefined;
   let problem: string | undefined;
@@ -47,6 +51,11 @@ export function ProposalCard({
       ? describeEdit(edit)
       : (proposal.summary ?? proposal.call.name.replace(/_/g, " "));
   const why = typeof proposal.call.input.why === "string" ? proposal.call.input.why : "";
+  // The safety net: a plain entry that reads like a person, place or item can land on its page.
+  const guess =
+    pending && onRetype && edit?.kind === "lore" && edit.action === "add" && !edit.world
+      ? guessWorldKind(edit.title, edit.after!.content)
+      : undefined;
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-3 text-sm">
@@ -76,6 +85,11 @@ export function ProposalCard({
               More like this
             </Button>
           )}
+          {guess && (
+            <Button variant="ghost" className={onMore ? "" : "mr-auto"} onClick={() => onRetype!(guess)}>
+              Save as {guess === "npc" ? "NPC" : KINDS[guess].label}
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => onDecide(false)}>
             {isPitch || problem ? "Dismiss" : "Reject"}
           </Button>
@@ -97,6 +111,7 @@ function EditPreview({ edit }: { edit: Edit }) {
     return (
       <div className="flex flex-col gap-1">
         <span className="text-xs text-ink-muted">
+          {edit.world && `On the ${KINDS[edit.world].plural} page · `}
           Keys: {e.keys.join(", ") || "none"}
           {e.constant ? " · always on" : ""}
         </span>
