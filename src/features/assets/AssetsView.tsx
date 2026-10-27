@@ -8,6 +8,7 @@ import { useEditor } from "../../editor/store";
 import { pickFiles, readFileBytes, safeFileName, saveFile } from "../../lib/files";
 import { useObjectUrl } from "../../lib/useObjectUrl";
 import { ImagePromptDialog } from "../images/ImagePromptDialog";
+import { ImageStudio } from "../images/ImageStudio";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
 
@@ -64,6 +65,7 @@ export function AssetsView() {
   const { setField, addFiles } = useEditor();
   const [editing, setEditing] = useState<number>();
   const [prompting, setPrompting] = useState(false);
+  const [view, setView] = useState<"files" | "studio">("files");
 
   if (!record) return <NoCard />;
 
@@ -100,37 +102,59 @@ export function AssetsView() {
         <CardBar detail={`${assets.length} assets · ${formatSize(totalBytes)}`} />
       </div>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
-        <p className="text-sm text-ink-muted">
-          Files that travel inside the card. PNG and CHARX exports include them; a JSON export can't. Large files make
-          PNG cards much bigger, so prefer CHARX for many sprites.
-        </p>
-        <Button className="self-start" onClick={() => setPrompting(true)}>
-          ✦ Write an image prompt
-        </Button>
-        {prompting && <ImagePromptDialog onClose={() => setPrompting(false)} />}
-        {TYPES.map((t) => {
-          const items = assets.map((a, i) => ({ a, i })).filter(({ a }) => typeGroup(a.type) === t.type);
-          return (
-            <section key={t.type} className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="font-medium">{t.label}</h2>
-                <Button onClick={() => void add(t.type, t.accept)} aria-label={`Add ${t.label.toLowerCase()}`}>
-                  Add
-                </Button>
-              </div>
-              <p className="text-xs text-ink-muted">{t.help}</p>
-              {items.length > 0 && (
-                <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {items.map(({ a, i }) => (
-                    <li key={i}>
-                      <AssetTile record={record} asset={a} onClick={() => setEditing(i)} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          );
-        })}
+        <div role="tablist" aria-label="Assets" className="flex rounded-lg border border-border p-0.5">
+          {(
+            [
+              ["files", "Files"],
+              ["studio", "Image Studio"],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => setView(v)}
+              className={`min-h-9 flex-1 rounded-md px-2 text-sm ${view === v ? "bg-accent/15 text-accent" : "text-ink-muted"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === "studio" && <ImageStudio record={record} />}
+        <div hidden={view !== "files"} className="flex flex-col gap-6">
+          <p className="text-sm text-ink-muted">
+            Files that travel inside the card. PNG and CHARX exports include them; a JSON export can't. Large files make
+            PNG cards much bigger, so prefer CHARX for many sprites.
+          </p>
+          <Button className="self-start" onClick={() => setPrompting(true)}>
+            ✦ Write an image prompt
+          </Button>
+          {prompting && <ImagePromptDialog onClose={() => setPrompting(false)} />}
+          {TYPES.map((t) => {
+            const items = assets.map((a, i) => ({ a, i })).filter(({ a }) => typeGroup(a.type) === t.type);
+            return (
+              <section key={t.type} className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-medium">{t.label}</h2>
+                  <Button onClick={() => void add(t.type, t.accept)} aria-label={`Add ${t.label.toLowerCase()}`}>
+                    Add
+                  </Button>
+                </div>
+                <p className="text-xs text-ink-muted">{t.help}</p>
+                {items.length > 0 && (
+                  <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {items.map(({ a, i }) => (
+                      <li key={i}>
+                        <AssetTile record={record} asset={a} onClick={() => setEditing(i)} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+        </div>
       </div>
 
       <Dialog open={editing !== undefined && !!assets[editing]} title="Asset" onClose={() => setEditing(undefined)}>

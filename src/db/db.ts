@@ -169,6 +169,7 @@ export async function deleteCard(id: string) {
     tx.objectStore("chats").delete(id),
     tx.objectStore("chats").delete(loreChatKey(id)),
     tx.objectStore("chats").delete(engineerChatKey(id)),
+    tx.objectStore("chats").delete(`studio:${id}`),
     tx.objectStore("interviews").delete(id),
     tx.done,
   ]);

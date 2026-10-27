@@ -1,4 +1,5 @@
 /** Stored co-writer data: per-project settings and per-card conversations. */
+import type { StyleLock } from "../images/visual";
 import type { ChatMessage, ToolCall } from "./types";
 
 export type ContentMode = "normal" | "dark" | "unhinged";
@@ -16,6 +17,8 @@ export interface CowriterSettings {
   presetIds: string[];
   /** "Built for the Immersive Engine": the co-writer writes for an MVU engine card from the start. */
   engineMode?: boolean;
+  /** The project's art direction for every image prompt. */
+  styleLock?: StyleLock;
 }
 
 export const DEFAULT_COWRITER: CowriterSettings = {
