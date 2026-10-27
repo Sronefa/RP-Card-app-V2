@@ -129,7 +129,7 @@ function whereNow(name) {
   return hit ? hit.slice(name.length + 1).trim() : "";
 }
 function avatar(p, big) {
-  return '<span class="pp-av' + (big ? " big" : "") + '">' + CF.ui.avatar(p.avatar ? app.asset(p.avatar) : null, p.name) + "</span>";
+  return '<span class="pp-av' + (big ? " big" : "") + '">' + CF.ui.avatar(p.avatar ? app.asset(p.avatar) : CF.assets.portrait(p.name), p.name) + "</span>";
 }
 function home() {
   if (!settings.people.length) return CF.ui.appBar(settings.title) + '<div class="cf-appbody"><p class="cf-muted">No one here yet.</p></div>';

@@ -492,6 +492,7 @@ function cfFrame(win, options) {
     settings: cfSettings,
     setSettings: cfSetSettings,
     asset: cfAsset,
+    assets: cfAssets,
     /** The game state at this screen's message (or one value by path). */
     state: function (path) {
       return cfRead(path, messageId);
@@ -731,6 +732,97 @@ function cfAsset(file) {
   return "/user/images/" + encodeURIComponent(CF_CONFIG.charName || "") + "/" + encodeURIComponent(name);
 }
 
+// ---------------------------------------------------------------- art by meaning
+
+// The card's tagged images (CF_CONFIG.assets): { s: subject, k: kind, v: variant, f: file, u: path }.
+// Screens ask by meaning and get the closest fit, or null when the card has nothing that fits.
+var CF_MOOD_FAMILIES = [
+  ["joy", "amusement", "excitement", "optimism", "pride", "relief", "approval", "gratitude"],
+  ["love", "caring", "desire", "admiration"],
+  ["sadness", "grief", "disappointment", "remorse"],
+  ["anger", "annoyance", "disapproval", "disgust"],
+  ["fear", "nervousness", "embarrassment"],
+  ["surprise", "realization", "confusion", "curiosity"],
+  ["neutral"],
+];
+
+function cfAssetList() {
+  return Array.isArray(CF_CONFIG.assets) ? CF_CONFIG.assets : [];
+}
+
+function cfLow(s) {
+  return String(s || "").trim().toLowerCase();
+}
+
+function cfAssetUrl(entry) {
+  if (!entry) return null;
+  try {
+    var override = cfHost().CF_ASSETS;
+    if (override && override[entry.f]) return override[entry.f];
+  } catch (e) {}
+  return entry.u;
+}
+
+/** Entries of a kind (and subject), best first by how well the variant fits. */
+function cfAssetFind(q) {
+  q = q || {};
+  var list = cfAssetList().filter(function (e) {
+    if (q.kind && [].concat(q.kind).indexOf(e.k) < 0) return false;
+    if (q.subject !== undefined && cfLow(e.s) !== cfLow(q.subject)) return false;
+    return true;
+  });
+  if (!q.variant) return list[0] || null;
+  var want = cfLow(q.variant);
+  return (
+    list.find(function (e) { return cfLow(e.v) === want; }) ||
+    list.find(function (e) { return e.v && (cfLow(e.v).indexOf(want) >= 0 || want.indexOf(cfLow(e.v)) >= 0); }) ||
+    null
+  );
+}
+
+function cfClosestMood(mood) {
+  var m = cfLow(mood);
+  var family = CF_MOOD_FAMILIES.find(function (f) { return f.indexOf(m) >= 0; });
+  return family ? family.filter(function (x) { return x !== m; }) : [];
+}
+
+var cfAssets = {
+  list: function (kind) {
+    return cfAssetList().filter(function (e) { return !kind || e.k === kind; }).map(function (e) {
+      return { subject: e.s, kind: e.k, variant: e.v || "", url: cfAssetUrl(e) };
+    });
+  },
+  find: function (q) {
+    return cfAssetUrl(cfAssetFind(q));
+  },
+  /** A character's picture: the emotion asked for, then a close one, then their portrait. */
+  portrait: function (name, opts) {
+    opts = opts || {};
+    var hit = null;
+    if (opts.emotion) {
+      hit = cfAssetFind({ kind: "emotion", subject: name, variant: opts.emotion });
+      var near = cfClosestMood(opts.emotion);
+      for (var i = 0; !hit && i < near.length; i++) hit = cfAssetFind({ kind: "emotion", subject: name, variant: near[i] });
+    }
+    if (!hit && opts.outfit) hit = cfAssetFind({ kind: "outfit", subject: name, variant: opts.outfit });
+    if (!hit) hit = cfAssetFind({ kind: "portrait", subject: name });
+    if (!hit) hit = cfAssetFind({ kind: "emotion", subject: name, variant: "neutral" }) || cfAssetFind({ kind: "emotion", subject: name });
+    return cfAssetUrl(hit);
+  },
+  /** A place at a time of day ("night", "Evening"), then the place at any time. */
+  background: function (place, time) {
+    var hit = (time && cfAssetFind({ kind: "background", subject: place, variant: time })) || cfAssetFind({ kind: "background", subject: place });
+    return cfAssetUrl(hit);
+  },
+  icon: function (name) {
+    return cfAssetUrl(cfAssetFind({ kind: "icon", subject: name }));
+  },
+  /** Engine art by what it is: "title", "map", "wallpaper". */
+  scene: function (variant) {
+    return cfAssetUrl(cfAssetFind({ kind: ["scene", "ui"], variant: variant }));
+  },
+};
+
 // ---------------------------------------------------------------- older panels freeze
 
 // A live iframe per reply is heavy on phones. Panels older than the player's "panels kept live"
@@ -829,6 +921,7 @@ var CardForgeApi = {
   },
   close: cfClose,
   asset: cfAsset,
+  assets: cfAssets,
   settings: cfSettings,
   setSettings: cfSetSettings,
   themeCss: cfThemeCss,

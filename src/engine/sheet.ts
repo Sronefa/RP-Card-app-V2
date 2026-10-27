@@ -13,6 +13,7 @@
 import { z } from "zod";
 import type { CardDataV3, Lorebook, LorebookEntry } from "../card";
 import { emptyBook, newEntry, withStPosition } from "../editor/lorebook";
+import { assetManifest, type ManifestEntry } from "../images/manifest";
 import { stageRanges, type SillyTavernRegex, type TrackerConfig } from "../editor/trackers";
 import { newId } from "../lib/id";
 import { estimateTokens } from "../lib/tokens";
@@ -389,7 +390,7 @@ export const initvarText = (config: EngineConfig) => runtime.cfYaml(initialState
 const scriptJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 
 /** The card settings the engine core reads: starting values, schema, modules, theme and kit. */
-export function settingsSource(config: EngineConfig, charName = ""): string {
+export function settingsSource(config: EngineConfig, charName = "", assets: ManifestEntry[] = []): string {
   const full = effectiveConfig(config);
   const theme = themeBundle(themeOf(config));
   const settings = {
@@ -403,6 +404,7 @@ export function settingsSource(config: EngineConfig, charName = ""): string {
     kit: kitCss,
     modules: moduleRuntime(config),
     charName,
+    assets,
     side: config.updateMode === "side" ? { prompt: sideCallPrompt(full), schema: SIDE_CALL_SCHEMA, tokens: sideCallTokens(config) } : null,
   };
   return `var CF_CONFIG = ${scriptJson(settings)};\n${schemaSource(full)}`;
@@ -419,13 +421,13 @@ export function hubButtons(config: EngineConfig): string[] {
 }
 
 /** Tavern Helper's card script, in its v4 storage format. */
-export function tavernHelperScript(config: EngineConfig, charName = "") {
+export function tavernHelperScript(config: EngineConfig, charName = "", assets: ManifestEntry[] = []) {
   return {
     type: "script",
     enabled: true,
     name: "CardForge engine",
     id: config.scriptId,
-    content: scriptSource(settingsSource(config, charName)),
+    content: scriptSource(settingsSource(config, charName, assets)),
     info: `CardForge engine ${ENGINE_VERSION}: keeps the game state up to date after each reply, and runs the card's screens. Made with CardForge.`,
     button: { enabled: true, buttons: hubButtons(config).map((name) => ({ name, visible: true })) },
     data: {},
@@ -579,7 +581,7 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
   if (allRegex.length) extensions.regex_scripts = allRegex;
   else delete extensions.regex_scripts;
 
-  const scripts = saved ? [...otherScripts, tavernHelperScript(saved, data.name)] : otherScripts;
+  const scripts = saved ? [...otherScripts, tavernHelperScript(saved, data.name, assetManifest(data))] : otherScripts;
   if (scripts.length || Object.keys(helper.variables ?? {}).length) extensions.tavern_helper = { ...helper, scripts, variables: helper.variables ?? {} };
   else delete extensions.tavern_helper;
 

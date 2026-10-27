@@ -11,6 +11,8 @@ import { ImagePromptDialog } from "../images/ImagePromptDialog";
 import { ImageStudio } from "../images/ImageStudio";
 import { ASSET_KINDS, readAssetTags, writeAssetTag, type AssetKind, type AssetTag } from "../../images/filing";
 import { subjectsOf } from "../../images/visual";
+import { withFreshArt } from "../../images/engineArt";
+import { useUi, type AssetPick } from "../../app/store";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
 
@@ -68,6 +70,7 @@ export function AssetsView() {
   const [editing, setEditing] = useState<number>();
   const [prompting, setPrompting] = useState(false);
   const [view, setView] = useState<"files" | "studio">("files");
+  const assetPick = useUi((s) => s.assetPick);
 
   if (!record) return <NoCard />;
 
@@ -124,6 +127,7 @@ export function AssetsView() {
           ))}
         </div>
         {view === "studio" && <ImageStudio record={record} />}
+        {assetPick && view === "files" && <PickBanner record={record} />}
         <div hidden={view !== "files"} className="flex flex-col gap-6">
           <p className="text-sm text-ink-muted">
             Files that travel inside the card. PNG and CHARX exports include them; a JSON export can't. Large files make
@@ -148,7 +152,12 @@ export function AssetsView() {
                   <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                     {items.map(({ a, i }) => (
                       <li key={i}>
-                        <AssetTile record={record} asset={a} onClick={() => setEditing(i)} />
+                        <AssetTile
+                          record={record}
+                          asset={a}
+                          fits={!!assetPick && fitsPick(record, a, assetPick)}
+                          onClick={() => (assetPick && isImageAsset(a) ? assignToPick(a, assetPick) : setEditing(i))}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -200,12 +209,55 @@ function AssetPreview({ record, asset, className }: { record: CardRecord; asset:
   );
 }
 
-function AssetTile({ record, asset, onClick }: { record: CardRecord; asset: CardAsset; onClick: () => void }) {
+const isImageAsset = (a: CardAsset) => a.uri !== "ccdefault:" && isImage(a.ext);
+
+/** An image already tagged for the slot being filled. */
+function fitsPick(record: CardRecord, asset: CardAsset, pick: AssetPick) {
+  const tag = readAssetTags(record.card.data)[asset.uri];
+  return !!tag && tag.kind === pick.tag.kind && (!pick.tag.subject || tag.subject === pick.tag.subject) && (!pick.tag.variant || tag.variant === pick.tag.variant);
+}
+
+/** Tags the image for the slot (taking the tag off any other image that had it) and goes back to the engine. */
+function assignToPick(asset: CardAsset, pick: AssetPick) {
+  const editor = useEditor.getState();
+  let data = editor.record!.card.data;
+  for (const [uri, tag] of Object.entries(readAssetTags(data)))
+    if (uri !== asset.uri && tag.kind === pick.tag.kind && tag.subject === pick.tag.subject && tag.variant === pick.tag.variant) data = writeAssetTag(data, uri, undefined);
+  data = writeAssetTag(data, asset.uri, { kind: pick.tag.kind as AssetKind, ...(pick.tag.subject ? { subject: pick.tag.subject } : {}), ...(pick.tag.variant ? { variant: pick.tag.variant } : {}) });
+  editor.replaceData(withFreshArt(data));
+  useUi.getState().setAssetPick(undefined);
+  useUi.getState().setSection("engine");
+  toast(`${asset.name} is the ${pick.label} now`);
+}
+
+function PickBanner({ record }: { record: CardRecord }) {
+  const pick = useUi((s) => s.assetPick)!;
+  const fitting = (record.card.data.assets ?? []).filter((a) => fitsPick(record, a, pick)).length;
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-accent/40 bg-accent/10 p-3 text-sm">
+      <span className="flex-1">
+        Choose an image for <strong>{pick.label}</strong>.{" "}
+        {fitting ? `${fitting} already tagged for it are marked.` : "Tap any image to use it, or make one in the Image Studio."}
+      </span>
+      <Button
+        variant="ghost"
+        onClick={() => {
+          useUi.getState().setAssetPick(undefined);
+          useUi.getState().setSection("engine");
+        }}
+      >
+        Cancel
+      </Button>
+    </div>
+  );
+}
+
+function AssetTile({ record, asset, fits, onClick }: { record: CardRecord; asset: CardAsset; fits?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface-raised text-left hover:border-ink-muted"
+      className={`flex w-full flex-col overflow-hidden rounded-xl border bg-surface-raised text-left hover:border-ink-muted ${fits ? "border-accent ring-2 ring-accent/40" : "border-border"}`}
     >
       <AssetPreview record={record} asset={asset} className="aspect-square w-full" />
       <span className="truncate px-2 py-1 text-xs">
@@ -302,7 +354,7 @@ function AssetTags({ record, uri }: { record: CardRecord; uri: string }) {
   const set = (patch: Partial<AssetTag>, coalesceKey?: string) => {
     const data = useEditor.getState().record!.card.data;
     const next: AssetTag = { ...(readAssetTags(data)[uri] ?? { kind: "portrait" }), ...patch };
-    useEditor.getState().replaceData(writeAssetTag(data, uri, next), coalesceKey);
+    useEditor.getState().replaceData(withFreshArt(writeAssetTag(data, uri, next)), coalesceKey);
   };
   const select = "min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm";
   return (
@@ -326,7 +378,7 @@ function AssetTags({ record, uri }: { record: CardRecord; uri: string }) {
           onChange={(e) =>
             e.target.value
               ? set({ kind: e.target.value as AssetKind })
-              : useEditor.getState().replaceData(writeAssetTag(useEditor.getState().record!.card.data, uri, undefined))
+              : useEditor.getState().replaceData(withFreshArt(writeAssetTag(useEditor.getState().record!.card.data, uri, undefined)))
           }
         >
           <option value="">Not tagged</option>

@@ -54,18 +54,19 @@ export function tagOf(shot: Shot): AssetTag {
             : shot.kind === "scene" || shot.kind === "cg" || shot.kind === "engine" || shot.kind === "custom"
               ? "scene"
               : "portrait";
-  const variant = shot.emotion ?? (shot.kind === "outfit" ? shot.outfit : undefined) ?? (shot.time ? [shot.time, shot.weather !== "clear" && shot.weather].filter(Boolean).join(" ") : undefined);
+  const variant = shot.variant ?? shot.emotion ?? (shot.kind === "outfit" ? shot.outfit : undefined) ?? (shot.time ? [shot.time, shot.weather !== "clear" && shot.weather].filter(Boolean).join(" ") : undefined);
   return { ...((shot.subject ?? shot.place) ? { subject: shot.subject ?? shot.place } : {}), kind, ...(variant ? { variant } : {}) };
 }
 
 /** The card asset type, which decides where an export puts the file. */
 export const assetTypeOf = (shot: Shot) => (shot.kind === "emotion" ? "emotion" : shot.kind === "background" ? "background" : "other");
 
+/** Lower case with underscores, the way SillyTavern names gallery files on import, so the engine finds them. */
 const slug = (s: string) =>
   s
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
     .slice(0, 48) || "image";
 
 /** The longest side for each kind: sprites stay sharp, icons stay small. */

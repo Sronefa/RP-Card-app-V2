@@ -92,7 +92,8 @@ var locked = settings.style === "lock";
 function started() { return CF.state.get("Game.$Started") === true; }
 function has(id) { return CF.modules().some(function (m) { return m.id === id; }); }
 function art() {
-  return settings.art ? '<img class="ts-art" alt="" src="' + esc(app.asset(settings.art)) + '" onerror="this.remove()">' : "";
+  var src = settings.art ? app.asset(settings.art) : CF.assets.scene("title");
+  return src ? '<img class="ts-art" alt="" src="' + esc(src) + '" onerror="this.remove()">' : "";
 }
 function time() { return CF.state.get("Time") || {}; }
 // Falling petals, leaves or snow for the "gate" style, by season and weather.
@@ -123,7 +124,7 @@ function fx() {
 function cast() {
   if (settings.style !== "cast" || !settings.cast.length) return "";
   return '<div class="ts-cast">' + settings.cast.slice(0, 6).map(function (c, i) {
-    return '<figure style="--i:' + i + '">' + CF.ui.avatar(c.avatar ? app.asset(c.avatar) : null, c.name) + "<figcaption>" + esc(c.name) + "</figcaption></figure>";
+    return '<figure style="--i:' + i + '">' + CF.ui.avatar(c.avatar ? app.asset(c.avatar) : CF.assets.portrait(c.name), c.name) + "<figcaption>" + esc(c.name) + "</figcaption></figure>";
   }).join("") + "</div>";
 }
 function lockScreen() {

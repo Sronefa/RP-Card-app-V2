@@ -58,6 +58,8 @@ export interface Shot {
   framing: Framing;
   /** What happens in the picture, for scenes and custom shots. */
   action?: string;
+  /** What engine art it is ("title", "map", "wallpaper"), so parts can find it. */
+  variant?: string;
   /** The user's own edit of the prompt; replaces the written one. */
   prompt?: { positive: string; negative: string };
   /** Skipped shots stay listed but aren't generated. */
@@ -170,7 +172,7 @@ const shot = (fields: Omit<Shot, "id">): Shot => ({ id: newId(), ...fields });
 
 /** What sets two shots apart; a shot with the same signature isn't proposed twice. */
 export const shotSignature = (s: Shot) =>
-  [s.kind, s.subject, s.place, s.outfit, s.emotion, s.pose, s.time, s.weather, s.action].map((x) => x ?? "").join("|");
+  [s.kind, s.subject, s.place, s.outfit, s.emotion, s.pose, s.time, s.weather, s.action, s.variant].map((x) => x ?? "").join("|");
 
 export interface ProposeOptions {
   emotions: string[];
@@ -307,6 +309,7 @@ export function proposeShots(data: CardDataV3, kind: CardKind, options: ProposeO
         subject: main?.key,
         place: firstPlace,
         action: "title screen key art",
+        variant: "title",
         framing: "scene",
       }),
       shot({
@@ -314,6 +317,7 @@ export function proposeShots(data: CardDataV3, kind: CardKind, options: ProposeO
         kind: "engine",
         label: "World map",
         action: "illustrated map of the setting",
+        variant: "map",
         framing: "square",
       }),
       shot({
@@ -322,6 +326,7 @@ export function proposeShots(data: CardDataV3, kind: CardKind, options: ProposeO
         label: "Phone wallpaper",
         place: firstPlace,
         action: "phone wallpaper, vertical",
+        variant: "wallpaper",
         framing: "portrait",
       }),
     );

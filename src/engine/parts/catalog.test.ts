@@ -32,7 +32,7 @@ const engine = (): EngineConfig => ({ ...newEngine(), modules: [] });
 describe("the parts library", () => {
   it("finds parts by words and tags", () => {
     expect(searchParts(BUILT_IN_PARTS, "relationships").map((p) => p.id)).toEqual(expect.arrayContaining(["people", "phone"]));
-    expect(searchParts(BUILT_IN_PARTS, "", "shared").map((p) => p.id)).toEqual(["time", "settings", "title", "creator", "menu", "people", "events", "journal"]);
+    expect(searchParts(BUILT_IN_PARTS, "", "shared").map((p) => p.id)).toEqual(["time", "settings", "title", "creator", "menu", "people", "stage", "events", "journal"]);
     const mine = allParts([{ ...phoneModule(), id: "tarot", name: "Tarot", core: undefined, tags: ["fortune"], description: "Draw a card." }]);
     expect(searchParts(mine, "draw").map((p) => [p.id, p.source])).toEqual([["tarot", "mine"]]);
   });

@@ -29,6 +29,7 @@ import { applyEngine, type EngineConfig } from "../../engine/sheet";
 import { loadKits, removeKit, saveKit } from "./kitLibrary";
 import { loadModuleLibrary } from "./moduleLibrary";
 import { selectClass } from "./VarEditor";
+import { ArtSlots } from "./ArtSlots";
 
 /** Writes what an install did into the card: the engine and the opening message's tags. */
 function commit(out: Installed) {
@@ -70,6 +71,7 @@ export function PartsBrowser({ config, onAdded }: { config: EngineConfig; onAdde
           the parts it needs. "Shared" ones are in every kit.
         </p>
       </div>
+      <ArtSlots />
       <div className="flex flex-wrap gap-2">
         <TextInput aria-label="Search parts" placeholder="Search parts, e.g. relationships" className="min-w-0 flex-1" value={query} onChange={(e) => setQuery(e.target.value)} />
         <select aria-label="Tag" className={selectClass} value={tag} onChange={(e) => setTag(e.target.value)}>

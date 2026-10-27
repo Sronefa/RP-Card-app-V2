@@ -342,7 +342,7 @@ function contact(name) {
   return S.contacts.filter(function (c) { return c.name === name; })[0] || { name: name, role: "", avatar: "" };
 }
 function avatar(c, big) {
-  var html = ui.avatar(c.avatar ? CF.asset(c.avatar) : null, c.name);
+  var html = ui.avatar(c.avatar ? CF.asset(c.avatar) : CF.assets.portrait(c.name), c.name);
   return big ? html.replace('class="cf-avatar"', 'class="cf-avatar ph-big"') : html;
 }
 function stageOf(aff) {
@@ -379,7 +379,8 @@ function seen(key, n) {
   if ((Number(r[key]) || 0) !== n) app.setMany([[["Phone", "$Read", key], n]]).catch(function () {});
 }
 function wallpaper() {
-  return S.wallpaper ? "background-image: linear-gradient(rgba(0,0,0,.15), rgba(0,0,0,.35)), url('" + CF.asset(S.wallpaper).replace(/'/g, "%27") + "')" : "";
+  var wall = S.wallpaper ? CF.asset(S.wallpaper) : CF.assets.scene("wallpaper");
+  return wall ? "background-image: linear-gradient(rgba(0,0,0,.15), rgba(0,0,0,.35)), url('" + wall.replace(/'/g, "%27") + "')" : "";
 }
 
 // ---------------------------------------------------------------- screens
