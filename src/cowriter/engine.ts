@@ -11,6 +11,7 @@ import { createProvider, jailbreakText, type AiSettings, modelInfo, modelKey, re
 import { scopeOf, useUsage } from "../ai/usage";
 import { useEditor } from "../editor/store";
 import { DEFAULT_SLOP_PHRASES } from "../editor/slop";
+import { effortFor, modelTip, samplingFor, WRITING } from "../ai/sampling";
 import {
   DEFAULT_TIMEOUT_SEC,
   ToolsUnsupportedError,
@@ -63,6 +64,13 @@ export async function complete(
     const phrases = (useAiSettings.getState().settings.slopPhrases ?? DEFAULT_SLOP_PHRASES).filter((p) => !p.includes("*"));
     request = { ...request, bannedPhrases: phrases };
   }
+  const ai = useAiSettings.getState().settings;
+  const sampling = samplingFor(ai.sampling, mode);
+  if (sampling && !request.sampling) request = { ...request, sampling };
+  const effort = effortFor(ai.writingEffort, mode);
+  if (effort && !request.effort) request = { ...request, effort };
+  const tip = WRITING.includes(mode) && ai.modelTips !== false ? modelTip(resolved.choice.model) : undefined;
+  if (tip && request.system) request = { ...request, system: `${request.system}\n\n${tip.tip}` };
   const seconds = resolved.config.timeoutSec ?? DEFAULT_TIMEOUT_SEC;
   const run = async (useTools: boolean) => {
     const timeout = AbortSignal.timeout(seconds * 1000);

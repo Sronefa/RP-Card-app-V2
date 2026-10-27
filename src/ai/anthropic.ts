@@ -51,13 +51,19 @@ export function anthropicProvider(config: ProviderConfig): Provider {
       const c = await getClient();
       let maxTokens = request.maxTokens ?? MAX_TOKENS;
       let thinking = !!request.effort;
+      let sampling = !!request.sampling;
       for (let attempt = 0; ; attempt++) {
         try {
-          return await streamOnce(c, request, maxTokens, thinking);
+          return await streamOnce(c, sampling ? request : { ...request, sampling: undefined }, maxTokens, thinking);
         } catch (e) {
           if (e instanceof Anthropic.APIError) {
             if (e instanceof Anthropic.BadRequestError && /max_tokens/i.test(e.message) && maxTokens > SMALL_MAX_TOKENS) {
               maxTokens = SMALL_MAX_TOKENS;
+              continue;
+            }
+            // A model that refuses a sampling setting: its defaults.
+            if (e instanceof Anthropic.BadRequestError && sampling && /temperature|top_p/i.test(e.message)) {
+              sampling = false;
               continue;
             }
             // An older model without adaptive thinking or effort: ask again without them.
@@ -86,6 +92,12 @@ async function streamOnce(client: Anthropic, request: CompletionRequest, maxToke
       system: [{ type: "text", text: request.system, cache_control: { type: "ephemeral" } }],
       messages: cacheTail(toAnthropic(request.messages)),
       ...(thinking && request.effort ? { thinking: { type: "adaptive" as const }, output_config: { effort: request.effort } } : {}),
+      // Thinking runs at its own temperature, and Claude takes temperature or top-p, not both; there is no min-p.
+      ...(!(thinking && request.effort) && request.sampling?.temperature !== undefined
+        ? { temperature: Math.min(1, request.sampling.temperature) }
+        : !(thinking && request.effort) && request.sampling?.topP !== undefined
+          ? { top_p: request.sampling.topP }
+          : {}),
       ...(request.tools.length
         ? {
             tools: request.tools.map((t) => ({

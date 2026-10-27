@@ -8,6 +8,7 @@ import { getSetting, putSetting } from "../db/db";
 import { newId } from "../lib/id";
 import type { ImageModelChoice, ImageProviderConfig, ImageTask } from "../images/providers";
 import { openaiProvider } from "./openai";
+import type { SamplingSettings } from "./sampling";
 import type { Effort, ModeId, ModelChoice, ModelInfo, Provider, ProviderConfig } from "./types";
 
 export interface PromptPreset {
@@ -95,6 +96,12 @@ export interface AiSettings {
   engineerSkills?: { edited: Record<string, string>; removed: string[] };
   /** Rewrite overused phrases in proposals before they reach the user; on unless turned off. */
   slopRewrite?: boolean;
+  /** Sampling per task: the defaults unless the user changes them. */
+  sampling?: SamplingSettings;
+  /** How hard writing tasks think first; medium unless changed. */
+  writingEffort?: Effort | "off";
+  /** Add a short tip about the model's known fiction habits to writing prompts; on unless turned off. */
+  modelTips?: boolean;
   /** Standing preferences the co-writer reads in everything it writes, learned from the user's feedback and edits. */
   styleNotes?: string[];
   /** How often each kind of feedback was given, and which were already offered as style notes. */

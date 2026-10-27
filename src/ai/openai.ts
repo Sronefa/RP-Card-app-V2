@@ -73,14 +73,20 @@ export function openaiProvider(config: ProviderConfig): Provider {
       const fetch = await getFetch();
       let reasoning = !!request.effort;
       let usage = true;
+      let sampling = !!request.sampling;
       for (;;) {
         try {
-          return await completeOnce(fetch, request, reasoning, usage);
+          return await completeOnce(fetch, sampling ? request : { ...request, sampling: undefined }, reasoning, usage);
         } catch (e) {
           const rejected = (re: RegExp) => e instanceof HttpError && e.status >= 400 && e.status < 500 && re.test(e.body);
           // Endpoints that don't know reasoning_effort or stream_options: ask again without it.
           if (reasoning && rejected(/reason|effort/i)) {
             reasoning = false;
+            continue;
+          }
+          // Endpoints that refuse a sampling setting (min_p on OpenAI, temperature on reasoning models): their defaults.
+          if (sampling && rejected(/temperature|top_p|min_p|sampling|unsupported parameter|unrecognized request argument/i)) {
+            sampling = false;
             continue;
           }
           if (usage && rejected(/stream_options|include_usage/i)) {
@@ -105,6 +111,9 @@ export function openaiProvider(config: ProviderConfig): Provider {
       ...(usage ? { stream_options: { include_usage: true } } : {}),
       messages: toWire(request),
       ...(reasoning && request.effort ? { reasoning_effort: REASONING[request.effort] } : {}),
+      ...(request.sampling?.temperature !== undefined ? { temperature: request.sampling.temperature } : {}),
+      ...(request.sampling?.topP !== undefined ? { top_p: request.sampling.topP } : {}),
+      ...(request.sampling?.minP !== undefined ? { min_p: request.sampling.minP } : {}),
       // KoboldCpp's phrase banning; other backends ignore unknown fields.
       ...(request.bannedPhrases?.length ? { banned_tokens: request.bannedPhrases, banned_strings: request.bannedPhrases } : {}),
       ...(request.useTools && request.tools.length
