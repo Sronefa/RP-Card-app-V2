@@ -23,6 +23,7 @@ import { SortLorebook } from "./SortLorebook";
 import { isPlainEntry } from "../../editor/world";
 import { ArcPage } from "../arc/ArcPage";
 import { arcHidden, constantTokens, isArcEntry } from "../../editor/arc";
+import { useViewTab } from "../../app/useViewTab";
 
 const TABS = {
   entries: "Entries",
@@ -41,7 +42,7 @@ export function LorebookView() {
   const [open, setOpen] = useState<number | undefined>(focusEntry);
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<"settings" | "export" | "sort">();
-  const [tab, setTab] = useState<Tab>("entries");
+  const [tab, setTab] = useViewTab<Tab>("lorebook", "entries");
   const list = useRef<HTMLUListElement>(null);
 
   // Jump to the entry the card checker pointed at.

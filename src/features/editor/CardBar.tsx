@@ -7,6 +7,8 @@ import { cardHealth, checkCard } from "../../editor/checker";
 import { DEFAULT_SLOP_PHRASES } from "../../editor/slop";
 import { useEditor, type SaveState } from "../../editor/store";
 import { CheckDialog } from "./CheckDialog";
+import { InboxDialog, useInbox } from "../inbox/InboxDialog";
+import { GuideChip } from "../library/GuidePanel";
 
 const SAVE_LABEL: Record<SaveState, string> = {
   saved: "Saved",
@@ -25,6 +27,8 @@ export function CardBar({ detail, children }: { detail?: React.ReactNode; childr
   const [checking, setChecking] = useState(false);
   const issues = useCardIssues();
   const problems = issues.filter((i) => i.level !== "tip").length;
+  const inbox = useInbox();
+  const [inboxOpen, setInboxOpen] = useState(false);
 
   useKeyboardUndo();
 
@@ -49,7 +53,15 @@ export function CardBar({ detail, children }: { detail?: React.ReactNode; childr
           <span className="rounded-full bg-amber-500/20 px-1.5 text-xs text-amber-300">{problems}</span>
         )}
       </Button>
+      <GuideChip />
+      {inbox.length > 0 && (
+        <Button variant="ghost" onClick={() => setInboxOpen(true)} aria-label={`Inbox, ${inbox.length} waiting`}>
+          Inbox
+          <span className="rounded-full bg-accent/20 px-1.5 text-xs text-accent">{inbox.length}</span>
+        </Button>
+      )}
       {children}
+      <InboxDialog items={inbox} open={inboxOpen} onClose={() => setInboxOpen(false)} />
       <CheckDialog open={checking} issues={issues} health={cardHealth(issues)} onClose={() => setChecking(false)} />
     </div>
   );

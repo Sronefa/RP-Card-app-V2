@@ -163,12 +163,15 @@ export function BulkItems({
   shops,
   onClose,
   onAdd,
+  onPark,
 }: {
   record: CardRecord;
   existing: string[];
   shops: string[];
   onClose: () => void;
   onAdd: (items: Record<string, string>[]) => void;
+  /** Keeps the picked items in the inbox to decide later. */
+  onPark: (items: Record<string, string>[]) => void;
 }) {
   const [o, setO] = useState<BulkItemSettings>(DEFAULT_BULK);
   const [items, setItems] = useState<Record<string, string>[]>([]);
@@ -299,14 +302,14 @@ export function BulkItems({
                 </li>
               ))}
             </ul>
-            <Button
-              variant="primary"
-              className="self-end"
-              disabled={picked.size === 0}
-              onClick={() => onAdd(items.filter((_, i) => picked.has(i)))}
-            >
-              Add {picked.size} to the page
-            </Button>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" disabled={picked.size === 0} onClick={() => onPark(items.filter((_, i) => picked.has(i)))}>
+                Decide later
+              </Button>
+              <Button variant="primary" disabled={picked.size === 0} onClick={() => onAdd(items.filter((_, i) => picked.has(i)))}>
+                Add {picked.size} to the page
+              </Button>
+            </div>
           </>
         )}
       </div>

@@ -10,6 +10,8 @@ import { useEditor } from "../../editor/store";
 import { isKind, KINDS, setCastList, syncCast, worldEntry, worldMeta, type WorldKind } from "../../editor/world";
 import { estimateTokens } from "../../lib/tokens";
 import { BulkItems, CurrencyInterview } from "./EconomyTools";
+import { park } from "../../app/inbox";
+import { toast } from "../../components/toast";
 
 function useBook() {
   const record = useEditor((s) => s.record)!;
@@ -408,6 +410,13 @@ export function EconomyPage() {
           shops={named("shop")}
           onClose={() => setDialog(undefined)}
           onAdd={addItems}
+          onPark={(items) => {
+            setDialog(undefined);
+            const names = items.map((i) => i.name).filter(Boolean);
+            void park(record.id, { source: "bulk", summary: `${items.length} items: ${names.join(", ")}`, items }).then(() =>
+              toast(`${items.length} items are waiting in the inbox`),
+            );
+          }}
         />
       )}
     </div>
