@@ -7,6 +7,7 @@ import { newCard } from "../card";
 import type { CardPackage, CharacterCardV3 } from "../card";
 import { newId } from "../lib/id";
 import type { ChatRecord, CowriterSettings, InterviewRecord } from "../ai/records";
+import type { GuideState } from "../app/guide";
 
 export type CardKind = "character" | "world";
 
@@ -17,6 +18,8 @@ export interface ProjectRecord {
   personaIds: string[];
   /** Co-writer settings for this project; defaults apply when missing. */
   cowriter?: CowriterSettings;
+  /** The guided path's switch, skipped steps and steps marked done. */
+  guide?: GuideState;
   createdAt: number;
   updatedAt: number;
 }
@@ -170,6 +173,7 @@ export async function deleteCard(id: string) {
     tx.objectStore("chats").delete(loreChatKey(id)),
     tx.objectStore("chats").delete(engineerChatKey(id)),
     tx.objectStore("chats").delete(`studio:${id}`),
+    tx.objectStore("chats").delete(`inbox:${id}`),
     tx.objectStore("interviews").delete(id),
     tx.done,
   ]);

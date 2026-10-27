@@ -29,6 +29,7 @@ import { estimateTokens } from "../../lib/tokens";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
 import { MechanicsPage } from "../mechanics/MechanicsPage";
+import { useViewTab } from "../../app/useViewTab";
 
 const KIND_LABELS: Record<FieldKind, string> = { bar: "Bar", number: "Number", text: "Text", list: "List" };
 const TABS = { tracker: "Status tracker", regex: "Regex scripts", mechanics: "Mechanics" } as const;
@@ -37,7 +38,7 @@ type Tab = keyof typeof TABS;
 /** Status trackers, relationship stages and the card's regex scripts. Nothing is added until the user adds it. */
 export function TrackersView() {
   const record = useEditor((s) => s.record);
-  const [tab, setTab] = useState<Tab>("tracker");
+  const [tab, setTab] = useViewTab<Tab>("trackers", "tracker");
   if (!record) return <NoCard />;
   const scripts = regexScripts(record.card.data);
   return (

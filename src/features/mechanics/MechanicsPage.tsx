@@ -40,6 +40,7 @@ import { QuestionCard } from "../cowriter/QuestionCard";
 import { KeysInput } from "../lorebook/KeysInput";
 import { SELECTIVE_LOGIC } from "../lorebook/EntryEditor";
 import { fromLibrary, loadLibrary, removeFromLibrary, saveToLibrary } from "./library";
+import { park } from "../../app/inbox";
 
 const selectClass = "min-h-10 rounded-lg border border-border bg-surface-sunken px-2 text-sm";
 
@@ -222,6 +223,12 @@ export function MechanicsPage() {
             add(m);
             setWizard(false);
             if (keep) void saveToLibrary(m).then(() => toast(`${m.name} is in your library too.`));
+          }}
+          onPark={(m, keep) => {
+            setWizard(false);
+            void park(record.id, { source: "wizard", summary: `Mechanic "${m.name}": ${m.summary}`, module: m, keep }).then(() =>
+              toast(`${m.name} is waiting in the inbox`),
+            );
           }}
         />
       )}
@@ -600,11 +607,14 @@ function GameWizard({
   modules,
   onClose,
   onAdd,
+  onPark,
 }: {
   record: CardRecord;
   modules: MechanicModule[];
   onClose: () => void;
   onAdd: (m: MechanicModule, keepInLibrary: boolean) => void;
+  /** Keeps the module in the inbox to decide later. */
+  onPark: (m: MechanicModule, keepInLibrary: boolean) => void;
 }) {
   const [description, setDescription] = useState("");
   const [round, setRound] = useState<InterviewRound>();
@@ -697,9 +707,14 @@ function GameWizard({
                   Write it again
                 </Button>
               )}
-              <Button variant="primary" disabled={!module.name.trim() || !!busy} onClick={() => onAdd(module, keep)}>
-                Add to the card
-              </Button>
+              <span className="flex gap-2">
+                <Button variant="ghost" disabled={!module.name.trim() || !!busy} onClick={() => onPark(module, keep)}>
+                  Decide later
+                </Button>
+                <Button variant="primary" disabled={!module.name.trim() || !!busy} onClick={() => onAdd(module, keep)}>
+                  Add to the card
+                </Button>
+              </span>
             </div>
           </>
         ) : round ? (

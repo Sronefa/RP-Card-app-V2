@@ -34,6 +34,7 @@ import { useEngineer } from "../../engine/engineer/session";
 import { turnEngineOff } from "../../engine/convert";
 import { readMechanics } from "../../editor/mechanics";
 import { nameProblem, summary, VarEditor } from "./VarEditor";
+import { useViewTab } from "../../app/useViewTab";
 
 const TABS = { vars: "Variables", modules: "Modules", look: "Look", engineer: "Engineer", test: "Test", sandbox: "Sandbox", playtest: "Playtest" } as const;
 type Tab = keyof typeof TABS;
@@ -56,7 +57,7 @@ function useEngine() {
 
 function EngineBody() {
   const { data, config, save } = useEngine();
-  const [tab, setTab] = useState<Tab>("vars");
+  const [tab, setTab] = useViewTab<Tab>("engine", "vars");
   const [confirmOff, setConfirmOff] = useState(false);
   const tracker = readTracker(data);
 

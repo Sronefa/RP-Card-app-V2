@@ -15,6 +15,7 @@ import { withFreshArt } from "../../images/engineArt";
 import { useUi, type AssetPick } from "../../app/store";
 import { CardBar } from "../editor/CardBar";
 import { NoCard } from "../editor/NoCard";
+import { useViewTab } from "../../app/useViewTab";
 
 const TYPES: { type: string; label: string; help: string; accept: string }[] = [
   { type: "icon", label: "Icons", help: "Alternate avatars. The one named main is the card's avatar.", accept: "image/*" },
@@ -69,7 +70,7 @@ export function AssetsView() {
   const { setField, addFiles } = useEditor();
   const [editing, setEditing] = useState<number>();
   const [prompting, setPrompting] = useState(false);
-  const [view, setView] = useState<"files" | "studio">("files");
+  const [view, setView] = useViewTab<"files" | "studio">("assets", "files");
   const assetPick = useUi((s) => s.assetPick);
 
   if (!record) return <NoCard />;

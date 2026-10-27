@@ -25,6 +25,11 @@ interface UiState {
   /** An engine art slot being filled: the Assets page shows the images that fit it. */
   assetPick?: AssetPick;
   setAssetPick: (pick: AssetPick | undefined) => void;
+  /** A tab another screen asked a section to open on, taken once by that section. */
+  tabRequest?: { section: SectionId; tab: string };
+  /** Opens a section, on one of its tabs. */
+  goTo: (section: SectionId, tab?: string) => void;
+  takeTabRequest: () => void;
 }
 
 export interface AssetPick {
@@ -44,4 +49,6 @@ export const useUi = create<UiState>((set) => ({
   cowriterTab: "chat",
   setCowriterTab: (cowriterTab) => set({ cowriterTab }),
   setAssetPick: (assetPick) => set({ assetPick }),
+  goTo: (section, tab) => set({ section, tabRequest: tab ? { section, tab } : undefined }),
+  takeTabRequest: () => set({ tabRequest: undefined }),
 }));

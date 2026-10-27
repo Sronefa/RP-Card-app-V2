@@ -29,6 +29,8 @@ import { CardTile } from "./CardTile";
 import { RemixDialog } from "./RemixDialog";
 import { PersonaInterview } from "./PersonaInterview";
 import { SurpriseDialog } from "./SurpriseDialog";
+import { GuidePanel } from "./GuidePanel";
+import { markStep } from "../../app/guide";
 
 /** Images besides the avatar that only a CHARX file carries into SillyTavern. */
 const hasPackedImages = (record: CardRecord) =>
@@ -142,6 +144,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       if (warnings && format === "png" && hasPackedImages(record))
         warnings.push("SillyTavern ignores images inside PNG cards, so export as CHARX to keep them");
       if (warnings) toast(warnings.length ? `Exported with notes: ${warnings.join("; ")}` : "Exported");
+      if (warnings && project?.guide?.on) await markStep(projectId, "export", true).then((p) => p && setProject(p));
     } catch (e) {
       toast(`Export failed: ${(e as Error).message}`, "error");
     }
@@ -211,6 +214,16 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           }}
         />
       </div>
+
+      <GuidePanel
+        project={project}
+        cards={cards}
+        onChange={setProject}
+        onOpen={open}
+        onNewCharacter={() => createCard(projectId, "character")}
+        onSurprise={() => setSurprise("character")}
+        onExport={setActionsFor}
+      />
 
       {section(
         "World",

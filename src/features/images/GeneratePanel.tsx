@@ -6,8 +6,7 @@ import { AutoTextarea, Button, TextInput } from "../../components/ui";
 import { getProject, type CardRecord } from "../../db/db";
 import { useEditor } from "../../editor/store";
 import { useObjectUrl } from "../../lib/useObjectUrl";
-import { withFreshArt } from "../../images/engineArt";
-import { fileCandidate } from "../../images/filing";
+import { filedNote, fileInCard, markPicked } from "../../images/pick";
 import { writePrompt } from "../../images/prompt";
 import { estimateCost, modelFor, taskOf, useImageQueue, type Job } from "../../images/queue";
 import type { Candidate, Shot, StudioRecord } from "../../images/shots";
@@ -64,20 +63,10 @@ export function GeneratePanel({
     queue.enqueue(record.id, shots, { n, ...(capValue !== undefined && Number.isFinite(capValue) ? { cap: capValue } : {}) });
 
   async function pick(shot: Shot, candidate: Candidate) {
-    const editor = useEditor.getState();
-    const current = editor.record;
-    if (!current || current.id !== record.id) return;
-    const filed = await fileCandidate(current.card.data, current.files, shot, candidate);
-    editor.addFiles(filed.files);
-    editor.replaceData(withFreshArt(filed.data));
-    change((s) => ({
-      ...s,
-      candidates: {
-        ...s.candidates,
-        [shot.id]: (s.candidates?.[shot.id] ?? []).map((c) => (c.id === candidate.id ? { ...c, asset: filed.asset.uri } : { ...c, asset: undefined })),
-      },
-    }));
-    toast(`Filed as ${filed.asset.type === "emotion" ? `the ${filed.asset.name} sprite` : filed.asset.type === "background" ? "a background" : "an image"}`);
+    const asset = await fileInCard(record.id, shot, candidate);
+    if (!asset) return;
+    change((s) => markPicked(s, shot.id, candidate.id, asset.uri));
+    toast(filedNote(asset));
   }
 
   function useAsReference(shot: Shot, candidate: Candidate) {
