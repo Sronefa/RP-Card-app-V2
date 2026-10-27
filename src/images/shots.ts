@@ -99,9 +99,25 @@ export const CORE_MOODS = ["neutral", "joy", "sadness", "anger", "fear", "surpri
 
 export type EmotionSet = "full" | "core" | "custom";
 
+/** A generated image waiting to be picked. */
+export interface Candidate {
+  id: string;
+  bytes: Uint8Array;
+  mime: string;
+  seed?: number;
+  /** "providerId/model". */
+  model: string;
+  cost?: number;
+  at: number;
+  /** The asset it became, once picked. */
+  asset?: string;
+}
+
 export interface StudioRecord {
   cardId: string;
   shots: Shot[];
+  /** Generated images by shot id. */
+  candidates?: Record<string, Candidate[]>;
   emotionSet: EmotionSet;
   customEmotions: string[];
   updatedAt: number;
@@ -123,6 +139,28 @@ export async function loadStudio(cardId: string): Promise<StudioRecord> {
 
 export async function saveStudio(studio: StudioRecord) {
   await saveRecord({ ...studio, updatedAt: Date.now() });
+}
+
+const chains = new Map<string, Promise<unknown>>();
+
+/**
+ * Changes the studio record from its latest stored version. The queue and the page both write it,
+ * so writes for a card run one after another and none works from a stale copy.
+ */
+/** The studio record once the writes already on their way are saved. */
+export async function latestStudio(cardId: string): Promise<StudioRecord> {
+  await chains.get(cardId)?.catch(() => undefined);
+  return loadStudio(cardId);
+}
+
+export function updateStudio(cardId: string, change: (studio: StudioRecord) => StudioRecord): Promise<StudioRecord> {
+  const run = (chains.get(cardId) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+    const next = change(await loadStudio(cardId));
+    await saveStudio(next);
+    return next;
+  });
+  chains.set(cardId, run);
+  return run;
 }
 
 export const emotionsOf = (studio: Pick<StudioRecord, "emotionSet" | "customEmotions">) =>

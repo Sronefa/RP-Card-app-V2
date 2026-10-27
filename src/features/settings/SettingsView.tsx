@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ImageProviders } from "./ImageProviders";
 import {
   createProvider,
   modelKey,
@@ -303,6 +304,8 @@ export function SettingsView() {
           Add style
         </Button>
       </section>
+
+      <ImageProviders />
 
       <SlopPhrases
         phrases={settings.slopPhrases ?? DEFAULT_SLOP_PHRASES}

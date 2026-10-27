@@ -128,6 +128,8 @@ export interface VisualSheet {
   lora?: { name: string; trigger: string; weight?: number };
   /** The chosen base reference image, by asset uri. */
   reference?: string;
+  /** The reference's seed, kept for the shots made from it where the model allows. */
+  referenceSeed?: number;
 }
 
 export const newSheet = (kind: SheetKind): VisualSheet => ({
