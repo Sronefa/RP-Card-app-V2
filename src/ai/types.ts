@@ -87,17 +87,45 @@ export interface CompletionRequest {
   onText?: (delta: string) => void;
 }
 
+/** Tokens one call used, as the provider reported them. */
+export interface CallUsage {
+  /** Prompt tokens read fresh (not from the cache). */
+  input: number;
+  output: number;
+  /** Prompt tokens read from the cache. */
+  cacheRead: number;
+  /** Prompt tokens written to the cache. */
+  cacheWrite: number;
+  /** What the provider charged, in USD, when it says. */
+  cost?: number;
+}
+
 export interface CompletionResult {
   /** Text shown to the user (a JSON edit block, when tools are off, is removed). */
   text: string;
   toolCalls: ToolCall[];
   stop: StopReason;
   raw?: { kind: ProviderKind; content: unknown };
+  /** Left out when the endpoint doesn't report usage. */
+  usage?: CallUsage;
+}
+
+/** What CardForge knows about a model, from the provider's model list or from the user. */
+export interface ModelInfo {
+  /** Takes images (screenshots). Unknown means yes. */
+  vision?: boolean;
+  /** Context window in tokens. */
+  context?: number;
+  /** USD per million input and output tokens. */
+  inPrice?: number;
+  outPrice?: number;
 }
 
 export interface Provider {
   complete(request: CompletionRequest): Promise<CompletionResult>;
   listModels(): Promise<string[]>;
+  /** Details for the models the provider lists, where it says. */
+  modelDetails?(): Promise<Record<string, ModelInfo>>;
 }
 
 /** Thrown when an endpoint rejects a request because the model can't use tools. */

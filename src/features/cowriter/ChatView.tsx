@@ -10,6 +10,7 @@ import { properNouns, uncoveredIn } from "../../editor/coverage";
 import { scanNames } from "../../cowriter/worldScan";
 import { ProposalCard } from "./ProposalCard";
 import { useRun } from "./useRun";
+import { UsageMeter } from "../usage/UsageMeter";
 
 /**
  * A co-writer conversation: messages, the proposals in them, and the message box.
@@ -127,6 +128,7 @@ export function ChatView({
       </div>
 
       <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-border bg-surface-sunken px-4 pt-3 pb-3">
+        <UsageMeter scope="cowriter" />
         {pending > 1 && (
           <Button className="self-start" onClick={acceptAll}>
             Accept all {pending} edits

@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_ENGINEER, engineerSettings, useAiSettings } from "../../ai/settings";
+import { DEFAULT_ENGINEER, engineerSettings, modelInfo, resolveModel, useAiSettings } from "../../ai/settings";
+import { formatTokens } from "../../ai/usage";
+import { engineerSystemPrompt } from "../../engine/engineer/prompt";
+import { contextBreakdown, screenshotTokens } from "../../engine/engineer/usage";
+import { UsageMeter } from "../usage/UsageMeter";
 import type { ChatMessage, Effort, ToolResult } from "../../ai/types";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { useEditor } from "../../editor/store";
@@ -101,7 +105,9 @@ export function EngineerPage() {
       )}
       <div ref={end} />
 
-      <div className="sticky bottom-0 -mx-4 flex items-end gap-2 border-t border-border bg-surface-sunken px-4 pt-3 pb-3">
+      <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-border bg-surface-sunken px-4 pt-3 pb-3">
+        <EngineerMeter messages={chat?.messages ?? []} />
+        <div className="flex items-end gap-2">
         <AutoTextarea
           aria-label="Message to the UI engineer"
           rows={1}
@@ -123,6 +129,7 @@ export function EngineerPage() {
             Send
           </Button>
         )}
+        </div>
       </div>
       <SkillsDialog open={skillsOpen} onClose={() => setSkillsOpen(false)} />
       <Dialog open={!!zoom} title="Screenshot" onClose={() => setZoom(undefined)}>
@@ -134,10 +141,26 @@ export function EngineerPage() {
   );
 }
 
+/** The engineer's token meter, with what fills its context. */
+function EngineerMeter({ messages }: { messages: ChatMessage[] }) {
+  const settings = useAiSettings((s) => s.settings);
+  const shots = screenshotTokens(messages);
+  return (
+    <UsageMeter
+      scope="engineer"
+      breakdown={() => contextBreakdown(engineerSystemPrompt(skillsWith(settings.engineerSkills)), messages)}
+      extra={shots.count ? `Screenshots the model still sees: ${shots.count}, about ${formatTokens(shots.tokens)} tokens` : undefined}
+    />
+  );
+}
+
 function EngineerControls({ onSkills, onClear }: { onSkills: () => void; onClear?: () => void }) {
   const { settings, update } = useAiSettings();
+  const { skipShots, setSkipShots } = useEngineer();
   const current = engineerSettings(settings);
   const set = (patch: Partial<typeof current>) => void update({ engineer: { ...settings.engineer, ...patch } });
+  const model = resolveModel(settings, "engineer");
+  const blind = model && modelInfo(settings, model.choice).vision === false;
   return (
     <div className="flex flex-wrap items-end gap-2 text-sm">
       <label className="flex flex-col gap-1">
@@ -164,12 +187,42 @@ function EngineerControls({ onSkills, onClear }: { onSkills: () => void; onClear
           }}
         />
       </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-ink-muted">Stop and ask after (tokens)</span>
+        <TextInput
+          type="number"
+          min={0}
+          step={10000}
+          className="w-32"
+          aria-label="Stop and ask after this many tokens"
+          placeholder="No limit"
+          value={current.tokenLimit || ""}
+          onChange={(e) => set({ tokenLimit: Math.max(0, Math.round(Number(e.target.value)) || 0) })}
+        />
+      </label>
       <Button onClick={onSkills}>Skills</Button>
       {onClear && (
         <Button variant="ghost" onClick={onClear}>
           Clear chat
         </Button>
       )}
+      <label className="flex w-full items-center gap-2">
+        <input
+          type="checkbox"
+          className="size-4"
+          checked={blind || skipShots}
+          disabled={blind}
+          onChange={(e) => setSkipShots(e.target.checked)}
+        />
+        <span>
+          Skip screenshots this run
+          <span className="text-xs text-ink-muted">
+            {blind
+              ? " (its model can't see images, set in Settings). It checks a text layout report instead."
+              : ". It checks a text layout report instead, which costs fewer tokens. You can still open the preview."}
+          </span>
+        </span>
+      </label>
       <span className="w-full text-xs text-ink-muted">
         Pick its model under Settings, task models, UI engineer. A strong model that can see images works best; max thinking and{" "}
         {DEFAULT_ENGINEER.maxRounds} steps are the defaults.

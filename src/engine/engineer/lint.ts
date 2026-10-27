@@ -23,6 +23,10 @@ export interface Finding {
     | "overflow"
     | "contrast"
     | "targets"
+    | "text size"
+    | "overlap"
+    | "images"
+    | "hidden"
     | "console"
     | "module";
   message: string;
@@ -191,6 +195,11 @@ export function screenFindings(screens: ScreenReport[], device: string): Finding
       });
     for (const t of s.smallTargets)
       out.push({ level: "warn", check: "targets", message: `${s.screen} on ${device}: tap target ${t}, smaller than 30×30.` });
+    for (const t of s.smallText ?? [])
+      out.push({ level: "warn", check: "text size", message: `${s.screen} on ${device}: text ${t}, too small to read on a phone (12px or more).` });
+    for (const o of s.overlaps ?? []) out.push({ level: "warn", check: "overlap", message: `${s.screen} on ${device}: ${o}.` });
+    for (const i of s.emptyImages ?? []) out.push({ level: "warn", check: "images", message: `${s.screen} on ${device}: image ${i}.` });
+    for (const b of s.hiddenButtons ?? []) out.push({ level: "warn", check: "hidden", message: `${s.screen} on ${device}: button ${b}.` });
   }
   return out;
 }

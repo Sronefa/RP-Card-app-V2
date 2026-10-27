@@ -8,7 +8,9 @@ import {
   type ChatMessage,
   type CompletionRequest,
   type CompletionResult,
+  type CallUsage,
   type Effort,
+  type ModelInfo,
   type Provider,
   type ProviderConfig,
   type StopReason,
@@ -58,16 +60,31 @@ export function openaiProvider(config: ProviderConfig): Provider {
       return (json.data ?? []).map((m) => m.id).sort();
     },
 
+    async modelDetails() {
+      const fetch = await getFetch();
+      // NanoGPT adds context, pricing and capabilities with ?detailed=true; others ignore it.
+      const res = await fetch(`${base}/models?detailed=true`, { headers });
+      if (!res.ok) throw new HttpError(res.status, await res.text());
+      const json = (await res.json()) as { data?: Record<string, unknown>[] };
+      return Object.fromEntries((json.data ?? []).filter((m) => typeof m.id === "string").map((m) => [m.id as string, readModelInfo(m)]));
+    },
+
     async complete(request) {
       const fetch = await getFetch();
       let reasoning = !!request.effort;
+      let usage = true;
       for (;;) {
         try {
-          return await completeOnce(fetch, request, reasoning);
+          return await completeOnce(fetch, request, reasoning, usage);
         } catch (e) {
-          // Endpoints that don't know reasoning_effort: ask again without it.
-          if (reasoning && e instanceof HttpError && e.status >= 400 && e.status < 500 && /reason|effort/i.test(e.body)) {
+          const rejected = (re: RegExp) => e instanceof HttpError && e.status >= 400 && e.status < 500 && re.test(e.body);
+          // Endpoints that don't know reasoning_effort or stream_options: ask again without it.
+          if (reasoning && rejected(/reason|effort/i)) {
             reasoning = false;
+            continue;
+          }
+          if (usage && rejected(/stream_options|include_usage/i)) {
+            usage = false;
             continue;
           }
           throw e;
@@ -76,10 +93,16 @@ export function openaiProvider(config: ProviderConfig): Provider {
     },
   };
 
-  async function completeOnce(fetch: typeof globalThis.fetch, request: CompletionRequest, reasoning: boolean): Promise<CompletionResult> {
+  async function completeOnce(
+    fetch: typeof globalThis.fetch,
+    request: CompletionRequest,
+    reasoning: boolean,
+    usage: boolean,
+  ): Promise<CompletionResult> {
     const body = {
       model: request.model,
       stream: true,
+      ...(usage ? { stream_options: { include_usage: true } } : {}),
       messages: toWire(request),
       ...(reasoning && request.effort ? { reasoning_effort: REASONING[request.effort] } : {}),
       ...(request.useTools && request.tools.length
@@ -107,6 +130,41 @@ export function openaiProvider(config: ProviderConfig): Provider {
     const { text, toolCalls } = extractJsonEdits(result.text);
     return { ...result, text, toolCalls, raw: { kind: "openai", content: result.text } };
   }
+}
+
+const num = (v: unknown) => {
+  const n = typeof v === "string" ? Number(v) : v;
+  return typeof n === "number" && Number.isFinite(n) ? n : undefined;
+};
+
+/**
+ * Model details in the shapes OpenAI-compatible services use: OpenRouter (`context_length`,
+ * `architecture.input_modalities`, per-token `pricing`) and NanoGPT (`capabilities.vision`,
+ * per-million `pricing`).
+ */
+export function readModelInfo(m: Record<string, unknown>): ModelInfo {
+  const info: ModelInfo = {};
+  const arch = m.architecture as { input_modalities?: unknown; modality?: unknown } | undefined;
+  const caps = m.capabilities as Record<string, unknown> | undefined;
+  if (Array.isArray(arch?.input_modalities)) info.vision = arch.input_modalities.includes("image");
+  else if (typeof arch?.modality === "string") info.vision = /image/.test(arch.modality.split("->")[0]);
+  if (typeof caps?.vision === "boolean") info.vision = caps.vision;
+  const context = num(m.context_length) ?? num(m.context_window) ?? num((m.top_provider as Record<string, unknown> | undefined)?.context_length);
+  if (context) info.context = context;
+  const pricing = m.pricing as Record<string, unknown> | undefined;
+  if (pricing) {
+    // Per-token prices are tiny; per-million ones are not (or say so).
+    const perMillion = /million/i.test(String(pricing.unit ?? "")) || (num(pricing.prompt) ?? 0) >= 0.001;
+    const scale = (v: unknown) => {
+      const n = num(v);
+      return n === undefined ? undefined : perMillion ? n : Math.round(n * 1e6 * 1e4) / 1e4;
+    };
+    const inPrice = scale(pricing.prompt ?? pricing.input);
+    const outPrice = scale(pricing.completion ?? pricing.output);
+    if (inPrice !== undefined) info.inPrice = inPrice;
+    if (outPrice !== undefined) info.outPrice = outPrice;
+  }
+  return info;
 }
 
 /** OpenAI's reasoning levels stop at high. */
@@ -166,17 +224,19 @@ export async function readStream(res: Response, onText?: (delta: string) => void
   let buffer = "";
   let text = "";
   let finish = "";
+  let usage: CallUsage | undefined;
   const calls: { id: string; name: string; args: string }[] = [];
 
   const handle = (data: string) => {
     if (data === "[DONE]") return;
-    let chunk: { choices?: { delta?: Delta; finish_reason?: string | null }[]; error?: { message?: string } };
+    let chunk: { choices?: { delta?: Delta; finish_reason?: string | null }[]; error?: { message?: string }; usage?: WireUsage };
     try {
       chunk = JSON.parse(data);
     } catch {
       return;
     }
     if (chunk.error) throw new Error(chunk.error.message ?? "The endpoint reported an error");
+    if (chunk.usage) usage = readUsage(chunk.usage);
     const choice = chunk.choices?.[0];
     if (!choice) return;
     if (choice.finish_reason) finish = choice.finish_reason;
@@ -216,5 +276,27 @@ export async function readStream(res: Response, onText?: (delta: string) => void
     toolCalls,
     stop: toolCalls.length > 0 ? "tool_use" : (STOP[finish] ?? "other"),
     raw: { kind: "openai", content: text },
+    ...(usage ? { usage } : {}),
+  };
+}
+
+interface WireUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+  /** OpenRouter and NanoGPT report the charge. */
+  cost?: number | string;
+}
+
+function readUsage(u: WireUsage): CallUsage {
+  const cached = u.prompt_tokens_details?.cached_tokens ?? 0;
+  const written = u.prompt_tokens_details?.cache_write_tokens ?? 0;
+  const cost = num(u.cost);
+  return {
+    input: Math.max(0, (u.prompt_tokens ?? 0) - cached - written),
+    output: u.completion_tokens ?? 0,
+    cacheRead: cached,
+    cacheWrite: written,
+    ...(cost !== undefined ? { cost } : {}),
   };
 }

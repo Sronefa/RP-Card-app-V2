@@ -248,6 +248,14 @@ export interface ScreenReport {
   contrast: string[];
   smallTargets: string[];
   outline: string[];
+  /** Text under 12px. */
+  smallText?: string[];
+  /** Text and controls drawn on top of each other. */
+  overlaps?: string[];
+  /** Images with no source or that failed to load. */
+  emptyImages?: string[];
+  /** Buttons that are invisible, off screen or covered. */
+  hiddenButtons?: string[];
 }
 
 export interface ClickResult {

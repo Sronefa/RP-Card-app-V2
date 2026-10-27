@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import YAML from "yaml";
 import { resolveModel, useAiSettings } from "../../ai/settings";
+import { useUsage } from "../../ai/usage";
+import { UsageMeter } from "../usage/UsageMeter";
 import type { ModeId } from "../../ai/types";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { toast } from "../../components/toast";
@@ -170,6 +172,7 @@ export function PlaytestPage({ onFlag }: { onFlag: (text: string) => void }) {
       let text = "";
       send({ type: "typing", text: "" });
       try {
+        useUsage.getState().startTurn("playtest");
         const result = await complete("playtest", {
           system: prompt.system,
           messages: prompt.messages,
@@ -373,6 +376,7 @@ export function PlaytestPage({ onFlag }: { onFlag: (text: string) => void }) {
           )}
         </p>
       )}
+      <UsageMeter scope="playtest" turnLabel="Last turn" />
 
       {stale && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-accent/40 p-2 text-sm" role="status">

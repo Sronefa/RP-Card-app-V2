@@ -9,7 +9,9 @@ import {
   type ImageStyle,
   type PromptPreset,
 } from "../../ai/settings";
-import { DEFAULT_TIMEOUT_SEC, type ModeId, type ModelChoice, type ProviderConfig } from "../../ai/types";
+import { DEFAULT_TIMEOUT_SEC, type ModeId, type ModelChoice, type ModelInfo, type ProviderConfig } from "../../ai/types";
+import { formatCost, formatTokens, promptTokens, totalTokens, useUsage } from "../../ai/usage";
+import { listProjects, type ProjectRecord } from "../../db/db";
 import { toast } from "../../components/toast";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { DEFAULT_SLOP_PHRASES } from "../../editor/slop";
@@ -42,6 +44,7 @@ export function SettingsView() {
   const setPrefs = usePrefs((p) => p.set);
   const { settings, loaded, load, update, addProvider } = useAiSettings();
   const [models, setModels] = useState<Record<string, string[]>>({});
+  const [details, setDetails] = useState<Record<string, Record<string, ModelInfo>>>({});
   const [adding, setAdding] = useState(false);
   const [preset, setPreset] = useState<PromptPreset>();
   const [imageStyle, setImageStyle] = useState<ImageStyle>();
@@ -54,9 +57,21 @@ export function SettingsView() {
 
   async function loadModels(p: ProviderConfig) {
     try {
-      const list = await createProvider(p).listModels();
+      const provider = createProvider(p);
+      const list = await provider.listModels();
       setModels((m) => ({ ...m, [p.id]: list }));
       toast(`${p.name}: ${list.length} models found`);
+      const found = await provider.modelDetails?.().catch(() => undefined);
+      if (found) {
+        setDetails((d) => ({ ...d, [p.id]: found }));
+        // Fill in what's still unknown about the models already saved.
+        const modelInfo = { ...settings.modelInfo };
+        for (const m of p.models ?? []) {
+          const key = modelKey({ providerId: p.id, model: m });
+          if (found[m]) modelInfo[key] = { ...found[m], ...modelInfo[key] };
+        }
+        void update({ modelInfo });
+      }
     } catch (e) {
       toast(`Couldn't reach ${p.name}: ${(e as Error).message}`, "error");
     }
@@ -126,8 +141,20 @@ export function SettingsView() {
               available={models[p.id]}
               defaultModel={current?.providerId === p.id ? current.model : undefined}
               noTools={settings.noToolModels}
+              info={settings.modelInfo ?? {}}
+              onInfo={(model, info) =>
+                void update({ modelInfo: { ...settings.modelInfo, [modelKey({ providerId: p.id, model })]: info } })
+              }
               onLoad={() => void loadModels(p)}
               onChange={(list) => {
+                const added = list.filter((m) => !(p.models ?? []).includes(m) && details[p.id]?.[m]);
+                if (added.length)
+                  void update({
+                    modelInfo: {
+                      ...settings.modelInfo,
+                      ...Object.fromEntries(added.map((m) => [modelKey({ providerId: p.id, model: m }), details[p.id][m]])),
+                    },
+                  });
                 setProvider({ ...p, models: list });
                 // The first model saved anywhere becomes the default.
                 if (!current && list[0]) setDefault({ providerId: p.id, model: list[0] });
@@ -189,6 +216,8 @@ export function SettingsView() {
           </div>
         </details>
       )}
+
+      <UsageTotals />
 
       <section className="flex flex-col gap-3">
         <h2 className="font-medium">Prompt library</h2>
@@ -352,6 +381,8 @@ function SavedModels({
   available,
   defaultModel,
   noTools,
+  info,
+  onInfo,
   onLoad,
   onChange,
   onDefault,
@@ -364,12 +395,16 @@ function SavedModels({
   defaultModel?: string;
   /** `providerId/model` of models that can't call tools. */
   noTools: string[];
+  /** What's known about each model, by `providerId/model`. */
+  info: Record<string, ModelInfo>;
+  onInfo: (model: string, info: ModelInfo) => void;
   onLoad: () => void;
   onChange: (models: string[]) => void;
   onDefault: (model: string) => void;
   onTools: (model: string, off: boolean) => void;
 }) {
   const [name, setName] = useState("");
+  const [open, setOpen] = useState<string>();
   const saved = provider.models ?? [];
   const listId = `available-${provider.id}`;
   function add() {
@@ -410,12 +445,29 @@ function SavedModels({
               </label>
               <button
                 type="button"
+                aria-expanded={open === m}
+                aria-label={`Details of ${m}`}
+                className="text-xs text-ink-muted underline hover:text-ink"
+                onClick={() => setOpen(open === m ? undefined : m)}
+              >
+                Details
+              </button>
+              <button
+                type="button"
                 aria-label={`Remove ${m}`}
                 className="rounded-full px-1.5 text-ink-muted hover:text-ink"
                 onClick={() => onChange(saved.filter((x) => x !== m))}
               >
                 ×
               </button>
+              {open === m && (
+                <ModelDetails
+                  model={m}
+                  claude={provider.kind === "anthropic"}
+                  info={info[`${provider.id}/${m}`] ?? {}}
+                  onChange={(next) => onInfo(m, next)}
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -621,6 +673,117 @@ function SlopPhrases({
           Go back to the built-in list
         </Button>
       )}
+    </section>
+  );
+}
+
+/** What CardForge knows about one model: whether it sees images, its context window and its prices. */
+function ModelDetails({
+  model,
+  claude,
+  info,
+  onChange,
+}: {
+  model: string;
+  claude: boolean;
+  info: ModelInfo;
+  onChange: (info: ModelInfo) => void;
+}) {
+  const number = (key: "context" | "inPrice" | "outPrice") => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const n = Number(e.target.value);
+    const next = { ...info };
+    if (e.target.value.trim() === "" || !Number.isFinite(n) || n < 0) delete next[key];
+    else next[key] = n;
+    onChange(next);
+  };
+  return (
+    <div className="flex w-full flex-col gap-2 border-t border-border pt-2 text-xs">
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          className="size-3.5"
+          checked={info.vision ?? true}
+          onChange={(e) => onChange({ ...info, vision: e.target.checked })}
+        />
+        Can see images
+        <span className="text-ink-muted">(off: the UI engineer gets a text layout report instead of screenshots)</span>
+      </label>
+      <div className="flex flex-wrap gap-3">
+        <label className="flex flex-col gap-1">
+          Context window (tokens)
+          <TextInput
+            type="number"
+            min={0}
+            className="w-32"
+            aria-label={`Context window of ${model}`}
+            placeholder={claude ? "200000" : "128000"}
+            value={info.context ?? ""}
+            onChange={number("context")}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          $ per 1M input
+          <TextInput
+            type="number"
+            min={0}
+            step="any"
+            className="w-24"
+            aria-label={`Input price of ${model}`}
+            value={info.inPrice ?? ""}
+            onChange={number("inPrice")}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          $ per 1M output
+          <TextInput
+            type="number"
+            min={0}
+            step="any"
+            className="w-24"
+            aria-label={`Output price of ${model}`}
+            value={info.outPrice ?? ""}
+            onChange={number("outPrice")}
+          />
+        </label>
+      </div>
+      <span className="text-ink-muted">
+        Filled from the provider's model list where it says (Test and load models). With prices, token meters show what a call
+        cost when the provider doesn't report it.
+      </span>
+    </div>
+  );
+}
+
+/** All-time token use per project on this device. */
+function UsageTotals() {
+  const { totals, loadTotals, clearTotals } = useUsage();
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  useEffect(() => {
+    void loadTotals();
+    void listProjects().then(setProjects);
+  }, [loadTotals]);
+  const rows = Object.entries(totals).filter(([, u]) => u.calls > 0);
+  if (!rows.length) return null;
+  const name = (id: string) => projects.find((p) => p.id === id)?.name ?? "A deleted project";
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-medium">Token use by project</h2>
+      <p className="text-sm text-ink-muted">Every model call made for a project on this device, as the providers reported it.</p>
+      <ul className="flex flex-col gap-1.5 text-sm" aria-label="Token use by project">
+        {rows.map(([id, u]) => (
+          <li key={id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-1.5">
+            <span className="min-w-0 flex-1 truncate">{name(id)}</span>
+            <span className="text-xs text-ink-muted">
+              {formatTokens(totalTokens(u))} tokens ({formatTokens(promptTokens(u))} in, {formatTokens(u.output)} out
+              {u.cacheRead ? `, ${formatTokens(u.cacheRead)} cached` : ""}) · {u.calls} {u.calls === 1 ? "call" : "calls"}
+              {u.cost ? ` · ${formatCost(u.cost)}${u.unpriced ? "+" : ""}` : ""}
+            </span>
+            <button type="button" className="text-xs text-ink-muted underline" onClick={() => void clearTotals(id)}>
+              Reset
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
