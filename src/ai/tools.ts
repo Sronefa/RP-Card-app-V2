@@ -5,6 +5,9 @@
 import type { CardDataV3, LorebookEntry } from "../card";
 import { emptyBook, entryTitle, newEntry } from "../editor/lorebook";
 import { aKind, fieldsFor, KINDS, pageMeta, syncCast, worldEntry, worldMeta, type WorldKind } from "../editor/world";
+import { applyEngine } from "../engine/sheet";
+import { planEngineEdit, type EngineEdit } from "./engineTools";
+import { ToolInputError } from "./toolError";
 import type { ToolCall, ToolDef } from "./types";
 
 /** Card text fields the co-writer may write. */
@@ -188,9 +191,10 @@ export type Edit =
       /** Set for an NPC, place, item or shop. */
       world?: WorldKind;
     }
-  | { kind: "pitch"; title: string; idea: string };
+  | { kind: "pitch"; title: string; idea: string }
+  | EngineEdit;
 
-export class ToolInputError extends Error {}
+export { ToolInputError };
 
 const isString = (v: unknown): v is string => typeof v === "string";
 
@@ -336,8 +340,11 @@ export function planEdit(data: CardDataV3, call: ToolCall): Edit {
     }
     case "pitch":
       return { kind: "pitch", title: needString(input, "title"), idea: needString(input, "idea") };
-    default:
+    default: {
+      const engine = planEngineEdit(data, call);
+      if (engine) return engine;
       throw new ToolInputError(`Unknown tool ${call.name}`);
+    }
   }
 }
 
@@ -361,6 +368,18 @@ export function applyEdit(data: CardDataV3, edit: Edit): CardDataV3 {
     }
     case "pitch":
       return data;
+    case "engine":
+      return applyEngine(data, edit.after);
+    case "tiers": {
+      const book = data.character_book ?? emptyBook();
+      const entries = edit.before
+        ? book.entries.map((e) => (e.id === edit.before!.id ? edit.after : e))
+        : [...book.entries, edit.after];
+      return { ...data, character_book: { ...book, entries } };
+    }
+    case "greetingState":
+      if (edit.greeting === 0) return { ...data, first_mes: edit.after };
+      return { ...data, alternate_greetings: data.alternate_greetings.map((g, i) => (i === edit.greeting - 1 ? edit.after : g)) };
   }
 }
 
@@ -375,5 +394,11 @@ export function describeEdit(edit: Edit): string {
       return `${edit.action === "add" ? "Add" : edit.action === "update" ? "Change" : "Delete"} ${edit.world ? KINDS[edit.world].label : "lore entry"} "${edit.title}"`;
     case "pitch":
       return `Idea: ${edit.title}`;
+    case "engine":
+      return edit.summary;
+    case "tiers":
+      return `${edit.before ? "Change" : "Write"} the tiers of ${edit.variable}`;
+    case "greetingState":
+      return `Starting state for ${edit.greeting === 0 ? "the first message" : `greeting ${edit.greeting}`}`;
   }
 }

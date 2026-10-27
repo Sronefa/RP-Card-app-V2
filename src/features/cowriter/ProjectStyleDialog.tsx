@@ -83,6 +83,23 @@ export function ProjectStyleDialog({ projectId, open, onClose }: { projectId?: s
             ))}
           </fieldset>
 
+          <label className="flex items-start gap-3 rounded-xl border border-border p-3">
+            <input
+              type="checkbox"
+              className="mt-1 size-4"
+              checked={!!settings.engineMode}
+              onChange={(e) => change({ engineMode: e.target.checked })}
+            />
+            <span className="flex flex-col">
+              <span className="font-medium">Built for the Immersive Engine</span>
+              <span className="text-xs text-ink-muted">
+                The co-writer writes an engine card from the start: it plans the variables and their tiers first, keeps numbers
+                out of the prose, and gives every greeting its starting state. Its guide is the "Write an engine card" skill,
+                which you can edit with the UI engineer's skills.
+              </span>
+            </span>
+          </label>
+
           <ChoiceText label="Tone" options={TONES} value={settings.tone} onChange={(tone) => change({ tone })} />
           <ChoiceText label="Setting and genre" options={GENRES} value={settings.genre} onChange={(genre) => change({ genre })} />
 

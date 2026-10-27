@@ -50,7 +50,8 @@ export function CheckDialog({
     onClose();
   }
 
-  const problems = issues.filter((i) => i.level !== "tip");
+  const problems = issues.filter((i) => i.level !== "tip" && !i.kind);
+  const engine = issues.filter((i) => i.kind === "engine");
   const slop = issues.filter((i) => i.kind === "slop");
   const uncovered = issues.filter((i) => i.kind === "coverage");
   const tips = issues.filter((i) => i.level === "tip" && !i.kind);
@@ -58,7 +59,7 @@ export function CheckDialog({
   const row = (issue: Issue, i: number) => (
     <li key={i} className="flex items-stretch gap-1 rounded-lg border border-border hover:border-ink-muted">
       <button type="button" onClick={() => go(issue)} className="flex flex-1 flex-col gap-1 p-2 text-left text-sm">
-        {!issue.kind && (
+        {(!issue.kind || issue.kind === "engine") && (
           <span className={`w-fit rounded-full px-2 text-xs ${LEVEL[issue.level].className}`}>
             {LEVEL[issue.level].label}
           </span>
@@ -108,6 +109,7 @@ export function CheckDialog({
         ) : (
           <>
             {group("Problems", problems)}
+            {group("Engine-ready", engine)}
             {group("Overused phrasing", slop)}
             {group(
               "Names without lorebook entries",

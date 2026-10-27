@@ -7,6 +7,10 @@ import type { CardKind, CardRecord, PersonaRecord } from "../db/db";
 import { ARC_OPTIONS, arcHidden, type ArcSettingKey, type ArcSettings } from "../editor/arc";
 import { entryTitle } from "../editor/lorebook";
 import { LOGIC_NAMES } from "../editor/mechanics";
+import { BUILT_IN_SKILLS } from "../engine/engineer/knowledge";
+import { effectiveConfig } from "../engine/modules/compile";
+import { readEngine, varLabel, varPath } from "../engine/sheet";
+import { tiersEntryOf } from "./engineTools";
 import { KINDS, pageMeta, worldFieldsText } from "../editor/world";
 import { estimateTokens } from "../lib/tokens";
 import { YOU_DECIDE, type ContentMode, type CowriterSettings, type InterviewDepth, type InterviewRound } from "./records";
@@ -98,9 +102,18 @@ const SUGGESTIONS = {
   lots: "Suggestions: pitch freely, two or three ideas per reply (secrets, hooks, NPCs, twists, greetings).",
 };
 
-export function settingsContext(settings: CowriterSettings, presets: { name: string; text: string }[]): string {
+/** The built-in guide to writing engine cards; the user can edit it as a UI engineer skill. */
+export const ENGINE_GUIDE = BUILT_IN_SKILLS.find((s) => s.id === "engine-card-writing")?.text ?? "";
+
+export function settingsContext(
+  settings: CowriterSettings,
+  presets: { name: string; text: string }[],
+  engineGuide = ENGINE_GUIDE,
+): string {
   const lines = [
     CONTENT_MODES[settings.contentMode],
+    settings.engineMode &&
+      `This card is built for the Immersive Engine (an MVU card: a variable sheet the model updates each reply, shown in panels and screens). Write for it from the start with the engine tools (add_variable, set_update_rule, write_tiers, set_greeting_state), following this guide:\n${engineGuide}`,
     settings.tone && `Tone: ${settings.tone}.`,
     settings.genre && `Setting and genre: ${settings.genre}.`,
     SUGGESTIONS[settings.suggestions],
@@ -137,6 +150,21 @@ export function cardContext(data: CardDataV3, kind: CardKind): string {
         })
         .join("\n\n") || "(empty)"),
   );
+  const engine = readEngine(data);
+  if (engine) {
+    const vars = effectiveConfig(engine).vars.filter((v) => v.name.trim());
+    out.push(
+      `## engine values (the Immersive Engine is on; never state these in the prose)\n` +
+        (vars
+          .map((v) => {
+            const range = v.min !== undefined || v.max !== undefined ? `, ${v.min ?? "…"} to ${v.max ?? "…"}` : "";
+            const marks = v.hidden ? ", hidden $" : v.readOnly ? ", read-only _" : "";
+            const tiers = v.type === "number" ? (tiersEntryOf(data, varLabel(v)) ? ", has tiers" : ", no tiers yet") : "";
+            return `- ${varPath(v).join(".")} (${v.type}, starts at ${v.start || "nothing"}${range}${marks}${tiers})${v.rule.trim() ? `: ${v.rule.trim()}` : ""}`;
+          })
+          .join("\n") || "(none yet)"),
+    );
+  }
   if (arcHidden(data))
     out.push(
       "The story arc entries are secret from the user: use them to keep the card consistent, but never quote, summarize or hint at them.",
@@ -232,6 +260,9 @@ export function interviewKickoff(kind: CardKind, settings: CowriterSettings, pre
   const themes = [...THEMES[kind]];
   const extra = MODE_THEME[settings.contentMode];
   if (extra) themes.splice(themes.length - 1, 0, extra);
+  // Engine cards plan their variables early, right after the core concept.
+  if (settings.engineMode)
+    themes.splice(1, 0, "Game state: what the engine should track (about six core numbers at most) and what each tier of them means for how characters behave");
   return [
     `Interview me to build a ${kind === "world" ? "world card" : "character card"}.`,
     premise.trim() ? `My idea: ${premise.trim()}` : "I have no idea yet: help me find one with your first questions.",
@@ -319,12 +350,40 @@ export const DRAFT_GROUPS: { id: string; label: string; brief: Record<CardKind, 
 ];
 
 /** The request for one drafting step, given the source facts and the card as drafted so far. */
-export function draftRequest(groupId: string, kind: CardKind, source: string, card: string): string {
-  const group = DRAFT_GROUPS.find((g) => g.id === groupId)!;
-  return [`<source>\n${source}\n</source>`, `<card_so_far>\n${card}\n</card_so_far>`, `This step: ${group.brief[kind]}`].join(
-    "\n\n",
-  );
+export function draftRequest(groupId: string, kind: CardKind, source: string, card: string, engine = false): string {
+  const group = draftGroups(engine).find((g) => g.id === groupId)!;
+  return [
+    `<source>\n${source}\n</source>`,
+    `<card_so_far>\n${card}\n</card_so_far>`,
+    `This step: ${group.brief[kind]}`,
+    engine && group.id !== "engine" && ENGINE_DRAFT_NOTE[group.id],
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
+
+/** The first step of an engine card's draft: the variables, before any prose. */
+const ENGINE_GROUP = {
+  id: "engine",
+  label: "variables",
+  brief: {
+    character:
+      "Plan the game state before any prose. Add the core values with add_variable (about six numbers at most, plus the states and lists the story needs), each with a concrete update rule; then give every core number its tiers and threshold events with write_tiers. Use fixed names (protagonist, the character's name), never {{user}}.",
+    world:
+      "Plan the game state before any prose. Add the core values with add_variable (about six numbers at most, plus the world's states, the protagonist's and the main NPCs' records), each with a concrete update rule; then give every core number its tiers and threshold events with write_tiers. Use fixed names, never {{user}}.",
+  } as Record<CardKind, string>,
+};
+
+const ENGINE_DRAFT_NOTE: Record<string, string> = {
+  core: "This is an engine card: never state a variable's value in the prose, and keep tier behaviour out of the description; the tiers entries hold it.",
+  greetings:
+    "This is an engine card: after writing the greetings, give each one (0 is the first message) its starting state with set_greeting_state, the values that differ from the defaults at that opening.",
+  examples: "This is an engine card: no stats or numbers in the dialogue.",
+  lore: "This is an engine card: entries hold facts and behaviour, never current values.",
+};
+
+/** The drafting steps, with the variables first for an engine card. */
+export const draftGroups = (engine: boolean) => (engine ? [ENGINE_GROUP, ...DRAFT_GROUPS] : DRAFT_GROUPS);
 
 /** What the draft is written from: the story bible, or the interview when there is none. */
 export function draftSource(bible: string | undefined, rounds: InterviewRound[], facts: string[]): string {
@@ -453,13 +512,18 @@ export function greetingSortRequest(greetings: string[], axes: { moods: string[]
 }
 
 /** Asks the co-writer chat for greetings that fill gaps in the planner grid. */
-export function greetingFillRequest(cells: { mood: string; stage: string; place?: string }[]): string {
+export function greetingFillRequest(cells: { mood: string; stage: string; place?: string }[], engine = false): string {
   const list = cells.map((c) => `- mood: ${c.mood}; relationship stage: ${c.stage}; place: ${c.place ?? "a place no other greeting uses"}`);
   return [
     `Write ${cells.length === 1 ? "an alternate greeting" : `${cells.length} alternate greetings`} for openings the card doesn't have yet, one add_greeting each:`,
     list.join("\n"),
     "Each greeting sets up its own situation with a hook, matches the first message in voice and length, and never speaks or acts for {{user}}. The relationship stage is where {{char}} and {{user}} stand when the scene opens.",
-  ].join("\n");
+    engine
+      ? "This is an engine card: give each new greeting its starting state with set_greeting_state, so the values (relationship, place, mood) match where the scene opens."
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export const REMIXES = {

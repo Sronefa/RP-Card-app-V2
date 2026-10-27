@@ -5,6 +5,7 @@ import type { CardDataV3 } from "../../card";
 import { diffWords } from "../../lib/diff";
 import { estimateTokens } from "../../lib/tokens";
 import { guessWorldKind, KINDS, type TypedKind } from "../../editor/world";
+import { varLabel, type EngineConfig } from "../../engine/sheet";
 
 const STATUS: Record<Proposal["status"], string> = {
   pending: "",
@@ -123,6 +124,8 @@ function EditPreview({ edit }: { edit: Edit }) {
       </div>
     );
   }
+  if (edit.kind === "engine") return <Diff before={sheetText(edit.before)} after={sheetText(edit.after)} />;
+  if (edit.kind === "tiers") return <Diff before={edit.before?.content ?? ""} after={edit.after.content} />;
   const before = estimateTokens(edit.before);
   const after = estimateTokens(edit.after);
   return (
@@ -135,6 +138,16 @@ function EditPreview({ edit }: { edit: Edit }) {
       <Diff before={edit.before} after={edit.after} />
     </div>
   );
+}
+
+/** The sheet's values as lines, so a change to them shows as a diff. */
+function sheetText(config: EngineConfig | undefined): string {
+  return (config?.vars ?? [])
+    .map((v) => {
+      const range = v.min !== undefined || v.max !== undefined ? `, ${v.min ?? "…"} to ${v.max ?? "…"}` : "";
+      return `${varLabel(v)} (${v.type}, starts at ${v.start || "nothing"}${range}${v.hidden ? ", hidden" : v.readOnly ? ", read-only" : ""})${v.rule.trim() ? `: ${v.rule.trim()}` : ""}`;
+    })
+    .join("\n");
 }
 
 function Diff({ before, after }: { before: string; after: string }) {
