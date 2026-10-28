@@ -261,7 +261,10 @@ function VarsPage({
           <input type="radio" name="update-mode" className="mt-1 size-4" checked={!side} onChange={() => save({ ...config, updateMode: "reply" })} />
           <span>
             The roleplay model, at the end of each reply
-            <span className="block text-xs text-ink-muted">No extra calls. The rules sit in the prompt and the reply carries an update block, hidden from the player.</span>
+            <span className="block text-xs text-ink-muted">
+              The rules sit in the prompt and the reply carries an update block, hidden from the player. When a reply leaves the block out or is cut off,
+              a side call writes the update for that reply instead.
+            </span>
           </span>
         </label>
         <label className="flex min-h-8 items-start gap-2">
@@ -272,6 +275,18 @@ function VarsPage({
               The reply stays pure prose; a silent second call on the player's own API reads it and writes the update. About{" "}
               {sideCallTokens(config)} extra tokens a turn. Players can turn it off in the card's settings app.
             </span>
+          </span>
+        </label>
+        <label className="mt-1 flex min-h-8 items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-1 size-4"
+            checked={!!config.lockUpdateMode}
+            onChange={(e) => save({ ...config, lockUpdateMode: e.target.checked || undefined })}
+          />
+          <span>
+            Lock this choice
+            <span className="block text-xs text-ink-muted">Unlocked, players can switch between the two in the card's settings app, if their model does better one way.</span>
           </span>
         </label>
       </fieldset>

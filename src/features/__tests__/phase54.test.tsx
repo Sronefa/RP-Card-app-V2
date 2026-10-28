@@ -72,6 +72,8 @@ async function boot(
   answer = () => JSON.stringify({ items: [{ from: "Mina", text: "miss u already" }] });
   Object.assign(tavern.api, {
     generateRaw: async (options: Record<string, unknown>) => {
+      // The replies here have no update block, so the engine asks a side call for one: not a feed's call.
+      if ((options.json_schema as { name?: string } | undefined)?.name === "game_state_update") return JSON.stringify({ analysis: "", ops: [] });
       calls.push(options);
       const a = answer();
       if (a instanceof Error) throw a;
@@ -84,7 +86,7 @@ async function boot(
 }
 
 const reply = async (id: number) => {
-  await tavern.api.eventEmit("message_received", id);
+  await tavern.api.eventEmit("character_message_rendered", id);
   await flush();
 };
 const stat = (id: number) => (tavern.vars[id] as { stat_data: Record<string, Record<string, unknown>> }).stat_data;
@@ -220,7 +222,7 @@ describe("living screens: the runtime", () => {
     answer = () => new Promise<string>((r) => (release = r));
     const events: Record<string, unknown>[] = [];
     CF.live.on((d) => events.push(d));
-    await tavern.api.eventEmit("message_received", 2);
+    await tavern.api.eventEmit("character_message_rendered", 2);
     await flush();
     expect(CF.live.pending("texts")).toBe(true);
     tavern.messages[2].message = "A different swipe.";

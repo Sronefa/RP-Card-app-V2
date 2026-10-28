@@ -50,12 +50,17 @@ The model ends each reply with:
 
 The ops are: `replace` (set a value), `delta` (add to a number), `insert` (also `add`; `/-` appends to a list, and a new key creates it), `remove` and `move`. The updater refuses writes to `_` values, checks every value against the schema (clamps numbers, repairs types), and skips what it can't apply. The CardForge sandbox shows skipped ops. Regex hides the block from the player and drops old blocks from the prompt.
 
-A card in side-call mode (the Variables tab, "Who writes the updates") leaves the rules out of the reply's prompt. After each reply the script asks a silent `generateRaw` with a JSON schema for `{ analysis, ops }`, turns the ops into this same block and keeps the answer on the message, so the reply stays pure prose. It costs the player about `CF.sideCall().tokens` a turn, and stops when they turn side calls off.
+A card in side-call mode (the Variables tab, "Who writes the updates") keeps the `[mvu_update]` entries out of the reply's prompt (the script drops them when SillyTavern loads the lorebook). After each reply the script asks a silent `generateRaw` with a JSON schema for `{ analysis, ops }`, turns the ops into this same block and keeps the answer on the message, so the reply stays pure prose. It costs the player about `CF.sideCall().tokens` a turn, and stops when they turn side calls off. Unless the card locks its choice, players can switch a card between the two in the settings app (`CF.updateMode()` says which is on).
+
+In reply mode the same side call stands in when a reply's own update can't be trusted: no block, a block cut off at the length limit (it's dropped, not half-applied), bare commands in a reply too short to be whole, or a block whose every change failed. Only the newest reply makes a new call; a message read again uses the answer kept with it.
+
+The script reads a new message once it has rendered (`CHARACTER_MESSAGE_RENDERED`, `USER_MESSAGE_RENDERED`), so the player sees the reply before any side call, and writes the state only if the chat, the swipe and the text are still the same when the answer comes. Each message's state keeps a fingerprint of its text and of the state before it: an edit rebuilds that message and the ones after it, a delete or a swipe rebuilds every message whose fingerprint no longer matches, and the player's edits (kept on the message) are applied again each time.
 
 ## Events
 
 ```js
-eventOn(tavern_events.MESSAGE_RECEIVED, function (id) { … });   // a reply arrived (also after a swipe)
+eventOn(tavern_events.MESSAGE_RECEIVED, function (id) { … });   // a reply arrived, before it renders (also after a swipe)
+eventOn(tavern_events.CHARACTER_MESSAGE_RENDERED, function (id) { … }); // the reply is on screen
 eventOn(tavern_events.MESSAGE_SWIPED, function (id) { … });
 eventOn(tavern_events.MESSAGE_EDITED, function (id) { … });
 eventOn(tavern_events.MESSAGE_DELETED, function (count) { … });

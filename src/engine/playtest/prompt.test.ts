@@ -91,7 +91,8 @@ describe("the playtest prompt", () => {
     expect(p.messages).toEqual([{ role: "user", text: "Update for Mina." }]);
     const g = scriptPrompt({ data: card(), chat, persona }, "generate", { user_input: "Write a text from Mina." });
     const last = g.messages.at(-1)!;
-    expect(last.role === "user" && last.text).toMatch(/<game_state>[\s\S]*Coffee\?\n\nWrite a text from Mina\.$/);
+    // The game state sits at depth 0, after the chat.
+    expect(last.role === "user" && last.text).toMatch(/Coffee\?[\s\S]*<game_state>[\s\S]*Write a text from Mina\.$/);
   });
 
   it("lets the auto-player see the story from {{user}}'s side, without the engine's blocks", () => {

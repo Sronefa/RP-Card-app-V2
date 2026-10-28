@@ -40,8 +40,8 @@ async function play(config: EngineConfig) {
   const turn = async (ops: unknown[]) => {
     tavern.messages.push({ role: "user", message: "…" }, { role: "assistant", message: `Next.\n<UpdateVariable><JSONPatch>${JSON.stringify(ops)}</JSONPatch></UpdateVariable>` });
     tavern.vars.push({}, {});
-    await tavern.api.eventEmit("message_sent", tavern.messages.length - 2);
-    await tavern.api.eventEmit("message_received", tavern.messages.length - 1);
+    await tavern.api.eventEmit("user_message_rendered", tavern.messages.length - 2);
+    await tavern.api.eventEmit("character_message_rendered", tavern.messages.length - 1);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (tavern.vars.at(-1) as { stat_data: Record<string, any> }).stat_data;
   };

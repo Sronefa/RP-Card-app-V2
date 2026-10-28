@@ -24,6 +24,8 @@ var CF_DEFAULT_SETTINGS = {
   motion: "auto",
   minigames: "play",
   liveOff: [],
+  // Who writes the game-state updates: "card" (the card's choice), "reply" or "side".
+  updateMode: "card",
 };
 var CF_SCRIPT_TAG = "scr" + "ipt";
 var cfHooks = [];
@@ -175,18 +177,38 @@ function cfHiddenPath(keys) {
   });
 }
 
+/** The starting values, checked and with the modules' derived values. */
+function cfFreshState(messageId) {
+  var fresh = cfClone(CF_CONFIG.initial);
+  var schema = cfSchemaOrNull();
+  if (schema) {
+    var checked = schema.safeParse(fresh);
+    if (checked.success) fresh = checked.data;
+  }
+  return cfRunHooks(fresh, null, messageId);
+}
+
 /**
- * Changes the player made by hand, on the latest state, in one write: [[path, value], ...]. They're
- * logged in one line (with `note`) so the AI keeps them; hidden values aren't logged.
+ * Applies one of the player's edits to a message's data: values set by hand
+ * ({ changes: [[keys, value], ...], note }) or a reset ({ reset: true }). Edits are kept on the
+ * message and applied again whenever it is re-read, so an edit survives a re-parse. They're logged
+ * in one line (with the note) so the AI keeps them; hidden values aren't logged. Returns the values
+ * after the change.
  */
-async function cfPlayerSetMany(changes, note) {
-  var id = cfLatestId();
-  if (id < 0) throw new Error("There is no game state yet.");
-  var data = cfClone(cfMessageData(id));
-  var done = changes.map(function (change) {
-    var keys = Array.isArray(change[0]) ? change[0].map(String) : cfPath(change[0]);
+function cfEditData(data, edit, messageId) {
+  if (edit.reset) {
+    var before = data.stat_data;
+    var fresh = cfFreshState(messageId);
+    fresh._PlayerEdits = ["The player reset every value to the start."];
+    data.stat_data = fresh;
+    data.delta_data = cfDelta(before, fresh);
+    return [];
+  }
+  if (!cfIsObject(data.stat_data)) data.stat_data = {};
+  var done = (edit.changes || []).map(function (change) {
+    var keys = change[0];
     var before = cfGet(data.stat_data, keys);
-    cfSet(data.stat_data, keys, change[1]);
+    cfSet(data.stat_data, keys, cfClone(change[1]));
     return { keys: keys, before: before };
   });
   var schema = cfSchemaOrNull();
@@ -204,12 +226,36 @@ async function cfPlayerSetMany(changes, note) {
   });
   if (lines.length) {
     var log = Array.isArray(data.stat_data._PlayerEdits) ? data.stat_data._PlayerEdits.slice() : [];
-    log.push(lines.join("; ") + (note ? " (" + note + ")" : ""));
+    log.push(lines.join("; ") + (edit.note ? " (" + edit.note + ")" : ""));
     data.stat_data._PlayerEdits = log.slice(-5);
   }
+  return results;
+}
+
+/** Keeps an edit on the latest message with a state, applies it, and writes it. */
+async function cfPlayerEdit(edit) {
+  var id = cfLatestId();
+  if (id < 0) throw new Error("There is no game state yet.");
+  var data = cfClone(cfMessageData(id));
+  var results = cfEditData(data, edit, id);
+  // A reset makes the edits before it moot.
+  data.cf_edits = edit.reset ? [edit] : (Array.isArray(data.cf_edits) ? data.cf_edits : []).concat([edit]);
   await cfWrite(id, data);
   await eventEmit("cf:state", id);
   return results;
+}
+
+/**
+ * Changes the player made by hand, on the latest state, in one write: [[path, value], ...]. They're
+ * logged in one line (with `note`) so the AI keeps them; hidden values aren't logged.
+ */
+async function cfPlayerSetMany(changes, note) {
+  return cfPlayerEdit({
+    changes: changes.map(function (change) {
+      return [Array.isArray(change[0]) ? change[0].map(String) : cfPath(change[0]), cfClone(change[1])];
+    }),
+    note: note || "",
+  });
 }
 
 /** A change the player made by hand, on the latest state. It's logged so the AI keeps it. */
@@ -219,22 +265,8 @@ async function cfPlayerSet(path, value, note) {
 
 /** Puts every value back to the start, on the latest state, and tells the model. */
 async function cfPlayerReset() {
-  var id = cfLatestId();
-  if (id < 0) return;
-  var data = cfClone(cfMessageData(id));
-  var before = data.stat_data;
-  var fresh = cfClone(CF_CONFIG.initial);
-  var schema = cfSchemaOrNull();
-  if (schema) {
-    var checked = schema.safeParse(fresh);
-    if (checked.success) fresh = checked.data;
-  }
-  fresh = cfRunHooks(fresh, null, id);
-  fresh._PlayerEdits = ["The player reset every value to the start."];
-  data.stat_data = fresh;
-  data.delta_data = cfDelta(before, fresh);
-  await cfWrite(id, data);
-  await eventEmit("cf:state", id);
+  if (cfLatestId() < 0) return;
+  await cfPlayerEdit({ reset: true });
 }
 
 // ---------------------------------------------------------------- actions
@@ -1101,19 +1133,38 @@ function cfFreezeSoon() {
 
 // ---------------------------------------------------------------- hooks and start
 
-/** Modules that keep derived values (the clock, routines) change the state after each update. */
+/**
+ * A message's seed: the time it was written (each swipe has its own), or its text when the time
+ * isn't known. Reading the message again gives the same seed, so the same rolls.
+ */
+function cfMessageSeed(messageId, message) {
+  try {
+    var context = typeof SillyTavern.getContext === "function" ? SillyTavern.getContext() : SillyTavern;
+    var raw = context && context.chat && context.chat[messageId];
+    if (raw && raw.send_date) return String(raw.send_date);
+  } catch (e) {}
+  return "text:" + String((message && message.message) || "").split("<StatusPlaceHolderImpl/>").join("").trim();
+}
+
+/**
+ * Modules that keep derived values (the clock, routines) change the state after each update.
+ * `info.random()` gives numbers seeded from the message, so a re-read rolls the same.
+ */
 function cfRunHooks(stat, before, messageId) {
   var out = stat;
   var latest = true;
   var role = "";
+  var message = null;
   try {
     latest = messageId === undefined || messageId === null || messageId >= getLastMessageId();
-    var message = typeof messageId === "number" ? getChatMessages(messageId)[0] : null;
+    message = typeof messageId === "number" ? getChatMessages(messageId)[0] : null;
     role = (message && message.role) || "";
   } catch (e) {}
+  var seed = cfMessageSeed(messageId, message);
   cfHooks.forEach(function (hook) {
     try {
-      var next = hook.fn(out, before, { messageId: messageId, latest: latest, role: role, settings: hook.settings });
+      var random = cfArtRng(seed + ":" + hook.module);
+      var next = hook.fn(out, before, { messageId: messageId, latest: latest, role: role, settings: hook.settings, seed: seed, random: random });
       if (cfIsObject(next)) out = next;
     } catch (e) {
       console.error("[CardForge] The '" + hook.module + "' module's update hook failed.", e);
@@ -1148,7 +1199,16 @@ var CardForgeApi = {
   freezePanels: cfFreezePanels,
   /** With side-call updates on: about how many tokens each one costs. Otherwise null. */
   sideCall: function () {
-    return CF_CONFIG.side ? { tokens: CF_CONFIG.side.tokens } : null;
+    return CF_CONFIG.side && cfUpdateMode() === "side" ? { tokens: CF_CONFIG.side.tokens } : null;
+  },
+  /** Who writes the game-state updates now ("reply" or "side"), the card's choice, and whether the card locks it. */
+  updateMode: function () {
+    return {
+      mode: cfUpdateMode(),
+      card: CF_CONFIG.updateMode === "side" ? "side" : "reply",
+      locked: !!CF_CONFIG.lockMode,
+      tokens: CF_CONFIG.side ? CF_CONFIG.side.tokens : 0,
+    };
   },
   /** Whether the card has a status panel ("status" opens it). */
   hasPanel: function () {

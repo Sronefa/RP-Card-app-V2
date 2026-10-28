@@ -71,8 +71,19 @@ function panels(s) {
 function generations(s) {
   return '<div class="cf-stack">' + check("sideCalls", "Background generations (texts, feeds, shop stock)", s.sideCalls) +
     '<p class="cf-small cf-muted">They use your own API and cost extra tokens. Turned off, those screens just wait for the story.</p>' +
-    (CF.sideCall() ? '<p class="cf-small">This card also keeps the game state with one after each reply, about ' + CF.sideCall().tokens + " tokens a turn. Turned off, the values stop changing.</p>" : "") +
+    updates(s) +
     living(s) + "</div>";
+}
+function updates(s) {
+  var u = CF.updateMode ? CF.updateMode() : null;
+  if (!u) return "";
+  var how = u.mode === "side"
+    ? '<p class="cf-small">The game state is kept with one after each reply, about ' + u.tokens + " tokens a turn. Turned off, the values stop changing.</p>"
+    : '<p class="cf-small cf-muted">The story model writes the game state in each reply. When a reply leaves it out or is cut off, one background generation (about ' + u.tokens + " tokens) writes it instead.</p>";
+  if (u.locked) return how;
+  return field("Game state updates", '<select class="cf-input" data-setting="updateMode">' +
+    option("card", "As the card was made (" + (u.card === "side" ? "a second call" : "in the reply") + ")", s.updateMode || "card") +
+    option("reply", "In the story model's reply", s.updateMode) + option("side", "With a second call after each reply", s.updateMode) + "</select>") + how;
 }
 function living(s) {
   var feeds = CF.live ? CF.live.feeds() : [];
