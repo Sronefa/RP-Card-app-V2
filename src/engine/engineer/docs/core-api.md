@@ -25,6 +25,7 @@ interface Settings {
   minigames: "play" | "skip";  // "skip" ends every CF.game at once with its skip result
   liveOff: string[];     // living-screen feeds the player turned off (CF.live)
   updateMode: "card" | "reply" | "side"; // who writes the state updates; "card" = the card's choice
+  trimOld: boolean;      // clear the values from old messages (a snapshot every 50 stays)
 }
 
 interface CardForge {
@@ -427,6 +428,8 @@ Draw from the state every time, and redraw on `app.onState`. Don't keep your own
 `app.setMany([["Player.Name", "Ash"], ["Player.Class", "Mage"]], "made in the character creator")` writes several values in one go: one save, one schema check and one `_PlayerEdits` line. Hidden `$` values (like a read counter or the player's own notes) are saved but not logged, so the model isn't told about bookkeeping.
 
 `CF.state.reset()` puts every value back to the start, as the settings app's "Back to the start" does.
+
+`CF.state.rebuild()` reads every message again and rebuilds its state from the chat, keeping the player's edits and the side-call answers kept with each message (the settings app's "Rebuild from the chat"). `CF.state.redo()` asks a new side call for the newest reply's update, whatever the update mode, and rebuilds it with that answer (the settings app's "Redo the last update"; it costs a call). Both return a promise.
 
 These edits are kept on the message as operations (`cf_edits` in its variables), not only in the state: whenever the message is read again (the player edits it, a delete earlier in the chat moves it up, a swipe comes back), the engine rebuilds its state from the reply's update and applies the edits again, so they stick. The messages after it are rebuilt from the result.
 

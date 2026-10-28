@@ -26,6 +26,8 @@ var CF_DEFAULT_SETTINGS = {
   liveOff: [],
   // Who writes the game-state updates: "card" (the card's choice), "reply" or "side".
   updateMode: "card",
+  // Old messages drop their values (a snapshot every 50 stays), so long chats stay light.
+  trimOld: true,
 };
 var CF_SCRIPT_TAG = "scr" + "ipt";
 var cfHooks = [];
@@ -162,7 +164,10 @@ function cfLatestId() {
 function cfData(messageId) {
   var id = messageId === undefined || messageId === "latest" ? cfLatestId() : messageId;
   if (id < 0) return {};
-  return cfMessageData(id) || {};
+  var data = cfMessageData(id) || {};
+  // An old message whose values were cleared shows the nearest snapshot before it.
+  if (!cfIsObject(data.stat_data) && data.cf_trimmed) return cfStateBefore(id) || {};
+  return data;
 }
 
 function cfRead(path, messageId) {
@@ -1225,6 +1230,14 @@ var CardForgeApi = {
     set: cfPlayerSet,
     setMany: cfPlayerSetMany,
     reset: cfPlayerReset,
+    /** Rebuilds every message's state from the chat (kept side-call answers are reused). */
+    rebuild: function () {
+      return cfRebuild();
+    },
+    /** Asks a new side call for the newest reply's update and rebuilds it. */
+    redo: function () {
+      return cfRedo();
+    },
   },
   act: { send: cfSend, text: cfActionText, write: cfWriteInput },
   keep: { get: cfKeepGet, set: cfKeepSet, add: cfKeepAdd },

@@ -108,6 +108,10 @@ async function cfWrite(messageId, data) {
       if (data.cf_edits && data.cf_edits.length) vars.cf_edits = data.cf_edits;
       else delete vars.cf_edits;
       if (data.cf_key) vars.cf_key = data.cf_key;
+      // A fingerprint of the state itself, so the next message can be checked even after this
+      // one's values are cleared to keep the chat small.
+      vars.cf_out = cfHash(JSON.stringify(data.stat_data === undefined ? null : data.stat_data));
+      delete vars.cf_trimmed;
       if (!vars.initialized_lorebooks) vars.initialized_lorebooks = {};
       return vars;
     },
@@ -218,14 +222,15 @@ function cfHandle(messageId, options) {
 
 /**
  * Brings every message from `from` on up to date, in order: after an edit or a delete, the
- * messages after the change are rebuilt from the state it left. Only messages whose text or
- * earlier state changed are rebuilt; `first` options apply to the first one.
+ * messages after the change are rebuilt from the state it left. `first` options apply to the
+ * first message and `rest` to the others; without `force`, only messages whose text or earlier
+ * state changed are rebuilt.
  */
-function cfReplay(from, first) {
+function cfReplay(from, first, rest) {
   cfBusy = cfBusy.then(async function () {
     for (var i = Math.max(1, from); i <= getLastMessageId(); i++) {
       try {
-        await cfHandleNow(i, i === from ? first : undefined);
+        await cfHandleNow(i, i === from ? first : rest);
       } catch (e) {
         console.error("[CardForge engine] Update failed.", e);
       }
@@ -234,25 +239,53 @@ function cfReplay(from, first) {
   return cfBusy;
 }
 
+/** A message's state fingerprint: kept with it (also once its values are cleared), or worked out. */
+function cfOutHash(messageId) {
+  var data = cfMessageData(messageId);
+  if (data.cf_out) return data.cf_out;
+  return cfIsObject(data.stat_data) ? cfHash(JSON.stringify(data.stat_data)) : null;
+}
+
+/** Whether a message's state is current: built from its text as it is and the state before it now. */
+function cfIsFresh(messageId, plain, saved) {
+  if (!saved.cf_key || (!cfIsObject(saved.stat_data) && !saved.cf_trimmed)) return false;
+  var out = messageId > 0 ? cfOutHash(messageId - 1) : null;
+  if (out === null) return false;
+  return saved.cf_key === cfHash(plain) + "." + out;
+}
+
+/**
+ * Old messages whose values were cleared (to keep the chat small) are rebuilt from the snapshot
+ * before them, quietly, when a message after them needs their state.
+ */
+async function cfEnsureBefore(messageId) {
+  var j = messageId - 1;
+  while (j >= 1 && !cfIsObject(cfMessageData(j).stat_data)) j--;
+  for (var k = j + 1; k < messageId; k++) await cfHandleNow(k, { force: true, quiet: true });
+}
+
 /**
  * Builds a message's state. `options.force` rebuilds it even when it is up to date;
  * `options.call` lets it make a new side call (the newest message always may; older ones use the
- * answer kept with them, so a replay doesn't pay again).
+ * answer kept with them, so a replay doesn't pay again); `options.redo` asks a new side call for
+ * the update whatever the mode; `options.quiet` writes the state without refreshing the message.
  */
 async function cfHandleNow(messageId, options) {
   options = options || {};
   var message = getChatMessages(messageId)[0];
   if (!message) return;
   if (messageId === 0) return cfInitialize();
+  var plain = cfPlain(message.message);
+  var saved = cfMessageData(messageId);
+  if (!options.force && cfIsFresh(messageId, plain, saved)) return;
+  await cfEnsureBefore(messageId);
   var before = cfStateBefore(messageId);
   if (!before) {
     await cfInitialize();
     before = cfStateBefore(messageId);
     if (!before) return;
   }
-  var plain = cfPlain(message.message);
   var key = cfKey(plain, before);
-  var saved = cfMessageData(messageId);
   if (!options.force && cfIsObject(saved.stat_data) && saved.cf_key === key) return;
   // A swipe still being written has no text yet; it is read once it renders.
   if (message.role === "assistant" && !plain) return;
@@ -268,7 +301,10 @@ async function cfHandleNow(messageId, options) {
   var text = message.message;
   var result;
   var skipped = [];
-  if (message.role === "assistant" && cfUpdateMode() === "side" && !/<UpdateVariable>/i.test(text)) {
+  var redone = options.redo && message.role === "assistant" ? await cfSideUpdate(messageId, before, true, true) : "";
+  if (redone) {
+    result = cfUpdate(before.stat_data, redone, schema);
+  } else if (message.role === "assistant" && cfUpdateMode() === "side" && !/<UpdateVariable>/i.test(text)) {
     result = cfUpdate(before.stat_data, await cfSideUpdate(messageId, before, call), schema);
   } else {
     result = cfUpdate(before.stat_data, text, schema);
@@ -309,6 +345,9 @@ async function cfHandleNow(messageId, options) {
   }
   await eventEmit(CF_EVENTS.VARIABLE_UPDATE_ENDED, data, before);
   await cfWrite(messageId, data);
+  // An old message rebuilt: the next clearing pass looks at it again.
+  if (messageId <= cfTrimmedTo) cfTrimmedTo = messageId - 1;
+  if (options.quiet) return;
   if (message.role === "assistant" && CF_CONFIG.panel && message.message.indexOf(CF_PLACEHOLDER) < 0) {
     await setChatMessages([{ message_id: messageId, message: message.message.trimEnd() + "\n\n" + CF_PLACEHOLDER }], {
       refresh: "affected",
@@ -318,6 +357,62 @@ async function cfHandleNow(messageId, options) {
   }
   await eventEmit("cf:state", messageId);
   if (message.role === "assistant" && latest) cfLiveAfter(messageId, before.stat_data, data.stat_data);
+  if (latest) await cfTrim();
+}
+
+// ---------------------------------------------------------------- keeping chats small
+
+/** Messages at the end of the chat that keep their values. */
+var CF_KEEP_RECENT = 30;
+/** Every this many messages, one keeps its values as a snapshot to rebuild from. */
+var CF_SNAPSHOT_EVERY = 50;
+/** Messages up to here were already checked for clearing, in this chat. */
+var cfTrimmedTo = 0;
+var cfTrimChat = "";
+
+/**
+ * Clears the values from old messages, as MVU does, so a long chat stays light: the first message
+ * and a snapshot every 50 keep theirs, and so do the last 30. A cleared message keeps its
+ * fingerprints, the player's edits and the side call's answer, so it can be rebuilt from the
+ * snapshot before it when something needs it. Off when the player keeps every panel live, or turns
+ * it off in the settings app.
+ */
+async function cfTrim() {
+  var settings = cfSettings();
+  if (settings.trimOld === false || Number(settings.livePanels) === 0) return;
+  var chat = cfChatId();
+  if (chat !== cfTrimChat) {
+    cfTrimChat = chat;
+    cfTrimmedTo = 0;
+  }
+  var upTo = getLastMessageId() - CF_KEEP_RECENT;
+  for (var i = Math.max(1, cfTrimmedTo + 1); i <= upTo; i++) {
+    if (i % CF_SNAPSHOT_EVERY === 0 || !cfIsObject(cfMessageData(i).stat_data)) continue;
+    await updateVariablesWith(
+      function (vars) {
+        delete vars.stat_data;
+        delete vars.delta_data;
+        vars.cf_trimmed = true;
+        return vars;
+      },
+      { type: "message", message_id: i },
+    );
+  }
+  if (upTo > cfTrimmedTo) cfTrimmedTo = upTo;
+}
+
+/** Rebuilds every message's state from the chat: the repair for values that went wrong. */
+function cfRebuild() {
+  return cfReplay(1, { force: true }, { force: true });
+}
+
+/** Asks a new side call for the newest reply's update, whatever the mode, and rebuilds it. */
+function cfRedo() {
+  for (var i = getLastMessageId(); i >= 1; i--) {
+    var m = getChatMessages(i)[0];
+    if (m && m.role === "assistant") return cfHandle(i, { force: true, call: true, redo: true });
+  }
+  return cfBusy;
 }
 
 // ---------------------------------------------------------------- side calls
@@ -352,6 +447,84 @@ function cfSideBlock(raw) {
   return "<UpdateVariable>\n<JSONPatch>\n" + JSON.stringify(ops) + "\n</JSONPatch>\n</UpdateVariable>";
 }
 
+/** Messages before the reply that the side call reads. */
+var CF_SIDE_MESSAGES = 2;
+/** Most lore, in characters, that the side call reads. */
+var CF_SIDE_LORE = 6000;
+
+/** Whether a lorebook entry's keys appear in `text`: plain words (any case) or /regex/flags. */
+function cfKeysHit(keys, text) {
+  var low = String(text).toLowerCase();
+  return (Array.isArray(keys) ? keys : []).some(function (key) {
+    var k = String(key || "").trim();
+    if (!k) return false;
+    var re = /^\/([\s\S]+)\/([a-z]*)$/.exec(k);
+    if (re) {
+      try {
+        return new RegExp(re[1], re[2]).test(text);
+      } catch (e) {
+        return false;
+      }
+    }
+    return low.indexOf(k.toLowerCase()) >= 0;
+  });
+}
+
+/**
+ * The lore the side call reads, as MVU's extra-model parsing does: the card's entries that are on
+ * (always, or by their keys in the latest messages), without the ones tagged [mvu_plot] (for the
+ * story only) and without the engine's own (the side call has its own rules and state). Entries
+ * tagged [mvu_update] are for the update alone and stay out of the story's prompt in side mode.
+ */
+async function cfSideLore(scanText) {
+  var own = CF_CONFIG.ownLore || [];
+  var out = [];
+  try {
+    var names = getCharWorldbookNames("current");
+    var books = [names.primary].concat(names.additional || []).filter(Boolean);
+    for (var b = 0; b < books.length; b++) {
+      var entries = await getWorldbook(books[b]);
+      (entries || []).forEach(function (e) {
+        var name = String(e.name || e.comment || "");
+        if (e.enabled === false || e.disable === true || own.indexOf(name) >= 0 || /\[(initvar|mvu_plot)\]/i.test(name)) return;
+        var strategy = e.strategy || {};
+        var constant = strategy.type === "constant" || e.constant === true;
+        if (!constant && !cfKeysHit(strategy.keys || e.keys, scanText)) return;
+        var content = String(e.content || "").trim();
+        if (content) out.push(content);
+      });
+    }
+  } catch (e) {
+    cfLog("The side call read no lore.", e);
+  }
+  var text = cfMacros(out.join("\n\n"));
+  return text.length > CF_SIDE_LORE ? text.slice(0, CF_SIDE_LORE) + "\n…" : text;
+}
+
+/**
+ * Shows a folded "Updating the game state…" line under a message while a side call writes its
+ * update, so the player knows the values are on their way. Only on SillyTavern's page; the message
+ * text isn't touched.
+ */
+function cfShowUpdating(messageId, on) {
+  try {
+    eventEmit("cf:updating", { messageId: messageId, on: on });
+  } catch (e) {}
+  try {
+    var doc = cfHost().document;
+    var box = doc.querySelector('#chat .mes[mesid="' + messageId + '"] .mes_text');
+    if (!box) return;
+    var old = box.querySelector(".cf-updating");
+    if (old) old.remove();
+    if (!on) return;
+    var fold = doc.createElement("details");
+    fold.className = "cf-updating";
+    fold.style.cssText = "opacity:.75;font-size:.9em;margin-top:.4em";
+    fold.innerHTML = "<summary>Updating the game state…</summary><p>A second call is writing what this turn changed.</p>";
+    box.appendChild(fold);
+  } catch (e) {}
+}
+
 /**
  * A silent generation reads the latest turn and writes the update: after every reply with side
  * calls on (so the reply stays pure prose), and in place of a reply's own update when it is
@@ -359,18 +532,32 @@ function cfSideBlock(raw) {
  * reload) doesn't pay for it again; a changed reply gets a new one. Without `call`, only a kept
  * answer is used.
  */
-async function cfSideUpdate(messageId, before, call) {
+async function cfSideUpdate(messageId, before, call, fresh) {
   var chatId = cfChatId();
   var message = getChatMessages(messageId)[0];
   var source = cfPlain(message && message.message);
   var saved = cfMessageData(messageId).cf_side;
-  if (saved && saved.source === source) return saved.block;
+  if (!fresh && saved && saved.source === source) return saved.block;
   if (call === false || cfSettings().sideCalls === false) return "";
-  var previous = messageId > 0 ? getChatMessages(messageId - 1)[0] : null;
+  // The last two messages before the reply: what {{user}} did, and what came before it.
+  var earlier = [];
+  for (var i = messageId - 1; i >= 0 && earlier.length < CF_SIDE_MESSAGES; i--) {
+    var m = getChatMessages(i)[0];
+    if (m && (m.role === "user" || m.role === "assistant")) earlier.unshift(m);
+  }
+  var line = function (m) {
+    return (m.role === "user" ? "{{user}}: " : "{{char}}: ") + cfStory(m.message);
+  };
+  var previous = earlier.length && earlier[earlier.length - 1].role === "user" ? earlier.pop() : null;
+  var lore = await cfSideLore(earlier.concat(previous ? [previous] : []).map(line).join("\n") + "\n" + source);
   var turn =
-    "<game_state>\n" + cfYaml(cfForAi(before.stat_data)) + "\n</game_state>\n\n<latest_turn>\n" +
-    (previous && previous.role === "user" ? "{{user}}: " + cfPlain(previous.message) + "\n\n" : "") +
+    (lore ? "<lore>\n" + lore + "\n</lore>\n\n" : "") +
+    "<game_state>\n" + cfYaml(cfForAi(before.stat_data)) + "\n</game_state>\n\n" +
+    (earlier.length ? "<earlier>\n" + earlier.map(line).join("\n\n") + "\n</earlier>\n\n" : "") +
+    "<latest_turn>\n" +
+    (previous ? line(previous) + "\n\n" : "") +
     "{{char}}: " + source + "\n</latest_turn>\n\nWrite the update for this turn.";
+  cfShowUpdating(messageId, true);
   var raw;
   try {
     raw = await generateRaw({
@@ -382,12 +569,14 @@ async function cfSideUpdate(messageId, before, call) {
       json_schema: { name: "game_state_update", value: CF_CONFIG.side.schema, strict: false },
     });
   } catch (e) {
+    cfShowUpdating(messageId, false);
     console.warn("[CardForge engine] The side call failed.", e);
     try {
       toastr.warning("The game state didn't update: the side call failed.");
     } catch (ignored) {}
     return "";
   }
+  cfShowUpdating(messageId, false);
   var block = cfSideBlock(raw);
   if (!block) cfLog("The side call's answer had no update in it.", raw);
   // A swipe or an edit while it ran: the answer is for text that's gone.
@@ -452,7 +641,7 @@ function cfStart() {
   });
   // An edited message is read again, and the messages after it rebuilt from what it left.
   eventOn(tavern_events.MESSAGE_EDITED, function (id) {
-    return cfReplay(Number(id), { force: true, call: true });
+    return cfReplay(Number(id), { force: true, call: true }, { force: true });
   });
   // After a delete the later messages moved up: each whose earlier state changed is rebuilt.
   if (tavern_events.MESSAGE_DELETED)

@@ -379,9 +379,11 @@ export function sideCallPrompt(config: EngineConfig): string {
 /** About how many tokens one side call costs: its instructions, the state, a reply and the answer. */
 export function sideCallTokens(config: EngineConfig): number {
   const full = effectiveConfig(config);
-  const REPLY = 450;
+  // The reply and the two messages before it, and the lore it reads (only what's on).
+  const REPLY = 450 + 2 * 250;
+  const LORE = 300;
   const ANSWER = 150;
-  return estimateTokens(sideCallPrompt(full)) + estimateTokens(runtime.cfYaml(runtime.cfForAi(initialState(full)))) + REPLY + ANSWER;
+  return estimateTokens(sideCallPrompt(full)) + estimateTokens(runtime.cfYaml(runtime.cfForAi(initialState(full)))) + REPLY + LORE + ANSWER;
 }
 
 // Tavern Helper's macro: the latest state as YAML, without "$" fields.
@@ -423,6 +425,14 @@ export function settingsSource(config: EngineConfig, charName = "", assets: Mani
     // Always there: it writes the update after each reply in side mode, and stands in for a
     // reply's own update when that is missing or cut off.
     side: { prompt: sideCallPrompt(full), schema: SIDE_CALL_SCHEMA, tokens: sideCallTokens(config) },
+    // The engine's own lorebook entries, which the side call leaves out of the lore it reads.
+    ownLore: [
+      "[initvar] Starting values",
+      "[mvu_update] Update rules",
+      "Game state",
+      "[mvu_update] Format reminder",
+      ...enabledModules(config).flatMap((m) => m.rules.map((r) => `[${m.name}] ${r.comment}`)),
+    ],
   };
   return `var CF_CONFIG = ${scriptJson(settings)};\n${schemaSource(full)}`;
 }
@@ -454,12 +464,20 @@ export function tavernHelperScript(config: EngineConfig, charName = "", assets: 
 
 // Update blocks, and a greeting's own starting values.
 const UPDATE_BLOCK = "/<UpdateVariable>[\\s\\S]*?<\\/UpdateVariable>|<initvar>[\\s\\S]*?<\\/initvar>/gi";
+/**
+ * An update block still being written (streaming) or cut off. The closed ones are gone by the time
+ * this runs, so any left is open; it stops at the panel placeholder, which comes after it.
+ */
+const OPEN_BLOCK = "/<UpdateVariable>(?:(?!<StatusPlaceHolderImpl\\/>)[\\s\\S])*/gi";
+/** Closed blocks and a cut-off one, for the prompt. */
+const ANY_BLOCK = "/<UpdateVariable>[\\s\\S]*?<\\/UpdateVariable>|<UpdateVariable>(?:(?!<\\/UpdateVariable>)[\\s\\S])*$|<initvar>[\\s\\S]*?<\\/initvar>/gi";
+export const UPDATING_FOLD = '<details class="cf-updating"><summary>Updating the game state…</summary></details>';
 
 /** Regex scripts: hide update blocks, keep them out of the prompt, and show the panel. */
 export function engineRegex(config: EngineConfig): SillyTavernRegex[] {
   // Module regex ids start with "cf-" and are their own.
   const own = config.regexIds.filter((id) => !id.startsWith("cf-"));
-  const ids = [0, 1, 2, 3].map((i) => own[i] ?? newId());
+  const ids = [0, 1, 2, 3, 4].map((i) => own[i] ?? newId());
   const base = { trimStrings: [], disabled: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null };
   const scripts: SillyTavernRegex[] = [
     {
@@ -476,7 +494,7 @@ export function engineRegex(config: EngineConfig): SillyTavernRegex[] {
       ...base,
       id: ids[1],
       scriptName: "CardForge engine: update blocks out of the prompt",
-      findRegex: UPDATE_BLOCK,
+      findRegex: ANY_BLOCK,
       replaceString: "",
       placement: [2],
       markdownOnly: false,
@@ -492,11 +510,21 @@ export function engineRegex(config: EngineConfig): SillyTavernRegex[] {
       markdownOnly: false,
       promptOnly: true,
     },
+    {
+      ...base,
+      id: ids[3],
+      scriptName: "CardForge engine: fold the update while it streams",
+      findRegex: OPEN_BLOCK,
+      replaceString: UPDATING_FOLD,
+      placement: [2],
+      markdownOnly: true,
+      promptOnly: false,
+    },
   ];
   if (config.panel.enabled)
     scripts.push({
       ...base,
-      id: ids[3],
+      id: ids[4],
       scriptName: "CardForge engine: status panel",
       findRegex: "/<StatusPlaceHolderImpl\\/>/g",
       replaceString: "```html\n" + panelHtml(config) + "\n```",
