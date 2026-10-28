@@ -29,6 +29,7 @@ interface CardForge {
   ui: UiKit;
   fx: Fx;
   art: Art;
+  scene: Scene;
   /** Sets a screen up in a window: theme, kit, delegated controls, and an App bound to its message. */
   frame(win: Window, options?: { messageId?: number | "latest" }): App;
   /** Mounts a module's screen into an element (default: the page's #cf-root). */
@@ -97,6 +98,7 @@ interface App {
   ui: UiKit;
   fx: Fx;
   art: Art;
+  scene: Scene;
   /** The state at this screen's message (the latest for hub screens), or one value by path. */
   state(path?: string): any;
   /** What changed in this screen's message. */
@@ -179,6 +181,31 @@ interface Fx {
   transition(el: Element, html: string, o?: "fade" | "left" | "right" | "up" | { type?: "fade" | "left" | "right" | "up"; ms?: number }): Promise<void>;
   /** Layers with data-depth="0.2" to "1" drift with the pointer or the phone's tilt, until stopped. */
   parallax(el: Element, o?: { reach?: number }): () => void;
+}
+
+/** One step of a cutscene: plain data, so scenes can sit in a module's settings. */
+type SceneStep =
+  | { bg: string; time?: string; color?: string; fade?: number }   // a place name (its art), a picture URL, or "" for the theme's gradient; a sky for `time` when there's no art
+  | { show: string; side?: "left" | "right" | "center"; emotion?: string; outfit?: string; from?: "left" | "right" | "bottom"; ms?: number }
+  | { hide: string }
+  | { say: string; who?: string; emotion?: string; auto?: number; speed?: number }  // types out, then waits for a tap (or `auto` ms)
+  | { title: string; sub?: string; hold?: number; stay?: boolean }  // a chapter card
+  | { fx: "shake" | "flash" | "weather" | "particles"; text?: string; kind?: string; color?: string; strength?: number }
+  | { wait: number | "tap" }
+  | { choice: (string | { label: string; value?: any; send?: string; payload?: any; text?: string })[]; prompt?: string }
+  | { clear: true | "all" };
+
+interface Scene {
+  /** Plays a scene in el. Tap finishes a line, then moves on; Skip (or Escape) jumps to the end or the next choice. */
+  play(el: Element, steps: SceneStep[], o?: { fill?: boolean; once?: string; skippable?: boolean; keep?: boolean; label?: string; speed?: number }): {
+    done: Promise<{ skipped: boolean; stopped: boolean; seen: boolean; choice: { index: number; label: string; value: any } | null; choices: { index: number; label: string; value: any }[] }>;
+    skip(): void;
+    stop(): void;
+  };
+  /** Problems with a scene's steps, as sentences; [] when it can play. */
+  check(steps: SceneStep[]): string[];
+  /** Whether a scene played with { once: key } has played in this chat; with no key, the list of keys. */
+  seen(key?: string): boolean | string[];
 }
 
 type ChartItem = number | { label?: string; value: number; color?: string };
@@ -341,6 +368,31 @@ Keep effects few and meaningful: one weather layer, a shake when something hits,
 Examples: `read_example("vn-scene")` (a dialogue box with a typed line, weather and a shake) and `read_example("journey-app")` (a map with pins, a carousel, flip cards, a timeline, a ring, a drawer, a toast, a count-up and page transitions).
 
 Kit classes for your own markup: `cf-card`, `cf-stack` (vertical gap), `cf-row` (horizontal gap), `cf-spread` (space between), `cf-muted`, `cf-small`, `cf-label`, `cf-btn` (`primary`, `ghost`), `cf-input`, `cf-chip`, `cf-grid`/`cf-stat`, `cf-list`/`cf-item`, `cf-app`/`cf-appbar`/`cf-appbody` (app shell), `cf-bubbles`/`cf-bubble`.
+
+## Cutscenes (CF.scene)
+
+Small cutscenes for title screens, chapter cards, a boss entrance or a level up: `CF.scene.play(root, steps, options)` plays a list of steps in order and returns `{ done, skip, stop }`.
+
+```js
+var scene = CF.scene.play(root, [
+  { bg: "Harbor", time: app.state("Time.PartOfDay") },
+  { title: "Chapter II", sub: "The Drowned Crown" },
+  { show: "Captain Varn", side: "right", emotion: "angry" },
+  { fx: "shake" },
+  { say: "You shouldn't have come back.", who: "Captain Varn" },
+  { choice: [{ label: "Apologise", value: "sorry" }, { label: "Draw your sword", send: "duel", payload: {}, text: "I draw my sword." }] },
+], { fill: true, once: "chapter-2" });
+scene.done.then(function (r) { if (r.choice && r.choice.value === "sorry") app.write("I'm sorry.", { now: false }); });
+```
+
+- **Steps** are plain data (the SceneStep type): `bg` fades a background in (the card's art for that place and time from `CF.assets.background`, else a sky for `time`, else the theme's gradient), `show` and `hide` slide a character in and out (their portrait for the emotion, else their initial), `say` types a line in the dialogue box and waits for a tap (or `auto` ms), `title` is a chapter card, `fx` shakes, flashes or sets weather and particles, `wait` is a beat in ms or until a tap, `choice` shows buttons and waits, `clear` empties the dialogue (`"all"` also the stage).
+- **The player stays in charge:** a tap finishes the line being typed, the next tap moves on, Skip (or Escape) jumps to the end, stopping only at a choice. With less motion everything appears without moving.
+- **Options:** `fill` covers the screen (`root`) instead of making a block of its own (about 80% of the screen's height); `once: "key"` plays it only the first time in this chat (`done` resolves with `seen: true` after that); `keep` leaves the last frame on screen; `skippable: false` hides Skip (only for very short scenes).
+- **Results:** `done` resolves with `{ skipped, stopped, seen, choice, choices }`. A choice with `send`, `payload` and `text` also writes its action in the input box, like any kit button; otherwise act on `choice.value` yourself.
+- **Keep scenes as data** in the module's settings (`settings.scenes = { intro: [...] }`) and play `settings.scenes.intro`: the user can edit the words in the module's settings, and the lint checks every step (`CF.scene.check(steps)` does the same at run time).
+- Play a scene on a change, not on every redraw: a chapter card when `app.delta()["Story.Chapter"]` is there, a level-up burst when the level rises, an intro with `once`.
+
+Examples: `read_example("prologue")` (a hub screen whose intro plays once, with a choice) and `read_example("chapter-card")` (an inline block that plays a chapter card when the chapter changes).
 
 ## Procedural art (CF.art)
 

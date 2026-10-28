@@ -8,6 +8,7 @@ import artSource from "./runtime/art.js?raw";
 import coreSource from "./runtime/core.js?raw";
 import fxSource from "./runtime/fx.js?raw";
 import glueSource from "./runtime/glue.js?raw";
+import sceneSource from "./runtime/scene.js?raw";
 import updaterSource from "./runtime/updater.js?raw";
 
 export const ENGINE_VERSION = "0.2.0";
@@ -47,7 +48,10 @@ export const runtime: Runtime = new Function(
   `${updaterSource}\nreturn { cfUpdate, cfExtractCommands, cfPath, cfYaml, cfForAi };`,
 )() as Runtime;
 
-/** The whole Tavern Helper script: the card's settings, the updater, the effects and art kits and the engine core, then the glue that starts it. */
+/** The scene director's own check of a scene's steps, for the lint: [] when it can play. */
+export const sceneCheck = new Function(`${sceneSource}\nreturn cfSceneCheck;`)() as (steps: unknown) => string[];
+
+/** The whole Tavern Helper script: the card's settings, the updater, the effects and art kits, the scene director and the engine core, then the glue that starts it. */
 export function scriptSource(settings: string): string {
-  return `(function () {\n"use strict";\n${settings}\n${updaterSource}\n${fxSource}\n${artSource}\n${coreSource}\n${glueSource}\n})();\n`;
+  return `(function () {\n"use strict";\n${settings}\n${updaterSource}\n${fxSource}\n${artSource}\n${sceneSource}\n${coreSource}\n${glueSource}\n})();\n`;
 }

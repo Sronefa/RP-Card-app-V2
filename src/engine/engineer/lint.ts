@@ -7,7 +7,7 @@ import { estimateTokens } from "../../lib/tokens";
 import { originalOf, originalUpdated } from "../modules/fork";
 import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { EngineModule } from "../modules/types";
-import { runtime, scriptSource } from "../runtime";
+import { runtime, sceneCheck, scriptSource } from "../runtime";
 import { rulesText, settingsSource, varPath, type EngineConfig } from "../sheet";
 import type { ScreenReport } from "../sandbox/sandbox";
 
@@ -30,6 +30,7 @@ export interface Finding {
     | "hidden"
     | "console"
     | "motion"
+    | "scene"
     | "module";
   message: string;
 }
@@ -137,6 +138,11 @@ export function lintConfig(config: EngineConfig): Finding[] {
 
   for (const m of modules) {
     if (m.core) continue;
+    // Scenes kept in a module's settings ({ scenes: { intro: [steps] } }) must play.
+    const scenes = m.settings?.scenes;
+    if (scenes && typeof scenes === "object" && !Array.isArray(scenes))
+      for (const [name, steps] of Object.entries(scenes))
+        for (const problem of sceneCheck(steps)) out.push({ level: "error", check: "scene", message: `${m.id} scene "${name}": ${problem}` });
     // A fork's untouched files are CardForge's code: only what the card changed is checked.
     const pristine = m.fork ? originalOf(m.fork.core, m.fork.settings) : undefined;
     const where = (f: string) => `${m.id}/${f}`;
