@@ -22,6 +22,7 @@ var CF_DEFAULT_SETTINGS = {
   music: 70,
   ambience: 70,
   motion: "auto",
+  minigames: "play",
 };
 var CF_SCRIPT_TAG = "scr" + "ipt";
 var cfHooks = [];
@@ -644,6 +645,10 @@ function cfFrame(win, options) {
         return cfMood.look(name, messageId);
       },
     },
+    /** A minigame in el, its difficulty read at this screen's state (see CF.game.create). */
+    game: function (el, o) {
+      return cfGameCreate(el, Object.assign({ messageId: messageId }, o));
+    },
     /** A character's portrait at this screen's state (see CF.ui.portrait). */
     portrait: function (name, o) {
       return cfPortraitHtml(name, o, messageId);
@@ -1115,6 +1120,7 @@ var CardForgeApi = {
   art: cfArt,
   scene: cfScene,
   mood: cfMood,
+  game: cfGame,
   frame: cfFrame,
   mount: cfMount,
   mountSlot: cfMountSlot,

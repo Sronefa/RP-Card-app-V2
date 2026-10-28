@@ -60,6 +60,7 @@ function look(s) {
       (s.accent ? '<button type="button" class="cf-btn ghost" data-reset="accent">Card colour</button>' : '<span class="cf-small cf-muted">The card’s own colour</span>') + "</div>") +
     field("Text size", '<select class="cf-input" data-setting="textScale">' + [0.85, 1, 1.15, 1.3].map(function (n) { return option(n, Math.round(n * 100) + "%", s.textScale); }).join("") + "</select>") +
     field("Motion", '<select class="cf-input" data-setting="motion">' + option("auto", "As my device is set", s.motion) + option("full", "Full effects", s.motion) + option("reduce", "Less motion", s.motion) + "</select>") +
+    field("Minigames", '<select class="cf-input" data-setting="minigames">' + option("play", "Play them", s.minigames) + option("skip", "Skip them (the story decides)", s.minigames) + "</select>") +
     "</div>";
 }
 function panels(s) {

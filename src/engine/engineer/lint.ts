@@ -32,6 +32,7 @@ export interface Finding {
     | "console"
     | "motion"
     | "scene"
+    | "game"
     | "module";
   message: string;
 }
@@ -144,6 +145,15 @@ export function lintConfig(config: EngineConfig): Finding[] {
     if (scenes && typeof scenes === "object" && !Array.isArray(scenes))
       for (const [name, steps] of Object.entries(scenes))
         for (const problem of sceneCheck(steps)) out.push({ level: "error", check: "scene", message: `${m.id} scene "${name}": ${problem}` });
+    // Minigames: they start, they end, their loop is the game's, and their luck is seeded.
+    if (/\b(?:app\.game|CF\.game\.create|CardForge\.game\.create)\(/.test(m.js)) {
+      const game = (level: Finding["level"], message: string) => out.push({ level, check: "game", message: `${m.id}: ${message}` });
+      if (!/\.start\(/.test(m.js)) game("error", "the game is made but never started: call g.start().");
+      if (!/\.end\(/.test(m.js)) game("warn", "the game never calls g.end(), so its result never reaches the story (a timer that runs out ends it as a loss).");
+      if (/\brequestAnimationFrame\(/.test(m.js)) game("warn", "runs its own requestAnimationFrame loop; use g.loop, which stops while the game is paused or the screen is hidden.");
+      if (/\bMath\.random\(/.test(m.js)) game("warn", "uses Math.random; use g.rand, g.int, g.pick or g.shuffle, which follow the game's seed.");
+      if (/\bset(?:Timeout|Interval)\(/.test(m.js)) game("warn", "uses setTimeout or setInterval; use g.after or g.every, which keep game time and pause with the game.");
+    }
     // A fork's untouched files are CardForge's code: only what the card changed is checked.
     const pristine = m.fork ? originalOf(m.fork.core, m.fork.settings) : undefined;
     const where = (f: string) => `${m.id}/${f}`;

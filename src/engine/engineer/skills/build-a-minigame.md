@@ -1,0 +1,10 @@
+# Build a minigame
+When: the story needs a small game the player plays: lockpicking, hacking, a card game, a puzzle, a timed choice, a quick-time event, or something new.
+
+1. **Write the rules in one paragraph** before any code: what the player does, how they win, how they lose, how long it takes (30 seconds to 2 minutes), and what changes in the story for each outcome. Read the core API's "Minigames (CF.game)" section (read_doc core-api#minigames-cf-game).
+2. **Start from a template.** list_examples and read the closest minigame (lockpicking, hacking, card-game, matching, timed-choice, quick-time). Copy its shape: app.game, the stage markup, the blocks, the outcomes from settings, g.start().
+3. **Pick blocks, not code from scratch:** a board (g.grid), pieces (g.sprite and CF.game.hit), drag and drop (g.drag), a countdown (g.timer), a combo (g.combo), a meter. Input with g.tap, g.hold, g.swipe and g.keys: every action works by touch and by keyboard, and targets are 44px or more.
+4. **Wire the difficulty to the story.** Read a value with `difficulty: { path, min, max, invert }` (a skill, a stat, the danger); add the value with set_value if the card lacks it. Turn it into numbers with g.tune(easy, hard). Use g.rand and g.shuffle for layouts only: the player's play decides the outcome, never a roll.
+5. **Wire the result.** Each outcome gets a line for the model and the values it changes, in the module's settings (`settings.outcomes = { win: { line, set }, loss: { ... } }`), so the user and the co-writer can change the words. Add the minigame rule (copy it from a template). Coins or items that depend on the state: compute them and pass `set` to g.end.
+6. **Style it** with the theme (style-and-motion skill): one focal element, the kit's buttons, clear win and loss feedback (CF.fx.shake on a miss, a glow on a hit).
+7. **Test it.** lint (the game checks: it starts, it ends, no own loops or Math.random). Then render_preview with `open` and a frame strip ([0, 1000, 3000]) and click through a scripted playthrough: win once, lose once, and press Skip. preview_states with the difficulty value low and high. Check it at phone width.

@@ -22,6 +22,7 @@ interface Settings {
   music: number;         // 0 to 100
   ambience: number;      // 0 to 100
   motion: "auto" | "full" | "reduce"; // "auto" follows the device's reduced-motion setting
+  minigames: "play" | "skip";  // "skip" ends every CF.game at once with its skip result
 }
 
 interface CardForge {
@@ -31,6 +32,7 @@ interface CardForge {
   art: Art;
   scene: Scene;
   mood: Mood;
+  game: GameKit;
   /** Sets a screen up in a window: theme, kit, delegated controls, and an App bound to its message. */
   frame(win: Window, options?: { messageId?: number | "latest" }): App;
   /** Mounts a module's screen into an element (default: the page's #cf-root). */
@@ -102,6 +104,8 @@ interface App {
   scene: Scene;
   /** The moods on at this screen's message (the same calls as CF.mood, without messageId). */
   mood: { active(): { id: string; name: string }[]; is(idOrName: string): boolean; list(): { id: string; name: string; path: string }[]; look(name: string): { emotion: string; outfit: string } };
+  /** A minigame in el, its difficulty read at this screen's state: see GameKit.create. */
+  game(el: Element, o?: GameOptions): Game;
   /** A character's portrait at this screen's state: see UiKit.portrait. */
   portrait(name: string, o?: PortraitOptions): string;
   /** The state at this screen's message (the latest for hub screens), or one value by path. */
@@ -231,6 +235,94 @@ interface Mood {
   list(): { id: string; name: string; path: string }[];
   /** The emotion and outfit a character's portrait shows. */
   look(name: string, messageId?: number | "latest"): { emotion: string; outfit: string };
+}
+
+/** 0 (easy) to 1 (hard): a number, or a value ({ path, min = 0, max = 100, invert, fallback }). invert: more of the value is easier. */
+type Difficulty = number | string | { path: string; min?: number; max?: number; invert?: boolean; fallback?: number };
+
+interface GameResult {
+  outcome: "win" | "loss" | "skip" | string;
+  score?: number;
+  /** One line for the model ("{{user}} picked the lock."); {score} and other result fields fill in. */
+  line?: string;
+  /** Values to write with the result: { "Player.Coins": 60 } or [[path, value]]. */
+  set?: Record<string, any> | [string, any][];
+  /** The result card's heading (default Success, Failed, Skipped). */
+  title?: string;
+  [extra: string]: any;
+}
+
+interface GameOptions {
+  title?: string;
+  /** The game's name in the result action (default the title). */
+  name?: string;
+  difficulty?: Difficulty;
+  /** Seed for g.rand, g.shuffle, g.pick (default: different each play). */
+  seed?: string | number;
+  /** Scene steps played before the game starts (CF.scene). */
+  intro?: SceneStep[];
+  /** What each outcome writes and says, filled into g.end's result: { win: { set, line, title }, loss: {...}, skip: {...} }. */
+  outcomes?: Record<string, Partial<GameResult>>;
+  /** Where the result line goes: "input" (the input box, default), "now" (sent at once) or "none". */
+  report?: "input" | "now" | "none";
+  /** false: no result card. */
+  result?: boolean;
+  /** The result card's button closes the hub screen. */
+  close?: boolean;
+  skippable?: boolean;
+  /** The result when the player skips (the Skip button, or skipping all games in settings). */
+  auto?: (g: Game) => Partial<GameResult>;
+  onStart?: (g: Game) => void;
+  onEnd?: (r: GameResult, g: Game) => void;
+}
+
+interface Game {
+  el: HTMLElement;      // the game's frame
+  stage: HTMLElement;   // where the game draws (position: relative)
+  hud: HTMLElement;     // the bar's right side: score, timer, combo, meter
+  state: "ready" | "intro" | "playing" | "paused" | "over";
+  score: number;
+  difficulty: number;
+  done: Promise<GameResult>;
+  start(): Promise<Game>;
+  pause(): void;
+  resume(): void;
+  end(result?: GameResult): Promise<GameResult>;
+  /** Game time in ms: it stops while paused or hidden. */
+  time(): number;
+  /** easy + (hard - easy) × difficulty: g.tune(8000, 3000). */
+  tune(easy: number, hard: number): number;
+  rand(): number;
+  int(min: number, max: number): number;
+  pick<T>(list: T[]): T;
+  shuffle<T>(list: T[]): T[];
+  loop(fn: (dt: number, time: number) => void): () => void;
+  after(ms: number, fn: () => void): () => void;
+  every(ms: number, fn: () => void): () => void;
+  timer(ms: number, o?: { onEnd?: () => void }): { left(): number; add(ms: number): void; stop(): void };
+  addScore(n: number): number;
+  combo(): { count: number; best: number; hit(): number; miss(): void; mult(): number };
+  meter(label: string, max?: number): { value: number; set(v: number): void };
+  tap(target: Element, selector: string, fn: (el: Element, e: Event) => void): void;
+  tap(target: Element, fn: (el: Element, e: Event) => void): void;
+  hold(target: Element, h: { ms?: number; progress?(f: number): void; done?(): void; cancel?(f: number): void }): void;
+  swipe(target: Element, fn: (dir: "up" | "down" | "left" | "right") => void): void;
+  keys(map: Record<string, (e: KeyboardEvent) => void>): void;
+  drag(d: { items: string; slots: string; drop(item: Element, slot: Element): void; within?: Element }): void;
+  grid(b: { cols: number; rows: number; cell?(x: number, y: number): string | { html: string; label?: string }; label?: string; el?: Element }): {
+    el: HTMLElement; cell(x: number, y: number): HTMLButtonElement | null; set(x: number, y: number, html: string, label?: string): HTMLButtonElement | null;
+    each(fn: (x: number, y: number, cell: HTMLButtonElement) => void): void; onTap(fn: (x: number, y: number, cell: HTMLButtonElement) => void): void;
+  };
+  sprite(s: { x?: number; y?: number; w?: number; h?: number; vx?: number; vy?: number; html?: string; cls?: string }): Sprite;
+}
+
+interface Sprite { el: HTMLElement; x: number; y: number; w: number; h: number; vx: number; vy: number; place(): Sprite; step(dt: number): Sprite; hits(o: { x: number; y: number; w: number; h: number }): boolean; remove(): void }
+
+interface GameKit {
+  create(el: Element, o?: GameOptions & { messageId?: number | "latest" }): Game;
+  difficulty(spec: Difficulty, messageId?: number | "latest"): number;
+  hit(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }): boolean;
+  rng(seed: string | number): () => number;
 }
 
 type ChartItem = number | { label?: string; value: number; color?: string };
@@ -418,6 +510,32 @@ scene.done.then(function (r) { if (r.choice && r.choice.value === "sorry") app.w
 - Play a scene on a change, not on every redraw: a chapter card when `app.delta()["Story.Chapter"]` is there, a level-up burst when the level rises, an intro with `once`.
 
 Examples: `read_example("prologue")` (a hub screen whose intro plays once, with a choice) and `read_example("chapter-card")` (an inline block that plays a chapter card when the chapter changes).
+
+## Minigames (CF.game)
+
+A kit for small games, not a set of fixed ones: `app.game(root, options)` gives a game with a frame (title, score, timer, Skip), and the game is a few calls on top. Read the build-a-minigame skill for the method, and `list_examples` for the six templates (lockpicking, hacking, card-game, matching, timed-choice, quick-time) to start from.
+
+```js
+var g = app.game(root, {
+  title: "Lockpicking",
+  difficulty: { path: "Player.Lockpicking", min: 0, max: 10, invert: true },
+  outcomes: { win: { line: "{{user}} picked the lock." }, loss: { line: "{{user}}'s last pick snapped." } },
+  close: true,
+});
+var pins = Math.round(g.tune(3, 6));          // easy → hard by the difficulty
+var grid = g.grid({ cols: pins, rows: 1, cell: function () { return "•"; } });
+grid.onTap(function (x) { if (x === pins - 1) g.end({ outcome: "win" }); });
+g.timer(g.tune(20000, 8000));                 // at zero: a loss
+g.start();
+```
+
+- **Loop and time:** `g.start()` (after the `intro` scene, if any), `pause`, `resume`, `end(result)`. `g.loop(fn(dt, time))` runs each frame while the game is played; `g.after(ms, fn)` and `g.every(ms, fn)` use game time. All of it stops while paused, while the screen is hidden (it carries on when it's back) and after the end. Don't use requestAnimationFrame, setTimeout or setInterval in a game: the lint warns.
+- **Input:** `g.tap(target, selector, fn)` (clicks, touches and Enter), `g.hold(target, { ms, progress, done, cancel })` (Space and Enter hold too), `g.swipe(target, fn(dir))` (with the arrow keys), `g.keys({ " ": fn })`, and `g.drag({ items, slots, drop })` (tapping an item and then a slot works too, for keyboards and screen readers). Listeners go away when the game ends. Keep targets 44px or more.
+- **Blocks:** `g.grid({ cols, rows, cell })` is a board of buttons (puzzles, matching, mazes, codes); `g.sprite({ x, y, w, h, vx, vy })` a moving piece with `step(dt)` and `hits(other)` (`CF.game.hit(a, b)` for boxes); `g.timer(ms)` a countdown in the bar (`add(-2000)` for a penalty, `onEnd` for your own ending); `g.addScore(n)`, `g.combo()` and `g.meter(label, max)` show in the bar.
+- **Randomness for layouts, not outcomes:** `g.rand`, `g.int`, `g.pick`, `g.shuffle` follow the game's `seed` (the same seed, the same board). The player's skill decides the result, never a dice roll.
+- **Difficulty from the story:** `difficulty` reads a value (a skill, a stat, danger) into 0 (easy) to 1 (hard); `invert: true` when more of the value makes it easier. `g.tune(easy, hard)` turns it into numbers: pins, time limits, speeds, sizes.
+- **Result into the story:** `g.end({ outcome, score, line, set })`. `outcomes` in the options fill in each outcome's `line` and `set` (keep the words in the module's settings so the user and the co-writer can change them). `set` writes values with the line as the change's note; the line goes into the input box as `<action app="minigame">{"game","outcome","score"}</action>` and the line, for the player to send (`report: "now"` sends it at once). Add the rule that tells the model what the action means (every template has it). A result card shows the outcome; with `close: true` its button closes the hub screen.
+- **The player can always skip:** the Skip button ends the game as `outcome: "skip"`, and the settings app's "Minigames: Skip them" ends every game at once the same way. The skip line says the story decides; `auto(g)` gives your own skip result.
 
 ## Moods and portraits (CF.mood, CF.ui.portrait)
 
