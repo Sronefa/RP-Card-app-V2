@@ -5,7 +5,7 @@
 import { newId } from "../../lib/id";
 import { VAR_TYPES, type EngineVar, type VarType } from "../sheet";
 import { resolveModule } from "./compile";
-import { CORE_KINDS, PACK_FORMAT, SLOTS, type CoreKind, type EngineModule, type ModulePack, type ModuleRegex, type ModuleRule, type Slot } from "./types";
+import { CORE_KINDS, PACK_FORMAT, SLOTS, type CoreKind, type EngineModule, type ModuleFork, type ModulePack, type ModuleRegex, type ModuleRule, type Slot } from "./types";
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
@@ -57,6 +57,17 @@ function cleanRegex(raw: unknown): ModuleRegex | null {
   };
 }
 
+function cleanFork(raw: unknown): ModuleFork | undefined {
+  if (!isObject(raw) || !(CORE_KINDS as readonly string[]).includes(str(raw.core))) return undefined;
+  return {
+    core: raw.core as CoreKind,
+    settings: isObject(raw.settings) ? structuredClone(raw.settings) : {},
+    code: str(raw.code),
+    ...(str(raw.piece) ? { piece: str(raw.piece) } : {}),
+    at: num(raw.at) ?? 0,
+  };
+}
+
 /** A module from untrusted JSON, or null when it isn't one. */
 export function cleanModule(raw: unknown): EngineModule | null {
   if (!isObject(raw)) return null;
@@ -75,6 +86,7 @@ export function cleanModule(raw: unknown): EngineModule | null {
     tags: strings(raw.tags),
     requires: strings(raw.requires),
     core,
+    ...(!core && cleanFork(raw.fork) ? { fork: cleanFork(raw.fork) } : {}),
     enabled: raw.enabled !== false,
     vars: (Array.isArray(raw.vars) ? raw.vars : []).map(cleanVar).filter((v): v is EngineVar => !!v),
     rules: (Array.isArray(raw.rules) ? raw.rules : []).map(cleanRule).filter((r): r is ModuleRule => !!r),

@@ -15,6 +15,7 @@ import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { SandboxLibs } from "../sandbox/sandbox";
 import { applyEngine, scenarioOf, stateSchema, themeOf, varPath, VAR_TYPES, type EngineConfig } from "../sheet";
 import { PRESET_IDS, themeBundle } from "../theme";
+import { pieceId } from "../modules/fork";
 import { SLOTS, type EngineModule } from "../modules/types";
 import { allParts, hasPart, installParts, partsText, searchParts } from "../parts/catalog";
 import { docsIndex, examplesIndex, readDoc, readExample, searchDocsText, skillsIndex, type Skill } from "./knowledge";
@@ -203,6 +204,17 @@ export const WRITE_TOOLS: ToolDef[] = [
     ),
   ),
   tool(
+    "fork_module",
+    "Copy a built-in module (phone, creator, title, people…) or one phone app into the card as its own module, so you can patch its code. Same id, values, slot and hub button; the original stops running. Try set_module_settings first: fork only when settings can't do it. Load the fork-and-tailor skill before you fork.",
+    obj(
+      {
+        module: str("The built-in module's id"),
+        app: str('Only this phone app (module "phone"), like "messages" or "shop": it becomes the module "phone-<app>" and the rest of the phone stays CardForge\'s'),
+      },
+      ["module"],
+    ),
+  ),
+  tool(
     "set_module",
     "Change a module's manifest: name, slot, button, description, requires, tags or whether it's on.",
     obj(
@@ -221,7 +233,7 @@ export const WRITE_TOOLS: ToolDef[] = [
   ),
   tool(
     "set_module_settings",
-    "Merge options into a module's settings. This is the only way to change a core or built-in module (time, settings app, creator, phone).",
+    "Merge options into a module's settings. The way to change a core or built-in module (time, settings app, creator, phone) without forking it; on a fork it changes the settings its code reads.",
     obj({ module: moduleId, settings: { type: "object", description: "Options to merge in" } }, ["module", "settings"]),
   ),
   tool("delete_module", "Remove a module.", obj({ module: moduleId }, ["module"])),
@@ -816,6 +828,16 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
       }
       case "lint":
         return await lint(ctx, call);
+      case "fork_module": {
+        const out = applyOp(ctx.draft, call);
+        ctx.draft = out.config;
+        ctx.ops.push(call);
+        const id = typeof input.app === "string" && input.app.trim() ? pieceId(input.app.trim()) : String(input.module);
+        return text(
+          call.id,
+          `Done: ${out.summary}. It's the card's own module "${id}" now: read_module it, then patch_file the parts that need to change. Keep its value names and actions, which the rules and the rest of the card rely on, and playtest it from the same starting states as the original.`,
+        );
+      }
       default: {
         if (!WRITE_NAMES.has(call.name)) throw new ToolInputError(`Unknown tool ${call.name}`);
         const out = applyOp(ctx.draft, call);
@@ -886,6 +908,8 @@ export function describeCall(call: ToolCall): string {
       return `Installed the ${s(i.id) || s(i.part)} part`;
     case "create_module":
       return `Created ${s(i.id)}`;
+    case "fork_module":
+      return s(i.app) ? `Forked the phone's ${s(i.app)} app` : `Forked ${s(i.module)}`;
     case "add_built_in":
       return `Added the built-in ${s(i.screen) === "creator" ? "character creator" : s(i.screen)}`;
     case "write_file":

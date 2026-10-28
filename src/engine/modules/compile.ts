@@ -28,7 +28,7 @@ import { settingsAppModule } from "./settingsApp";
 import { shipModule } from "./ship";
 import { timeModule } from "./time";
 import { titleModule } from "./title";
-import type { EngineModule, ModuleRegex } from "./types";
+import { kindOf, type EngineModule, type ModuleRegex } from "./types";
 
 /** The core modules every engine card starts with. */
 export const coreModules = (): EngineModule[] => [timeModule(), settingsAppModule()];
@@ -63,10 +63,9 @@ export function resolveModule(m: EngineModule, all: EngineModule[] = []): Engine
   if (m.core === "time") return timeModule(m.settings, m.enabled);
   if (m.core === "settings") return settingsAppModule(m.settings, m.enabled);
   if (m.core === "creator") return creatorModule(m.settings, m.enabled);
-  if (m.core === "phone") {
-    const extra = all.filter((o) => o.enabled && o.slot === "overlay" && o.tags.includes(PHONE_APP_TAG)).map((o) => ({ id: o.id, name: o.name }));
-    return phoneModule(m.settings, m.enabled, extra);
-  }
+  if (m.core === "phone") return phoneModule(m.settings, m.enabled, phoneExtras(all));
+  // A forked phone keeps its own code but still lists the card's phone apps.
+  if (m.fork?.core === "phone" && !m.fork.piece) return { ...m, settings: { ...m.settings, extra: phoneExtras(all) } };
   if (m.core === "title") return titleModule(m.settings, m.enabled);
   if (m.core === "menu") return menuModule(m.settings, m.enabled);
   if (m.core === "events") return eventsModule(m.settings, m.enabled);
@@ -86,20 +85,24 @@ export function resolveModule(m: EngineModule, all: EngineModule[] = []): Engine
   if (m.core === "map") return mapModule(m.settings, m.enabled);
   if (m.core === "combat") return combatModule(m.settings, m.enabled, combatLinks(all));
   // Jumps on the star chart burn the ship's fuel.
-  if (m.core === "ship") return shipModule(m.settings, m.enabled, all.some((o) => o.core === "map" && o.enabled));
+  if (m.core === "ship") return shipModule(m.settings, m.enabled, all.some((o) => kindOf(o) === "map" && o.enabled));
   if (m.core === "case") return caseModule(m.settings, m.enabled);
   if (m.core === "stage") return stageModule(m.settings, m.enabled);
   return m;
 }
 
+/** The card's phone apps of its own: hub modules tagged "phone-app". */
+const phoneExtras = (all: EngineModule[]) =>
+  all.filter((o) => o.enabled && o.slot === "overlay" && o.tags.includes(PHONE_APP_TAG)).map((o) => ({ id: o.id, name: o.name }));
+
 /** The values the card's other modules keep (by valueKey), leaving out the kinds named. */
 function takenBy(m: EngineModule, all: EngineModule[], skip: string[]): Set<string> {
-  return new Set(all.filter((o) => o !== m && o.enabled && !skip.includes(o.core ?? "")).flatMap((o) => resolveModule(o, all).vars.map(valueKey)));
+  return new Set(all.filter((o) => o !== m && o.enabled && !skip.includes(kindOf(o) ?? "")).flatMap((o) => resolveModule(o, all).vars.map(valueKey)));
 }
 
 /** The phone's own money, when the card has a phone that keeps it: other parts pay from it. */
 function phoneMoney(all: EngineModule[]): string {
-  const phone = all.find((o) => o.core === "phone" && o.enabled);
+  const phone = all.find((o) => kindOf(o) === "phone" && o.enabled);
   if (!phone) return "";
   const s = phoneSettings(phone.settings);
   if (s.moneyPath) return s.moneyPath;
@@ -110,13 +113,13 @@ function phoneMoney(all: EngineModule[]): string {
 function sharedMoney(all: EngineModule[]): string {
   const phone = phoneMoney(all);
   if (phone) return phone;
-  const inv = all.find((o) => o.core === "inventory" && o.enabled);
+  const inv = all.find((o) => kindOf(o) === "inventory" && o.enabled);
   return inv ? inventorySettings(inv.settings).moneyPath || "Inventory.Gold" : "";
 }
 
 /** The creator's starting items, when it hands some out: the inventory keeps its bag there. */
 function creatorBag(all: EngineModule[]): string {
-  const creator = all.find((o) => o.core === "creator" && o.enabled);
+  const creator = all.find((o) => kindOf(o) === "creator" && o.enabled);
   if (!creator) return "";
   const s = creatorSettings(creator.settings);
   return s.pickItems > 0 && s.items.some((i) => i.trim()) ? `${s.group}.Items` : "";
@@ -125,14 +128,14 @@ function creatorBag(all: EngineModule[]): string {
 const clean = (name: string) => name.replace(/[.[\]"'/~$]/g, " ").trim();
 
 function heroOf(all: EngineModule[]) {
-  const hero = all.find((o) => o.core === "hero" && o.enabled);
+  const hero = all.find((o) => kindOf(o) === "hero" && o.enabled);
   return hero ? heroSettings(hero.settings) : null;
 }
 
 /** What the combat HUD shows of the hero and the bag. */
 function combatLinks(all: EngineModule[]): CombatLinks {
   const hero = heroOf(all);
-  const inv = all.find((o) => o.core === "inventory" && o.enabled);
+  const inv = all.find((o) => kindOf(o) === "inventory" && o.enabled);
   const links = noLinks();
   if (hero) {
     links.group = hero.group;

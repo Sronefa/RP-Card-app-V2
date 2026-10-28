@@ -281,7 +281,9 @@ var APPS = settings.catalog;
 var ui = CF.ui, esc = ui.esc;
 // A phone shown inside a message (the regex page marks its root) gets a frame of its own.
 var inline = root.hasAttribute("data-cf-inline");
-var view = { name: S.lock ? "lock" : "home", params: {} };
+// A phone app forked on its own shows just that app, with no lock or home screen of its own.
+var piece = settings.piece || "";
+var view = { name: piece || (S.lock ? "lock" : "home"), params: {} };
 var pending = [];
 var draft = {};
 
@@ -360,7 +362,9 @@ function statusBar(light) {
 }
 function bar(title, o) {
   o = o || {};
-  return '<div class="ph-bar">' + '<button type="button" class="ph-icon-btn" data-go="' + (o.back || "home") + '"' + (o.params ? " data-params='" + esc(JSON.stringify(o.params)) + "'" : "") + ' aria-label="Back">' + ui.icon("back") + "</button>" +
+  var back = piece && !o.back ? '<span class="ph-bar-space"></span>' :
+    '<button type="button" class="ph-icon-btn" data-go="' + (o.back || "home") + '"' + (o.params ? " data-params='" + esc(JSON.stringify(o.params)) + "'" : "") + ' aria-label="Back">' + ui.icon("back") + "</button>";
+  return '<div class="ph-bar">' + back +
     "<h1>" + esc(title) + "</h1>" + (o.right || "<span class=\"ph-bar-space\"></span>") + "</div>";
 }
 function homeBar() {
@@ -595,13 +599,15 @@ function render() {
   var fn = screens[view.name] || screens.home;
   var html = fn(view.params || {});
   var inApp = view.name !== "lock" && view.name !== "home";
-  root.innerHTML = '<div class="ph' + (inline ? " ph-inline" : "") + '"><div class="ph-screen' + (inApp ? " ph-in-app" : "") + '">' + (inApp ? statusBar(false) : "") + html + "</div>" + (view.name !== "lock" ? homeBar() : "") + "</div>";
+  if (piece) root.innerHTML = '<div class="ph ph-piece"><div class="ph-screen ph-in-app">' + html + "</div></div>";
+  else root.innerHTML = '<div class="ph' + (inline ? " ph-inline" : "") + '"><div class="ph-screen' + (inApp ? " ph-in-app" : "") + '">' + (inApp ? statusBar(false) : "") + html + "</div>" + (view.name !== "lock" ? homeBar() : "") + "</div>";
   var mount = root.querySelector("[data-module]");
   if (mount) CF.mount(root.ownerDocument.defaultView, mount.getAttribute("data-module"), mount, { app: app });
   var chat = root.querySelector(".ph-chat");
   if (chat) chat.scrollTop = chat.scrollHeight;
 }
 function go(name, params) {
+  if (piece && (name === "home" || name === "lock")) name = piece;
   view = { name: name, params: params || {} };
   render();
 }
@@ -682,6 +688,7 @@ const CSS = String.raw`
 .ph { position: relative; display: flex; flex-direction: column; flex: 1 0 auto; min-height: 100%; height: 100vh; height: 100dvh; background: #000; overflow: hidden; }
 .ph-inline { height: 640px; min-height: 0; flex: none; max-width: 380px; margin: 0 auto; border-radius: 28px; border: 6px solid #111; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
 .ph-screen { flex: 1; min-height: 0; display: flex; flex-direction: column; background-color: var(--cf-bg); background-image: var(--cf-texture); color: var(--cf-text); overflow: hidden; }
+.ph.ph-piece { height: auto; min-height: 100%; background: none; }
 .ph-status { display: flex; align-items: center; justify-content: space-between; padding: 6px 52px 4px 16px; font-size: 0.8em; flex: none; }
 .ph-inline .ph-status { padding-right: 16px; }
 .ph-status.light { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
