@@ -471,4 +471,103 @@ app.onState(draw);`,
   script: "",
 };
 
-export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart];
+const prologue: EngineModule = {
+  ...base(),
+  id: "prologue",
+  name: "Prologue",
+  description:
+    "A hub screen whose intro cutscene plays the first time it opens in a chat (CF.scene with once): the harbor fades in, a chapter card, two characters, a shake, a typed exchange and a choice that writes the player's answer. The steps live in the module's settings, so the user can edit the words; a button plays it again.",
+  slot: "overlay",
+  button: "🎬 Prologue",
+  vars: [],
+  rules: [
+    {
+      comment: "Prologue actions",
+      content: '<action app="prologue">{"answer":A}</action> means {{user}} answered the captain in the prologue with A: play the scene on from that answer.',
+      constant: false,
+      keys: ['app="prologue"'],
+      depth: 2,
+      order: 100,
+    },
+  ],
+  regex: [],
+  settings: {
+    scenes: {
+      intro: [
+        { bg: "Harbor", time: "Evening" },
+        { title: "Prologue", sub: "The Drowned Crown", hold: 1400 },
+        { fx: "weather", text: "light rain" },
+        { show: "Mina", side: "left" },
+        { show: "Captain Varn", side: "right", emotion: "angry" },
+        { say: "You came back. After everything.", who: "Mina" },
+        { fx: "shake" },
+        { say: "The crown is gone, and the guild thinks you took it.", who: "Captain Varn" },
+        {
+          choice: [
+            { label: "I didn't take it.", send: "prologue", payload: { answer: "innocent" }, text: "I didn't take it." },
+            { label: "And if I did?", send: "prologue", payload: { answer: "defiant" }, text: "And if I did?" },
+          ],
+        },
+      ],
+    },
+  },
+  html: "",
+  css: ".pr-body { min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 12px; text-align: center; }",
+  js: `var intro = (settings.scenes || {}).intro || [];
+function menu() {
+  root.innerHTML = '<div class="cf-app"><div class="cf-appbody pr-body">' +
+    "<h1>The Drowned Crown</h1>" +
+    '<p class="cf-muted">' + (CF.scene.seen("prologue") ? "You've seen the prologue." : "The prologue plays when you open this screen.") + "</p>" +
+    CF.ui.button("Play the prologue again", { primary: true, icon: "spark" }).replace("<button", "<button data-replay") +
+    "</div></div>";
+}
+function play(once) {
+  CF.scene.play(root, intro, { fill: true, once: once ? "prologue" : undefined, label: "Prologue" }).done.then(function (r) {
+    menu();
+    if (r.choice) app.toast("Your answer is in the input box: send it when you're ready", { icon: "send" });
+  });
+}
+root.addEventListener("click", function (e) {
+  if (e.target.closest("[data-replay]")) play(false);
+});
+menu();
+play(true);`,
+  script: "",
+};
+
+const chapterCard: EngineModule = {
+  ...base(),
+  id: "chapter-card",
+  name: "Chapter card",
+  description:
+    "An inline block under the reply where a new chapter starts: the first time, a short cutscene (a sky for the time of day and the chapter's title card); after that, and on swipes, a still banner. Shows playing a scene on a change, not on every redraw.",
+  slot: "message",
+  vars: [
+    newVar({ id: "ex-c-num", group: "Story", name: "Chapter", type: "number", start: "1", min: 1, rule: "+1 when the story reaches a clear turning point; at most once every few replies." }),
+    newVar({ id: "ex-c-title", group: "Story", name: "ChapterTitle", type: "text", start: "Arrival", rule: "A two to four word title for the chapter, set when Chapter changes." }),
+  ],
+  rules: [],
+  regex: [],
+  html: "",
+  css: ".cc .cf-scene { height: 220px; min-height: 0; } .cc-still { padding: 18px 12px; text-align: center; border-radius: var(--cf-radius); } .cc-still h2 { font-size: 1.4em; } .cc-still p { margin: 4px 0 0; }",
+  js: `var d = app.delta()["Story.Chapter"];
+var n = Number(app.state("Story.Chapter")) || 1;
+var name = String(app.state("Story.ChapterTitle") || "");
+var key = "chapter-" + n;
+function still() {
+  root.innerHTML = '<div class="cc"><div class="cc-still cf-card"><span class="cf-label">Chapter ' + n + "</span><h2>" + CF.ui.esc(name) + "</h2></div></div>";
+}
+// Only the reply where the chapter changed shows anything, and the cutscene plays once per chapter.
+if (!d) root.innerHTML = "";
+else if (CF.scene.seen(key)) still();
+else {
+  root.innerHTML = '<div class="cc"></div>';
+  CF.scene.play(root.firstChild, [
+    { bg: "", time: "Evening", fade: 500 },
+    { title: "Chapter " + n, sub: name, hold: 1800 },
+  ], { once: key, label: "Chapter " + n }).done.then(still);
+}`,
+  script: "",
+};
+
+export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart, prologue, chapterCard];

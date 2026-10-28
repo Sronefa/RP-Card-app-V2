@@ -202,6 +202,26 @@
 .cf-art-sigil-arms { fill: currentColor; opacity: 0.85; }
 .cf-art-sigil-ring { fill: none; stroke: currentColor; stroke-width: 2; }
 .cf-art-sigil-core { fill: var(--cf-surface); stroke: currentColor; stroke-width: 2; }
+/* Cutscenes (CF.scene). */
+.cf-scene { position: relative; overflow: hidden; height: min(80vh, 560px); min-height: 300px; border-radius: var(--cf-radius); background: var(--cf-bg); isolation: isolate; -webkit-user-select: none; user-select: none; outline: none; }
+.cf-scene.fill { position: absolute; inset: 0; height: auto; min-height: 0; border-radius: 0; z-index: 20; }
+.cf-scene:focus-visible { box-shadow: inset 0 0 0 2px var(--cf-accent); }
+.cf-scene-bg { position: absolute; inset: 0; opacity: 0; }
+.cf-scene-shade { position: absolute; inset: auto 0 0 0; height: 50%; background: linear-gradient(transparent, color-mix(in srgb, var(--cf-bg) 80%, transparent)); pointer-events: none; z-index: 1; }
+.cf-scene-actors { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.cf-scene-actor { position: absolute; bottom: 0; width: 46%; max-width: 280px; aspect-ratio: 3 / 4; display: flex; align-items: flex-end; justify-content: center; transition: filter 0.3s ease; }
+.cf-scene-actor.left { left: 2%; }
+.cf-scene-actor.right { right: 2%; }
+.cf-scene-actor.center { left: 27%; }
+.cf-scene-actor.letter { bottom: 36%; }
+.cf-scene-actor.quiet { filter: brightness(0.6) saturate(0.8); }
+.cf-scene-actor img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
+.cf-scene-letter { width: 60%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font-family: var(--cf-heading); font-size: 2.6em; color: var(--cf-accent); background: color-mix(in srgb, var(--cf-surface) 85%, transparent); border: 2px solid color-mix(in srgb, var(--cf-accent) 50%, transparent); box-shadow: var(--cf-shadow); }
+.cf-scene-title { position: absolute; inset: 0; z-index: 3; display: grid; place-content: center; gap: 6px; padding: 24px; text-align: center; pointer-events: none; opacity: 0; text-shadow: 0 2px 12px color-mix(in srgb, var(--cf-bg) 90%, transparent); }
+.cf-scene-title h1 { font-size: 2em; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+.cf-scene-title p { margin: 0; color: var(--cf-muted); font-size: 1.05em; }
+.cf-scene-talk { position: absolute; left: 10px; right: 10px; bottom: 12px; z-index: 4; }
+.cf-scene-skip { position: absolute; top: 8px; right: 8px; z-index: 5; background: color-mix(in srgb, var(--cf-surface) 70%, transparent); }
 /* Less motion (the device's or the player's own setting): the kit holds still. */
 .cf-reduce-motion *, .cf-reduce-motion *::before, .cf-reduce-motion *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 .cf-reduce-motion .cf-fx-glow::after { opacity: 0.7; }
