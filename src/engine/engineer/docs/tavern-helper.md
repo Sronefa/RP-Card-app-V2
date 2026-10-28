@@ -56,6 +56,10 @@ In reply mode the same side call stands in when a reply's own update can't be tr
 
 The script reads a new message once it has rendered (`CHARACTER_MESSAGE_RENDERED`, `USER_MESSAGE_RENDERED`), so the player sees the reply before any side call, and writes the state only if the chat, the swipe and the text are still the same when the answer comes. Each message's state keeps a fingerprint of its text and of the state before it: an edit rebuilds that message and the ones after it, a delete or a swipe rebuilds every message whose fingerprint no longer matches, and the player's edits (kept on the message) are applied again each time.
 
+The side call reads what MVU's extra-model parsing reads: the card's lorebook entries that are on (constant ones, and keyed ones whose keys appear in the last messages), without the engine's own entries and without any tagged `[mvu_plot]` (for the story only; `[mvu_update]` entries are for the update only), then `<game_state>`, the two messages before the reply and the reply itself. While it runs, the message shows a folded "Updating the game state…" line, and the script emits `cf:updating` with `{ messageId, on }`. A reply still streaming its own block shows the same fold (a markdown-only regex) instead of the raw commands.
+
+Long chats stay light, as MVU does: once a message is more than 30 from the end, its `stat_data` and `delta_data` are cleared (it keeps `cf_trimmed`, its fingerprints, the player's edits and the kept side-call answer). The greeting and a snapshot every 50 messages keep theirs. A cleared message is rebuilt quietly from the snapshot before it whenever something needs it, and `CF.state.get(path, id)` on it reads that snapshot. Players turn this off in the settings app, and it is off when they keep every panel live.
+
 ## Events
 
 ```js

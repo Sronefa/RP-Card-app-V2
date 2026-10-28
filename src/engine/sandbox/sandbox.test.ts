@@ -24,7 +24,7 @@ describe("the sandbox page", () => {
     expect(doc.match(/<\/script>/g)).toHaveLength(2);
     const card = sandboxCard(data);
     expect(card.scripts.map((s) => s.name)).toEqual(["CardForge engine"]);
-    expect(card.regex).toHaveLength(6);
+    expect(card.regex).toHaveLength(7);
     expect(card.book.map((e) => e.comment)).toContain("[initvar] Starting values");
     expect(card.alternate_greetings).toEqual(["Hi"]);
   });

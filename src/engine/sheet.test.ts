@@ -43,8 +43,8 @@ describe("the engine in the card", () => {
     expect(entries[2].content).toContain("{{format_message_variable::stat_data}}");
     const helper = data.extensions.tavern_helper as { scripts: { name: string; enabled: boolean; type: string }[] };
     expect(helper.scripts).toEqual([expect.objectContaining({ type: "script", name: "CardForge engine", enabled: true })]);
-    // The engine's four, and the two for actions the screens send.
-    expect((data.extensions.regex_scripts as unknown[]).length).toBe(6);
+    // The engine's five (hide, out of the prompt, panel out of the prompt, the streaming fold, the panel), and two for actions.
+    expect((data.extensions.regex_scripts as unknown[]).length).toBe(7);
   });
 
   it("keeps the AI from seeing hidden fields and explains the format", () => {
@@ -65,7 +65,7 @@ describe("the engine in the card", () => {
     const once = applyEngine(withOther, config());
     const twice = applyEngine(once, { ...readEngine(once)!, reminder: false });
     expect(twice.character_book!.entries).toHaveLength(3);
-    expect((twice.extensions.regex_scripts as unknown[]).length).toBe(6);
+    expect((twice.extensions.regex_scripts as unknown[]).length).toBe(7);
     expect((twice.extensions.tavern_helper as { scripts: unknown[] }).scripts).toHaveLength(2);
     expect(twice.creator_notes).toBe(`${NOTE}\n\nPlay slow.`);
     const off = applyEngine(twice, undefined);

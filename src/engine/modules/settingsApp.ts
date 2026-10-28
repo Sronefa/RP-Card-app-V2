@@ -66,7 +66,8 @@ function look(s) {
 function panels(s) {
   return '<div class="cf-stack">' + check("compact", "Compact status panels (tap “All” for the rest)", s.compact) +
     field("Panels kept live", '<select class="cf-input" data-setting="livePanels">' + [3, 5, 10, 0].map(function (n) { return option(n, n ? "The last " + n : "All of them", s.livePanels); }).join("") + "</select>") +
-    '<p class="cf-small cf-muted">Older panels turn into still pictures, which keeps long chats quick on phones.</p></div>';
+    '<p class="cf-small cf-muted">Older panels turn into still pictures, which keeps long chats quick on phones.</p>' +
+    check("trimOld", "Keep long chats light (old messages keep a snapshot every 50)", s.trimOld !== false) + "</div>";
 }
 function generations(s) {
   return '<div class="cf-stack">' + check("sideCalls", "Background generations (texts, feeds, shop stock)", s.sideCalls) +
@@ -109,7 +110,10 @@ function state() {
     all.map(function (l) {
       return field(l.path.join(" › "), '<input class="cf-input" data-path="' + esc(JSON.stringify(l.path)) + '" value="' + esc(editable(l.value)) + '">');
     }).join("") +
-    '<div class="cf-row"><button type="button" class="cf-btn primary" data-save>Save changes</button><button type="button" class="cf-btn ghost" data-reset-state>Back to the start</button></div></div>';
+    '<div class="cf-row"><button type="button" class="cf-btn primary" data-save>Save changes</button><button type="button" class="cf-btn ghost" data-reset-state>Back to the start</button></div>' +
+    '<div class="cf-stack" style="gap:6px"><span class="cf-label">Values look wrong?</span>' +
+    '<div class="cf-row"><button type="button" class="cf-btn" data-rebuild>Rebuild from the chat</button><button type="button" class="cf-btn ghost" data-redo>Redo the last update</button></div>' +
+    '<p class="cf-small cf-muted">Rebuild reads every message again, keeping your own changes. Redo asks a second call to write the last reply’s update again (it costs tokens).</p></div></div>';
 }
 function render() {
   var s = app.settings();
@@ -141,6 +145,14 @@ root.addEventListener("click", function (e) {
       app.toast(jobs.length ? "Saved " + jobs.length + (jobs.length === 1 ? " change" : " changes") : "Nothing changed");
       render();
     })().catch(function (err) { app.toast("Couldn't save: " + err.message); });
+  }
+  if (e.target.closest("[data-rebuild]")) {
+    app.toast("Rebuilding…");
+    CF.state.rebuild().then(function () { app.toast("Values rebuilt from the chat"); render(); }, function (err) { app.toast("Couldn't rebuild: " + err.message); });
+  }
+  if (e.target.closest("[data-redo]")) {
+    app.toast("Asking for the last update again…");
+    CF.state.redo().then(function () { app.toast("Last update written again"); render(); }, function (err) { app.toast("Couldn't redo it: " + err.message); });
   }
   if (e.target.closest("[data-reset-state]")) {
     var box = app.modal('<div class="cf-stack"><h2>Start the values over?</h2><p class="cf-small">Every game value goes back to how the story began. The chat stays.</p><div class="cf-row"><button type="button" class="cf-btn primary" data-confirm>Start over</button><button type="button" class="cf-btn ghost" data-cf-close>Keep them</button></div></div>');

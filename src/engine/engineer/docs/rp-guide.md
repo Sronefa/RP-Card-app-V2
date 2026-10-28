@@ -54,6 +54,8 @@ The engine already catches the common failures: a reply with no update block, or
 5. Is a hook overwriting it? A hook runs after every update and wins.
 6. Does the model struggle with the format at all? Switch the card to the side call, or let players switch (leave the update mode unlocked).
 
+Players have two repair buttons in the settings app's Game state tab: "Rebuild from the chat" reads every message again (`CF.state.rebuild()`), and "Redo the last update" asks a second call to write the newest reply's update again (`CF.state.redo()`). Point players to them in the creator notes if your card's values are delicate.
+
 ## Don't fight the model
 
 - If a value keeps going wrong, fix the rule's wording or make a script keep it (a `readOnly` value set in an `afterUpdate` hook), rather than adding warnings.
