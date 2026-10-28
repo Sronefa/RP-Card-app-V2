@@ -1,8 +1,10 @@
 /**
  * The card theme: one set of CSS variables every engine screen shares, from one of ten presets
  * with the author's own changes on top. Players can switch light and dark and the text size in the
- * settings app; nothing here loads from the web (fonts are system font stacks, textures are CSS).
+ * settings app. Nothing here loads from the web: fonts are system stacks or a small bundled set that
+ * a card carries only when it uses them, and textures are CSS gradients or inline SVG.
  */
+import { FONT_FILES } from "./fonts/files";
 
 export interface ThemeTokens {
   bg: string;
@@ -50,7 +52,66 @@ export const FONTS: Record<string, string> = {
   Rounded: '"Segoe UI Variable Display", "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif',
   Mono: 'ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, "Roboto Mono", monospace',
   Elegant: '"Didot", "Bodoni MT", "Noto Serif Display", Georgia, serif',
+  Cinzel: '"Cinzel", "Trajan Pro", Georgia, serif',
+  "Pirata One": '"Pirata One", "Old English Text MT", Georgia, serif',
+  Orbitron: '"Orbitron", "Eurostile", ui-monospace, sans-serif',
+  "Share Tech Mono": '"Share Tech Mono", ui-monospace, Menlo, Consolas, monospace',
+  "Playfair Display": '"Playfair Display", "Didot", Georgia, serif',
+  "Patrick Hand": '"Patrick Hand", "Comic Neue", "Segoe Print", system-ui, sans-serif',
 };
+
+/** The bundled fonts: what each suits, for the design guide and the font picker. */
+export const BUNDLED_FONTS: Record<string, string> = {
+  Cinzel: "carved Roman capitals: dark fantasy, epic, ancient",
+  "Pirata One": "blackletter: grimdark, gothic horror, pirates",
+  Orbitron: "wide geometric: sci-fi, cyberpunk HUD, mecha",
+  "Share Tech Mono": "technical monospace: consoles, terminals, readouts",
+  "Playfair Display": "high-contrast serif: romance, period drama, luxury",
+  "Patrick Hand": "neat handwriting: cozy slice of life, notes, diaries",
+};
+
+/** The bundled fonts named in any of these texts (theme tokens, a screen's CSS). */
+export function usedFonts(texts: string[]): string[] {
+  const all = texts.join("\n");
+  return Object.keys(FONT_FILES).filter((name) => all.includes(name));
+}
+
+/** @font-face rules that embed the given bundled fonts, so a card needs no network for them. */
+export function fontFaces(names: string[]): string {
+  return names
+    .filter((n) => FONT_FILES[n])
+    .map((n) => `@font-face { font-family: "${n}"; src: url(data:font/woff2;base64,${FONT_FILES[n]}) format("woff2"); font-display: swap; }`)
+    .join("\n");
+}
+
+/** Inline SVG as a CSS url(), for textures. */
+const svgUrl = (svg: string) =>
+  `url("data:image/svg+xml,${svg.replace(/"/g, "'").replace(/</g, "%3C").replace(/>/g, "%3E").replace(/#/g, "%23")}")`;
+
+const noise = (opacity: number, frequency: number) =>
+  svgUrl(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="${frequency}" numOctaves="3" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 ${opacity} 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>`,
+  );
+
+/**
+ * Textures to pick from for the theme's `texture` token: layers over the surface colour. They are
+ * the only textures that may hold an image (inline SVG); anything else must be gradients.
+ */
+export const TEXTURES: Record<string, string> = {
+  Paper: `radial-gradient(circle at 20% 15%, rgba(255,255,255,.3), transparent 45%), radial-gradient(circle at 85% 85%, rgba(120,80,30,.12), transparent 50%), ${noise(0.1, 0.9)}`,
+  Grain: noise(0.08, 0.75),
+  Linen: "repeating-linear-gradient(45deg, rgba(127,127,127,.05) 0 1px, transparent 1px 4px), repeating-linear-gradient(-45deg, rgba(127,127,127,.05) 0 1px, transparent 1px 4px)",
+  Scanlines: "repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px)",
+  Grid: "linear-gradient(rgba(127,127,127,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(127,127,127,.08) 1px, transparent 1px)",
+  Hex: svgUrl(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="48"><path d="M14 0l14 8v16L14 32 0 24V8zM14 32v16" fill="none" stroke="rgba(127,127,127,.12)" stroke-width="1"/></svg>`,
+  ),
+  Stars: "radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,.5), transparent), radial-gradient(1px 1px at 70% 60%, rgba(255,255,255,.4), transparent), radial-gradient(1.5px 1.5px at 40% 80%, rgba(255,255,255,.35), transparent), radial-gradient(1px 1px at 85% 15%, rgba(255,255,255,.45), transparent)",
+  Vignette: "radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.35))",
+};
+
+/** The texture's name, when it is one of the set. */
+export const textureName = (value: string) => Object.entries(TEXTURES).find(([, v]) => v === value)?.[0];
 
 const parchmentTexture =
   "radial-gradient(circle at 20% 15%, rgba(255,255,255,.35), transparent 40%), radial-gradient(circle at 85% 80%, rgba(120,80,30,.12), transparent 45%)";
@@ -480,7 +541,7 @@ export function cleanOverrides(overrides: Partial<ThemeTokens> | undefined): Par
     } else if (key === "font" || key === "heading") {
       if (typeof value === "string" && Object.values(FONTS).includes(value)) out[key] = value;
     } else if (key === "texture") {
-      if (value === "none" || (typeof value === "string" && !/[;{}<>]|url\(/i.test(value))) out.texture = value as string;
+      if (value === "none" || (typeof value === "string" && (Object.values(TEXTURES).includes(value) || !/[;{}<>]|url\(/i.test(value)))) out.texture = value as string;
     } else if (key === "shadow") {
       if (typeof value === "string" && !/[;{}<>]|url\(/i.test(value)) out.shadow = value;
     } else if (typeof value === "string" && COLOR.test(value.trim())) {
@@ -514,5 +575,7 @@ export function themeVars(tokens: ThemeTokens): string {
 /** Both modes, for the engine core to switch between. */
 export function themeBundle(theme: CardTheme) {
   const preset = PRESETS[theme.preset] ?? PRESETS.phone;
-  return { preset: preset.id, mode: preset.mode, light: themeTokens(theme, "light"), dark: themeTokens(theme, "dark") };
+  const light = themeTokens(theme, "light");
+  const dark = themeTokens(theme, "dark");
+  return { preset: preset.id, mode: preset.mode, light, dark, fonts: usedFonts([light.font, light.heading, dark.font, dark.heading]) };
 }

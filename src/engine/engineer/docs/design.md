@@ -43,8 +43,16 @@ Engine screens should feel like a polished mobile game, not a web form. Aim for 
 - Rounded: `"Segoe UI Variable Display", "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif`
 - Mono: `ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, "Roboto Mono", monospace`
 - Elegant: `"Didot", "Bodoni MT", "Noto Serif Display", Georgia, serif`
+- Cinzel (bundled): `"Cinzel", "Trajan Pro", Georgia, serif`
+- Pirata One (bundled): `"Pirata One", "Old English Text MT", Georgia, serif`
+- Orbitron (bundled): `"Orbitron", "Eurostile", ui-monospace, sans-serif`
+- Share Tech Mono (bundled): `"Share Tech Mono", ui-monospace, Menlo, Consolas, monospace`
+- Playfair Display (bundled): `"Playfair Display", "Didot", Georgia, serif`
+- Patrick Hand (bundled): `"Patrick Hand", "Comic Neue", "Segoe Print", system-ui, sans-serif`
 
-`texture` is a CSS background image made of gradients (or "none"), and `shadow` is a box-shadow. Neither may use `url()`.
+set_theme also takes a font by name (`{ heading: "Cinzel" }`). The bundled fonts are embedded in the card only when the theme or a screen's CSS uses them; the style guide (style#fonts-and-textures) says what each suits.
+
+`texture` is one of the set by name (Paper, Grain, Linen, Scanlines, Grid, Hex, Stars, Vignette), a CSS background image made of gradients, or "none". `shadow` is a box-shadow. Neither may use a `url()` of your own.
 
 ## Type
 
@@ -54,6 +62,8 @@ Engine screens should feel like a polished mobile game, not a web form. Aim for 
 
 ## Motion
 
+The style guide (style#motion-craft) has durations, easing and recipes; these are the hard rules.
+
 - Animate changes, not idle screens: a meter fill sliding to its new width (the kit does this), a short flash on a changed value, a toast sliding in.
 - Keep motion between 150 and 500ms, eased.
 - Wrap anything bigger in `@media (prefers-reduced-motion: no-preference)`.
@@ -61,7 +71,7 @@ Engine screens should feel like a polished mobile game, not a web form. Aim for 
 
 ## Images
 
-- Card images come from `app.asset(file)`. Always show a fallback: the avatar letter, a gradient, an icon.
+- Card images come from `CF.assets` by meaning (`background(place, time)`, `portrait(name, { emotion })`, `icon(item)`, `scene("title")`) or `app.asset(file)`. Always show a fallback: the avatar letter, a gradient, an icon. Text over a picture needs a scrim (style#images-and-backgrounds).
 - Use `object-fit: cover` and a fixed aspect ratio (`aspect-ratio: 3 / 4` for portraits), so missing or odd-sized images don't break the layout.
 
 ## Icons

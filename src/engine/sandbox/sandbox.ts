@@ -225,12 +225,29 @@ export type SandboxCommand =
   | { type: "open"; module: string }
   | { type: "close" }
   | { type: "capture" }
+  /** Pictures at these times (ms) after the trigger, to check an animation; `images: false` reports only what moves. */
+  | { type: "frames"; at: number[]; trigger?: FrameTrigger; images?: boolean }
+  /** The player's settings for this chat, like { mode: "dark" }. */
+  | { type: "settings"; settings: Record<string, unknown> }
   | { type: "inspect" }
   | { type: "click"; screen?: string; selector?: string; text?: string }
   /** Playtest: the answer to a "generate" report. */
   | { type: "generated"; requestId: number; text?: string; error?: string }
   /** Playtest: the reply as it streams in; null takes the bubble away. */
   | { type: "typing"; text: string | null };
+
+/** What starts the animation a frame strip watches. */
+export type FrameTrigger =
+  | { type: "open"; module: string }
+  | { type: "click"; screen?: string; selector?: string; text?: string }
+  | { type: "setVariables"; id: number; variables: Record<string, unknown> };
+
+/** What frames returns: a picture (PNG, base64) of each moment, and a line for each element still moving then. */
+export interface SandboxFrames {
+  width: number;
+  height: number;
+  frames: { at: number; image?: string; moving: string[] }[];
+}
 
 /** What capture returns: a PNG of everything the player sees, base64. */
 export interface SandboxCapture {

@@ -193,6 +193,7 @@ export async function runWorker(ctx: EngineerContext, call: ToolCall, opts: Work
   const messages: ChatMessage[] = [{ role: "user", text: briefText(ctx, brief, opts.skills, opts.notes) }];
   let report = "";
   let ending = "";
+  let reviewed = false;
   try {
     for (let round = 0; ; round++) {
       if (round >= opts.maxRounds) {
@@ -239,7 +240,16 @@ export async function runWorker(ctx: EngineerContext, call: ToolCall, opts: Work
         ending = "The worker's reply was cut off at the length limit.";
         break;
       }
-      if (opts.signal.aborted || !(result.stop === "tool_use" && result.toolCalls.length)) break;
+      if (opts.signal.aborted || !(result.stop === "tool_use" && result.toolCalls.length)) {
+        // One design review before the report, when it built or changed a screen.
+        if (!reviewed && round + 1 < opts.maxRounds && changedScreens(before, ctx.draft)) {
+          reviewed = true;
+          messages.push({ role: "user", text: selfReviewText(opts.skills) });
+          show({ steps: [...run.steps, { label: "Design self-review" }] });
+          continue;
+        }
+        break;
+      }
     }
   } catch (e) {
     if (isAbort(e) || opts.signal.aborted) ending = "Stopped by the user.";
@@ -249,6 +259,32 @@ export async function runWorker(ctx: EngineerContext, call: ToolCall, opts: Work
   const content = workerReport(ctx, before, opsBefore, report, ending);
   show({ status, report: content });
   return { id: call.id, content, ...(ending ? { isError: true } : {}), run };
+}
+
+/** Whether a screen's code or the theme changed: what the design self-review looks at. */
+export function changedScreens(before: EngineContextDraft, after: EngineContextDraft): boolean {
+  return diffConfigs(before, after).some((c) => c.path === "theme.json" || /^modules\/[^/]+\/(html|css|js)$/.test(c.path));
+}
+
+type EngineContextDraft = EngineerContext["draft"];
+
+const REVIEW_FALLBACK = `- One focal point: the most important thing is the biggest and brightest; everything else steps back.
+- Spacing on the 4px scale, things lined up, related things grouped.
+- One accent colour, theme variables only; contrast readable in light and dark.
+- Type: one heading font, clear size and weight steps, no walls of text.
+- Empty, low, full and long values still look designed.
+- Motion: short and eased, one big moment at most, nothing looping for no reason, and it stops when the player wants less motion.
+- Fits a 360px phone with no sideways scrolling; tap targets 36px or more.`;
+
+/** The worker's last step before it reports: its screens checked against the style skill's checklist. */
+export function selfReviewText(skills: Skill[]): string {
+  const skill = skills.find((s) => s.id === "style-and-motion");
+  const section = skill?.text.split(/^(?=## )/m).find((part) => /^## Self-review/.test(part));
+  const list = section?.replace(/^## .*\n/, "").trim();
+  return [
+    "Before you report: review the screens you built or changed against this checklist, the way a demanding designer would. Look at them (preview_states for the edges, render_preview with frames for anything that moves), fix what fails, and then write your report with a line on what the review found and fixed.",
+    list || REVIEW_FALLBACK,
+  ].join("\n\n");
 }
 
 /** What the lead gets back: the report, what changed, and the lint on the whole draft. */

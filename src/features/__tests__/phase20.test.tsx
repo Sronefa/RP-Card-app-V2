@@ -78,6 +78,7 @@ describe("engine look", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Stats" } });
     expect(buttons()[0]).toBe("📊 Stats");
     expect(screen.getByTitle("Theme preview")).toBeInTheDocument();
-    expect(screen.getByTitle("Status panel preview")).toBeInTheDocument();
+    // The panel at its start, low and high states.
+    expect(screen.getAllByTitle("Status panel preview")).toHaveLength(3);
   });
 });

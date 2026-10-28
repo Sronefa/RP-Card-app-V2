@@ -3,9 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, TextInput } from "../../components/ui";
 import { panelGroups, panelHtml } from "../../engine/panel";
 import kitCss from "../../engine/runtime/kit.css?raw";
-import { effectiveConfig } from "../../engine/modules/compile";
-import { initialState, themeOf, type EngineConfig, type PanelAction, type PanelTab } from "../../engine/sheet";
-import { FONTS, PRESET_IDS, PRESETS, themeTokens, themeVars, type CardTheme, type ThemeMode, type ThemeTokens } from "../../engine/theme";
+import { themeOf, type EngineConfig, type PanelAction, type PanelTab } from "../../engine/sheet";
+import { sampleStates } from "../../engine/scrubber";
+import { BUNDLED_FONTS, fontFaces, FONTS, PRESET_IDS, PRESETS, TEXTURES, textureName, themeTokens, themeVars, usedFonts, type CardTheme, type ThemeMode, type ThemeTokens } from "../../engine/theme";
 import { selectClass } from "./VarEditor";
 
 type Save = (c: EngineConfig, key?: string) => void;
@@ -20,6 +20,10 @@ const COLOURS: [keyof ThemeTokens, string][] = [
 ];
 
 const fontName = (stack: string) => Object.entries(FONTS).find(([, v]) => v === stack)?.[0] ?? "System";
+const fontLabel = (name: string) => (BUNDLED_FONTS[name] ? `${name} (${BUNDLED_FONTS[name].split(":")[0]})` : name);
+
+/** The bundled fonts these tokens use, as @font-face rules, so previews show them. */
+const facesFor = (tokens: ThemeTokens) => fontFaces(usedFonts([tokens.font, tokens.heading]));
 
 export function LookPage({ config, save }: { config: EngineConfig; save: Save }) {
   const theme = themeOf(config);
@@ -102,7 +106,9 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
             Text font
             <select className={selectClass} value={fontName(tokens.font)} onChange={(e) => override({ font: FONTS[e.target.value] }, "font")}>
               {Object.keys(FONTS).map((f) => (
-                <option key={f}>{f}</option>
+                <option key={f} value={f}>
+                  {fontLabel(f)}
+                </option>
               ))}
             </select>
           </label>
@@ -110,7 +116,9 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
             Heading font
             <select className={selectClass} value={fontName(tokens.heading)} onChange={(e) => override({ heading: FONTS[e.target.value] }, "heading")}>
               {Object.keys(FONTS).map((f) => (
-                <option key={f}>{f}</option>
+                <option key={f} value={f}>
+                  {fontLabel(f)}
+                </option>
               ))}
             </select>
           </label>
@@ -118,14 +126,24 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
             Corners: {tokens.radius}px
             <input type="range" min={0} max={24} value={tokens.radius} onChange={(e) => override({ radius: Number(e.target.value) }, "radius")} />
           </label>
-          <label className="flex min-h-8 items-center gap-2 self-end text-sm">
-            <input
-              type="checkbox"
-              className="size-4"
-              checked={theme.overrides.texture !== "none"}
-              onChange={(e) => (e.target.checked ? clear("texture") : override({ texture: "none" }, "texture"))}
-            />
+          <label className="flex flex-col gap-1 text-sm">
             Texture
+            <select
+              className={selectClass}
+              value={theme.overrides.texture === undefined ? "" : theme.overrides.texture === "none" ? "none" : (textureName(theme.overrides.texture) ?? "custom")}
+              onChange={(e) => (e.target.value === "" ? clear("texture") : override({ texture: e.target.value === "none" ? "none" : TEXTURES[e.target.value] }, "texture"))}
+            >
+              <option value="">The preset's</option>
+              <option value="none">None</option>
+              {Object.keys(TEXTURES).map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+              {theme.overrides.texture !== undefined && theme.overrides.texture !== "none" && !textureName(theme.overrides.texture) && (
+                <option value="custom" disabled>
+                  The engineer's own
+                </option>
+              )}
+            </select>
           </label>
         </div>
         {Object.keys(theme.overrides).length > 0 && (
@@ -173,8 +191,7 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
           <>
             <PanelTabsEditor config={config} tabs={panel.tabs ?? []} onChange={(tabs, key) => setPanel({ tabs }, `tabs.${key}`)} />
             <PanelActionsEditor actions={panel.actions ?? []} onChange={(actions, key) => setPanel({ actions }, `actions.${key}`)} />
-            <h3 className="text-sm font-medium">With the starting values</h3>
-            <PanelPreview config={config} state={initialState(effectiveConfig(config))} mode={mode} />
+            <StateScrubber config={config} mode={mode} />
             <p className="text-xs text-ink-muted">
               Values shown in the compact panel are checked on the Variables tab. "All" opens the rest. Module sections
               like the clock show in the Sandbox.
@@ -269,8 +286,73 @@ const SAMPLE = `<div class="cf-app"><div class="cf-appbar"><h1>Inventory</h1><bu
 
 /** The kit's pieces in the theme, the way a hub screen shows them. */
 function ThemeSample({ tokens, mode }: { tokens: ThemeTokens; mode: ThemeMode }) {
-  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>:root { ${themeVars(tokens)}; color-scheme: ${mode}; } html, body { margin: 0; background: var(--cf-bg); }\n${kitCss}</style></head><body class="cf">${SAMPLE}</body></html>`;
+  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${facesFor(tokens)}\n:root { ${themeVars(tokens)}; color-scheme: ${mode}; } html, body { margin: 0; background: var(--cf-bg); }\n${kitCss}</style></head><body class="cf">${SAMPLE}</body></html>`;
   return <iframe title="Theme preview" sandbox="" srcDoc={doc} className="h-80 w-full rounded-lg border border-border" />;
+}
+
+const WIDTHS = { phone: "Phone", desktop: "Desktop" } as const;
+type Width = keyof typeof WIDTHS;
+
+/** Toggle buttons for picking several of a set. */
+function Picks<T extends string>({ label, options, on, set }: { label: string; options: [T, string][]; on: T[]; set: (next: T[]) => void }) {
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1">
+      {options.map(([id, name]) => {
+        const pressed = on.includes(id);
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={pressed}
+            // At least one stays on.
+            onClick={() => set(pressed ? (on.length > 1 ? on.filter((x) => x !== id) : on) : [...on, id])}
+            className={`min-h-8 rounded-md border px-3 text-sm ${pressed ? "border-accent bg-accent/15 text-accent" : "border-border text-ink-muted"}`}
+          >
+            {name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The status panel at several states at once, at phone and desktop width, light and dark. */
+export function StateScrubber({ config, mode }: { config: EngineConfig; mode: ThemeMode }) {
+  const states = useMemo(() => sampleStates(config), [config]);
+  const [picked, setPicked] = useState<string[]>(["start", "low", "high"]);
+  const [modes, setModes] = useState<ThemeMode[]>([mode]);
+  const [widths, setWidths] = useState<Width[]>(["phone"]);
+  useEffect(() => setModes([mode]), [mode]);
+  const shown = states.filter((s) => picked.includes(s.id));
+  return (
+    <section className="flex flex-col gap-2" aria-label="State preview">
+      <h3 className="text-sm font-medium">At different states</h3>
+      <p className="text-xs text-ink-muted">
+        The panel with the starting values and at its edges, side by side, to check it still looks right when values are low,
+        full or long. The UI engineer checks its screens the same way.
+      </p>
+      <Picks label="States" options={states.map((s) => [s.id, s.label])} on={picked} set={setPicked} />
+      <div className="flex flex-wrap gap-3">
+        <Picks label="Modes" options={[["light", "Light"], ["dark", "Dark"]]} on={modes} set={setModes} />
+        <Picks label="Widths" options={Object.entries(WIDTHS) as [Width, string][]} on={widths} set={setWidths} />
+      </div>
+      <div className="flex flex-wrap items-start gap-3">
+        {widths.flatMap((w) =>
+          modes.flatMap((m) =>
+            shown.map((s) => {
+              const label = `${s.label} · ${WIDTHS[w]} · ${m === "light" ? "Light" : "Dark"}`;
+              return (
+                <figure key={`${w}-${m}-${s.id}`} aria-label={label} className={`m-0 flex flex-col gap-1 ${w === "phone" ? "w-[390px] max-w-full" : "w-full"}`}>
+                  <figcaption className="text-xs text-ink-muted">{label}</figcaption>
+                  <PanelPreview config={config} state={s.state} mode={m} />
+                </figure>
+              );
+            }),
+          ),
+        )}
+      </div>
+    </section>
+  );
 }
 
 /** The panel as SillyTavern shows it, fed the given state instead of a chat. */
@@ -287,9 +369,9 @@ export function PanelPreview({ config, state, delta, mode }: { config: EngineCon
       `<script>window.Mvu = { getMvuData: function () { return ${data}; } }; window.getCurrentMessageId = function () { return 0; };` +
       `new ResizeObserver(function () { parent.postMessage({ cfPanelHeight: document.documentElement.scrollHeight }, "*"); }).observe(document.documentElement);</script>`;
     // The card theme, on the theme's own background, the way the engine core styles it.
-    const look = `<style>html { ${vars}; color-scheme: ${dark ? "dark" : "light"}; } body { font-family: var(--cf-font); color: var(--cf-text); }</style>`;
+    const look = `<style>${facesFor(tokens)}\nhtml { ${vars}; color-scheme: ${dark ? "dark" : "light"}; } body { font-family: var(--cf-font); color: var(--cf-text); }</style>`;
     return panelHtml(config).replace("<head>", `<head>${shim}${look}`);
-  }, [config, state, delta, vars, dark]);
+  }, [config, state, delta, vars, dark, tokens]);
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source === ref.current?.contentWindow && typeof e.data?.cfPanelHeight === "number") setHeight(Math.min(800, e.data.cfPanelHeight + 20));

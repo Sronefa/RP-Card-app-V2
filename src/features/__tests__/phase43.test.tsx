@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { explainFailure, testImageProvider, testTextProvider } from "../../ai/connection";
@@ -63,8 +63,12 @@ describe("no jailbreak for the engineer", () => {
     expect(useAiSettings.getState().settings.engineerJailbreak).toBe(true);
     await ask("engineer");
     expect(lastText()).toBe(`hi\n\n${JB}`);
+    await settle();
   });
 });
+
+/** Lets the settings page's own loads (balances, model lists) finish before the page goes away. */
+const settle = () => act(async () => new Promise((r) => setTimeout(r, 50)));
 
 let n = 0;
 const call = (name: string, input: Record<string, unknown> = {}): ToolCall => ({ id: `c${++n}`, name, input });
@@ -199,5 +203,6 @@ describe("connection test", () => {
     fireEvent.click(screen.getByRole("button", { name: "Test Nano" }));
     await waitFor(() => expect(screen.getByRole("status", { name: "Test result for Nano" }).textContent).toMatch(/Works\. alpha answered/));
     expect(script.requests.at(-1)).toMatchObject({ model: "alpha", maxTokens: 16 });
+    await settle();
   });
 });

@@ -75,6 +75,8 @@ describe("UI engineer", () => {
         ["add_rule", { module: "bank", name: "Bank actions", content: '<action app="bank"> means a deposit.', constant: true }],
         ["write_file", { module: "nope", file: "js", content: "" }],
       ]),
+      reply("Done building."),
+      // The design self-review before the report.
       reply("Built the bank screen and its rule."),
       reply("A bank screen is ready: tap 🏦 Bank above the input box."),
     ];
@@ -83,7 +85,7 @@ describe("UI engineer", () => {
     const proposal = await screen.findByRole("region", { name: "Proposal 1" });
 
     // The lead: its own model settings, planning tools only, and the engine in the message.
-    const [lead, worker, , leadAgain] = script.requests;
+    const [lead, worker, , review, leadAgain] = script.requests;
     expect(lead).toMatchObject({ effort: "max", maxTokens: 64000 });
     expect(lead.system).toContain("You are the lead");
     expect(lead.tools.map((t) => t.name)).toEqual(expect.arrayContaining(["run_worker", "list_lore", "lint"]));
@@ -107,6 +109,11 @@ describe("UI engineer", () => {
     expect(workerResults.find((r) => r.id.endsWith("write_file"))).toMatchObject({ isError: true });
     expect(workerResults.find((r) => r.id.endsWith("write_file"))!.content).toMatch(/isn't in your brief/);
 
+    // Having built a screen, the worker reviews it against the style checklist before it reports.
+    const asked = review.messages.at(-1)!;
+    expect(asked.role === "user" && asked.text).toContain("Before you report");
+    expect(asked.role === "user" && asked.text).toContain("**Focus:**");
+
     // The lead keeps only the worker's report, never its history.
     expect(leadAgain.messages.some((m) => m.role === "assistant" && m.toolCalls.some((c) => c.name === "create_module"))).toBe(false);
     const report = leadAgain.messages.flatMap((m) => (m.role === "tool" ? m.results : [])).find((r) => r.id.endsWith("run_worker"))!;
@@ -118,7 +125,7 @@ describe("UI engineer", () => {
     expect(engine().modules!.some((m) => m.id === "bank")).toBe(false);
     expect(within(proposal).getByText("modules/bank/js")).toBeInTheDocument();
     expect(within(proposal).getByText(/Create the hub screen module "Bank"/i)).toBeInTheDocument();
-    expect(screen.getByText(/Worker: Build a bank hub app\. \(3 steps\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Worker: Build a bank hub app\. \(4 steps\)/)).toBeInTheDocument();
     expect(screen.getByText("Created bank")).toBeInTheDocument();
 
     const before = useEditor.getState().past.length;

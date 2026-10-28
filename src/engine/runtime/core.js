@@ -119,7 +119,8 @@ function cfMode(settings) {
 
 function cfThemeCss(settings) {
   settings = settings || cfSettings();
-  var css = ":root { " + CF_CONFIG.theme[cfMode(settings)];
+  // The bundled fonts the card uses come first: @font-face rules with the font inside.
+  var css = (CF_CONFIG.theme.fonts ? CF_CONFIG.theme.fonts + "\n" : "") + ":root { " + CF_CONFIG.theme[cfMode(settings)];
   if (/^#[0-9a-f]{3,8}$/i.test(settings.accent || "")) css += "; --cf-accent: " + settings.accent;
   var scale = Number(settings.textScale) || 1;
   css += "; --cf-scale: " + Math.min(1.6, Math.max(0.7, scale)) + "; }";
