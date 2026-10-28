@@ -6,6 +6,7 @@ import { settingsAppModule } from "../../engine/modules/settingsApp";
 import type { EngineModule } from "../../engine/modules/types";
 import { scriptSource } from "../../engine/runtime";
 import coreSource from "../../engine/runtime/core.js?raw";
+import artSource from "../../engine/runtime/art.js?raw";
 import fxSource from "../../engine/runtime/fx.js?raw";
 import kitCss from "../../engine/runtime/kit.css?raw";
 import { newEngine, settingsSource } from "../../engine/sheet";
@@ -29,7 +30,7 @@ function loadCore(): Core {
     "eventOn",
     "eventRemoveListener",
     "eventEmit",
-    `${fxSource}\n${coreSource}\nreturn { cfUi, cfFx, cfFrame, cfStyle };`,
+    `${fxSource}\n${artSource}\n${coreSource}\nreturn { cfUi, cfFx, cfFrame, cfStyle };`,
   )(
     config,
     () => ({ cardforge: { settings: stored } }),

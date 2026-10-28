@@ -383,4 +383,92 @@ app.onState(draw);`,
   script: "",
 };
 
-export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet];
+const worldMap: EngineModule = {
+  ...base(),
+  id: "world-map",
+  name: "World map",
+  description:
+    "A hub app that needs no art: a procedural island drawn from the card's name with CF.art.mapImage, the places as pins on it, a crest for each faction from CF.art.sigil, and a sky for the time of day behind the header.",
+  slot: "overlay",
+  button: "🗺️ Map",
+  vars: [
+    newVar({ id: "ex-w-where", group: "World", name: "Location", type: "choice", options: ["Saltreach", "Old Harbor", "Ash Tower"], start: "Saltreach", rule: "Where {{user}} is now." }),
+    newVar({ id: "ex-w-part", group: "World", name: "PartOfDay", type: "choice", options: ["Morning", "Afternoon", "Evening", "Night"], start: "Morning", rule: "The time of day in the scene." }),
+  ],
+  rules: [
+    {
+      comment: "Map actions",
+      content: '<action app="map">{"travel":P}</action> means {{user}} sets off for P: narrate the way there and set /World/Location to P on arrival.',
+      constant: false,
+      keys: ['app="map"'],
+      depth: 2,
+      order: 100,
+    },
+  ],
+  regex: [],
+  html: "",
+  // White on the sky picture (not a theme colour: the sky is a picture, dark at night and bright by day, so it carries a shadow).
+  css: `.wm-sky { padding: 18px 16px 14px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; color: white; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+.wm-sky h1 { font-size: 1.4em; }
+.wm-factions { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.wm-faction { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wm-faction span { overflow-wrap: anywhere; }`,
+  js: `var PLACES = [
+  { name: "Saltreach", x: 30, y: 62 },
+  { name: "Old Harbor", x: 56, y: 44 },
+  { name: "Ash Tower", x: 70, y: 26 },
+];
+var FACTIONS = ["The Tide Guild", "House Varn", "Order of Ash"];
+// The same seed draws the same island every time: the card's own name.
+var image = CF.art.mapImage({ kind: "island", seed: "Saltreach", places: PLACES, palette: "parchment" });
+function draw() {
+  var w = app.state("World") || {};
+  var pins = PLACES.map(function (p) {
+    return p.name === w.Location
+      ? { label: p.name, x: p.x, y: p.y, here: true }
+      : { label: p.name, x: p.x, y: p.y, send: "map", payload: { travel: p.name }, text: "I set off for " + p.name + "." };
+  });
+  root.innerHTML = '<div class="cf-app">' +
+    '<div class="wm-sky" style="background:' + CF.art.sky(w.PartOfDay) + '"><h1>' + CF.ui.esc(w.Location || "Somewhere") + '</h1><span class="cf-small">' + CF.ui.esc(w.PartOfDay || "") + "</span></div>" +
+    '<div class="cf-appbody cf-stack">' +
+      CF.ui.map({ image: image, label: "The isle", pins: pins }) +
+      CF.art.divider("flourish") +
+      '<div class="wm-factions">' + FACTIONS.map(function (f) { return '<div class="wm-faction">' + CF.art.sigil(f, { size: 36 }) + "<span>" + CF.ui.esc(f) + "</span></div>"; }).join("") + "</div>" +
+    "</div></div>";
+}
+draw();
+app.onState(draw);`,
+  script: "",
+};
+
+const statChart: EngineModule = {
+  ...base(),
+  id: "stat-chart",
+  name: "Stat chart",
+  description: "A panel section drawn with CF.art: the hero's attributes as a radar, stamina as a dial gauge that turns red when low, and a sparkline of gold over the last replies.",
+  slot: "panel",
+  vars: [
+    newVar({ id: "ex-s-attrs", group: "Stats", name: "Attributes", type: "counts", start: "STR: 12, DEX: 15, INT: 9, WIS: 11, CHA: 14", rule: "Raise one attribute by 1 when the story earns it; never above 20." }),
+    newVar({ id: "ex-s-stamina", group: "Stats", name: "Stamina", type: "number", start: "70", min: 0, max: 100, rule: "−10 to −25 for hard effort; +40 after rest." }),
+    newVar({ id: "ex-s-gold", group: "Stats", name: "GoldLog", type: "list", start: "40, 55, 30", rule: "Insert the gold {{user}} has at the end of each reply; keep the last 8." }),
+  ],
+  rules: [],
+  regex: [],
+  html: "",
+  css: ".sc { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; } .sc-radar { grid-row: span 2; max-width: 200px; } .sc-gold { display: flex; align-items: center; gap: 6px; font-size: 0.85em; color: var(--cf-muted); }",
+  js: `function draw() {
+  var s = app.state("Stats") || {};
+  var attrs = s.Attributes || {};
+  var gold = (Array.isArray(s.GoldLog) ? s.GoldLog : []).map(Number).filter(function (n) { return !isNaN(n); });
+  root.innerHTML = '<div class="sc">' +
+    '<div class="sc-radar">' + CF.art.chart("radar", Object.keys(attrs).map(function (k) { return { label: k, value: Number(attrs[k]) || 0 }; }), { max: 20, title: "Attributes", empty: "No attributes yet" }) + "</div>" +
+    CF.art.gauge({ value: Number(s.Stamina) || 0, max: 100, label: "Stamina", danger: 0.25, ticks: 10 }) +
+    '<div class="sc-gold">Gold ' + (gold.length > 1 ? CF.art.chart("spark", gold, { title: "Gold" }) : "") + "<b>" + (gold.length ? gold[gold.length - 1] : 0) + "</b></div>" +
+    "</div>";
+}
+draw();
+app.onState(draw);`,
+  script: "",
+};
+
+export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart];

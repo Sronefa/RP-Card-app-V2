@@ -50,7 +50,7 @@ How to make engine screens beautiful, not just correct: design basics with befor
 ## Images and backgrounds
 
 - **Backgrounds:** `CF.assets.background(place, time)` gives the place's art at that time of day (then any time), or null. Put it under a scrim so text stays readable: a gradient from transparent to `--cf-bg` at the bottom where the text sits, or a 40 to 60% dark overlay for text over the whole picture.
-- **Gradient fallback:** until the art exists, draw the same mood with gradients in the theme's colours (a dusk sky, a stone wall, a neon street) so the layout and the look are right without it.
+- **Gradient fallback:** until the art exists, draw the same mood with gradients in the theme's colours (a dusk sky, a stone wall, a neon street) so the layout and the look are right without it. `CF.art.sky(time)` gives a sky for the time of day, and `CF.art` draws maps, crests, charts and textures with no image at all (the procedural-art skill).
 - **Portraits and icons:** `CF.assets.portrait(name, { emotion })` and `CF.assets.icon(item)`, in a frame that fits the genre, with `object-fit: cover` and a fixed `aspect-ratio`. Fallback: the avatar letter, or a kit icon on a tinted circle.
 - **Scene art:** `CF.assets.scene("title" | "map" | "wallpaper")` for title screens, maps and phone wallpapers.
 - **Missing art:** request_asset with a one-sentence prompt that names the subject, the framing and the visual bible's palette ("The harbor at dusk, wide shot, teal and amber, fog over the water"). The screen must look finished before the art arrives.

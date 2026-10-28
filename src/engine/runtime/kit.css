@@ -146,6 +146,62 @@
 @keyframes cf-pulse { 50% { transform: scale(1.06); } }
 .cf-fx-typing::after { content: "▍"; opacity: 0.6; }
 @media (prefers-reduced-motion: reduce) { .cf-meter-fill, .cf-toast, .cf-meter.flash .cf-meter-fill { transition: none; animation: none; } }
+/* Procedural art (CF.art). */
+.cf-art { margin: 0; max-width: 100%; }
+.cf-art svg { display: block; width: 100%; height: auto; overflow: visible; }
+.cf-art-empty { color: var(--cf-muted); font-size: 0.85em; padding: 8px 0; }
+.cf-art-text { fill: var(--cf-muted); font-size: 10px; font-family: var(--cf-font); }
+.cf-art-axis, .cf-art-grid { fill: none; stroke: color-mix(in srgb, var(--cf-muted) 30%, transparent); stroke-width: 1; }
+.cf-art-stroke { fill: none; stroke: var(--cf-accent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.cf-art-area { fill: color-mix(in srgb, var(--cf-accent) 18%, transparent); }
+.cf-art-dot { fill: var(--cf-surface); stroke: var(--cf-accent); stroke-width: 2; }
+.cf-art-shape { fill: color-mix(in srgb, var(--cf-accent) 30%, transparent); stroke: var(--cf-accent); stroke-width: 2; stroke-linejoin: round; }
+.cf-art-radar svg, .cf-art-donut svg { max-width: 240px; margin: 0 auto; }
+.cf-art-spark { display: inline-block; width: 4em; height: 1.2em; vertical-align: middle; }
+.cf-art-spark polyline { fill: none; stroke: var(--cf-accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.cf-art-track { fill: none; stroke: color-mix(in srgb, var(--cf-muted) 22%, transparent); stroke-width: 5; }
+.cf-art-seg { fill: none; stroke-width: 5; }
+.cf-art-center { fill: var(--cf-text); font-size: 7px; font-weight: 600; font-family: var(--cf-font); }
+.cf-art-donut { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.cf-art-donut svg { width: 120px; flex: none; margin: 0; }
+.cf-art-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.85em; min-width: 0; }
+.cf-art-legend li { display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.cf-art-legend i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.cf-art-legend b { margin-left: auto; padding-left: 8px; font-variant-numeric: tabular-nums; }
+.cf-art-bars { display: flex; flex-direction: column; gap: 6px; }
+.cf-art-bar { display: grid; grid-template-columns: minmax(0, 7em) minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 0.9em; }
+.cf-art-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cf-muted); }
+.cf-art-bar-track { height: 8px; border-radius: 99px; background: color-mix(in srgb, var(--cf-muted) 20%, transparent); overflow: hidden; }
+.cf-art-bar-track i { display: block; height: 100%; border-radius: inherit; }
+.cf-art-bar b { font-variant-numeric: tabular-nums; }
+.cf-art-gauge { position: relative; display: inline-flex; flex-direction: column; align-items: center; width: 120px; max-width: 100%; }
+.cf-art-gauge path { fill: none; stroke-linecap: round; }
+.cf-art-gauge-track { stroke: color-mix(in srgb, var(--cf-muted) 22%, transparent); stroke-width: 7; }
+.cf-art-gauge-danger { stroke: color-mix(in srgb, var(--cf-bad) 35%, transparent); stroke-width: 7; }
+.cf-art-gauge-fill { stroke: var(--cf-accent); stroke-width: 7; }
+.cf-art-gauge.low .cf-art-gauge-fill { stroke: var(--cf-bad); }
+.cf-art-gauge-ticks { stroke: var(--cf-muted); stroke-width: 1; opacity: 0.6; }
+.cf-art-gauge-needle { stroke: var(--cf-text); stroke-width: 2.5; }
+.cf-art-gauge-hub { fill: var(--cf-text); }
+.cf-art-gauge-value { fill: var(--cf-text); font-size: 15px; font-weight: 700; font-family: var(--cf-font); font-variant-numeric: tabular-nums; }
+.cf-art-gauge-unit { fill: var(--cf-muted); font-size: 9px; font-weight: 400; }
+.cf-art-gauge-label { font-size: 0.75em; color: var(--cf-muted); }
+.cf-art-frame { position: relative; padding: 18px 16px; border: 1px solid color-mix(in srgb, var(--cf-accent) 35%, var(--cf-border)); border-radius: var(--cf-radius); background-color: var(--cf-surface); background-image: var(--cf-texture); box-shadow: var(--cf-shadow); }
+.cf-art-corner { position: absolute; width: 28px; height: 28px; fill: none; stroke: var(--cf-accent); stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
+.cf-art-corner.tl { top: 3px; left: 3px; }
+.cf-art-corner.tr { top: 3px; right: 3px; transform: scaleX(-1); }
+.cf-art-corner.bl { bottom: 3px; left: 3px; transform: scaleY(-1); }
+.cf-art-corner.br { bottom: 3px; right: 3px; transform: scale(-1, -1); }
+.cf-art-frame.tech { border-radius: 0; clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px); }
+.cf-art-frame.sketch { border-radius: 3px 8px 4px 9px; }
+.cf-art-frame-title { position: absolute; top: -0.7em; left: 50%; transform: translateX(-50%); padding: 0 10px; background: var(--cf-surface); color: var(--cf-accent); font-family: var(--cf-heading); font-size: 0.85em; letter-spacing: 0.06em; white-space: nowrap; max-width: calc(100% - 64px); overflow: hidden; text-overflow: ellipsis; }
+.cf-art-frame.tech .cf-art-frame-title { position: static; transform: none; display: block; padding: 0 0 6px; text-align: left; text-transform: uppercase; }
+.cf-art-divider { display: block; width: 100%; height: 20px; fill: var(--cf-accent); stroke: none; }
+.cf-art-divider-line, .cf-art-divider.circuit path { fill: none; stroke: color-mix(in srgb, var(--cf-accent) 45%, var(--cf-border)); stroke-width: 1; }
+.cf-art-sigil { display: inline-block; flex: none; color: var(--cf-art-sigil, var(--cf-accent)); }
+.cf-art-sigil-arms { fill: currentColor; opacity: 0.85; }
+.cf-art-sigil-ring { fill: none; stroke: currentColor; stroke-width: 2; }
+.cf-art-sigil-core { fill: var(--cf-surface); stroke: currentColor; stroke-width: 2; }
 /* Less motion (the device's or the player's own setting): the kit holds still. */
 .cf-reduce-motion *, .cf-reduce-motion *::before, .cf-reduce-motion *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 .cf-reduce-motion .cf-fx-glow::after { opacity: 0.7; }
