@@ -3,6 +3,7 @@
  * sends messages, runs the model's tool calls as proposals, and applies the ones the user accepts.
  */
 import { create } from "zustand";
+import type { CardDataV3 } from "../card";
 import { getChat, loreChatKey, saveChat, deleteChat, type CardRecord } from "../db/db";
 import { useEditor } from "../editor/store";
 import { newChat, type ChatRecord, type Proposal } from "../ai/records";
@@ -55,6 +56,8 @@ export interface ChatState {
     request: string,
     display: string,
     replies: { text: string; toolCalls: ToolCall[] }[],
+    /** The card, when it isn't the open one (the engineer working in the background). */
+    data?: CardDataV3,
   ) => Promise<void>;
   /** Has the critic read the card, then sends its notes to the co-writer to fix. */
   critique: () => Promise<void>;
@@ -106,8 +109,12 @@ function createChatStore(channel: Channel) {
     }
 
     /** Turns the model's tool calls into proposals, and tells the model what happened to each. */
-    function runTools(chat: ChatRecord, calls: ToolCall[], fixed: Record<string, string[]> = {}): { chat: ChatRecord; results: ToolResult[] } {
-      const data = useEditor.getState().record?.card.data;
+    function runTools(
+      chat: ChatRecord,
+      calls: ToolCall[],
+      fixed: Record<string, string[]> = {},
+      data = useEditor.getState().record?.card.data,
+    ): { chat: ChatRecord; results: ToolResult[] } {
       const proposals = [...chat.proposals];
       const results = calls.map((call): ToolResult => {
         if (!data)
@@ -259,13 +266,15 @@ function createChatStore(channel: Channel) {
         }
       },
 
-      async addTurn(cardId, request, display, replies) {
+      async addTurn(cardId, request, display, replies, data) {
         const key = channel.key(cardId);
-        if (get().chat?.cardId !== key) await get().load(cardId);
+        // Only the open card's chat is switched to; a card worked on in the background gets its stored chat.
+        const isOpen = useEditor.getState().record?.id === cardId;
+        if (isOpen && get().chat?.cardId !== key) await get().load(cardId);
         let chat = get().chat?.cardId === key ? get().chat! : ((await getChat(key)) ?? newChat(key));
         const messages: ChatMessage[] = [...chat.messages, { role: "user", text: request, display }];
         for (const r of replies) {
-          const ran = runTools({ ...chat, messages }, r.toolCalls);
+          const ran = runTools({ ...chat, messages }, r.toolCalls, {}, isOpen ? undefined : data);
           chat = ran.chat;
           // Another conversation wrote these, so there is no provider content to echo back.
           messages.push({
