@@ -8,6 +8,7 @@ import { sceneCheck, scriptSource } from "../../engine/runtime";
 import artSource from "../../engine/runtime/art.js?raw";
 import coreSource from "../../engine/runtime/core.js?raw";
 import fxSource from "../../engine/runtime/fx.js?raw";
+import gameSource from "../../engine/runtime/game.js?raw";
 import moodSource from "../../engine/runtime/mood.js?raw";
 import sceneSource from "../../engine/runtime/scene.js?raw";
 import { newEngine, settingsSource } from "../../engine/sheet";
@@ -37,7 +38,7 @@ function load() {
     "eventOn",
     "eventRemoveListener",
     "eventEmit",
-    `${fxSource}\n${artSource}\n${sceneSource}\n${moodSource}\n${coreSource}\nreturn { cfScene, api: CardForgeApi };`,
+    `${fxSource}\n${artSource}\n${sceneSource}\n${moodSource}\n${gameSource}\n${coreSource}\nreturn { cfScene, api: CardForgeApi };`,
   )(
     { version: "t", theme: { mode: "dark", dark: "", light: "" }, kit: kitCss, modules: [], assets: [] },
     () => ({ ...chat, cardforge: { ...(chat.cardforge as object), settings: { motion } } }),

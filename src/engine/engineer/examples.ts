@@ -4,6 +4,7 @@
  */
 import { newVar } from "../sheet";
 import type { EngineModule } from "../modules/types";
+import { MINIGAME_TEMPLATES } from "./minigames";
 
 const base = (): Pick<EngineModule, "version" | "tags" | "requires" | "enabled" | "settings"> => ({
   version: "1.0.0",
@@ -631,4 +632,4 @@ app.onState(draw);`,
   script: "",
 };
 
-export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart, prologue, chapterCard, companionCard, dangerMeter];
+export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart, prologue, chapterCard, companionCard, dangerMeter, ...MINIGAME_TEMPLATES];
