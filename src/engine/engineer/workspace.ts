@@ -10,7 +10,7 @@ import { forkModule } from "../modules/fork";
 import { addModules, cleanModule } from "../modules/pack";
 import { SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../modules/types";
 import { newVar, themeOf, VAR_TYPES, type EngineConfig, type EngineVar, type VarType } from "../sheet";
-import { cleanOverrides, FONTS, PRESET_IDS, TEXTURES, type PresetId, type ThemeTokens } from "../theme";
+import { AMBIENCES, cleanMoods, cleanOverrides, cleanPortraits, FONTS, PRESET_IDS, TEXTURES, type PresetId, type PortraitBinding, type ThemeMood, type ThemeTokens } from "../theme";
 
 export const MODULE_FILES = ["html", "css", "js", "script"] as const;
 export type ModuleFile = (typeof MODULE_FILES)[number];
@@ -347,9 +347,66 @@ export function applyOp(config: EngineConfig, call: ToolCall): { config: EngineC
       const overrides = { ...theme.overrides, ...clean };
       for (const key of strings(input, "reset") ?? []) delete overrides[key as keyof ThemeTokens];
       return {
-        config: { ...config, theme: { preset: (preset as PresetId | undefined) ?? theme.preset, overrides } },
+        config: { ...config, theme: { ...theme, preset: (preset as PresetId | undefined) ?? theme.preset, overrides } },
         summary: "Change the card theme",
       };
+    }
+    case "set_mood": {
+      const theme = themeOf(config);
+      const name = str(input, "name") ?? "";
+      if (!name.trim()) throw new ToolInputError(`"name" is required`);
+      const same = (m: { name: string }) => m.name.trim().toLowerCase() === name.trim().toLowerCase();
+      const moods = cleanMoods(theme.moods);
+      if (bool(input, "remove")) {
+        if (!moods.some(same)) throw new ToolInputError(`There's no mood named "${name}". The moods: ${moods.map((m) => m.name).join(", ") || "none"}.`);
+        return { config: { ...config, theme: { ...theme, moods: moods.filter((m) => !same(m)) } }, summary: `Remove the ${name} mood` };
+      }
+      const was = moods.find(same);
+      const raw = input.tokens;
+      if (raw !== undefined && (!raw || typeof raw !== "object" || Array.isArray(raw))) throw new ToolInputError(`"tokens" must be an object`);
+      const tokens = { ...((raw ?? {}) as Partial<ThemeTokens>) };
+      for (const key of ["font", "heading"] as const) if (typeof tokens[key] === "string" && FONTS[tokens[key]!]) tokens[key] = FONTS[tokens[key]!];
+      if (typeof tokens.texture === "string" && TEXTURES[tokens.texture]) tokens.texture = TEXTURES[tokens.texture];
+      const clean = cleanOverrides(tokens);
+      const refused = Object.keys(tokens).filter((k) => !(k in clean));
+      if (refused.length) throw new ToolInputError(`These tokens aren't usable: ${refused.join(", ")}. Colours are #hex, rgb() or hsl(); fonts and textures by name.`);
+      const ambience = input.ambience;
+      if (ambience !== undefined && ambience !== "" && !(AMBIENCES as readonly unknown[]).includes(ambience))
+        throw new ToolInputError(`"ambience" must be one of ${AMBIENCES.join(", ")}`);
+      const draft: Partial<ThemeMood> = { ...was, name, tokens: raw !== undefined ? clean : (was?.tokens ?? {}) };
+      const path = str(input, "path", true);
+      if (path !== undefined) draft.path = path;
+      if (!draft.path?.trim()) throw new ToolInputError(`"path" is required: the value the mood follows`);
+      if (input.is !== undefined) draft.is = strings(input, "is");
+      for (const k of ["min", "max"] as const) if (input[k] !== undefined) draft[k] = typeof input[k] === "number" ? (input[k] as number) : undefined;
+      if (input.tint !== undefined) draft.tint = input.tint as ThemeMood["tint"];
+      if (ambience !== undefined) draft.ambience = (ambience || undefined) as ThemeMood["ambience"];
+      const [mood] = cleanMoods([draft]);
+      if (input.tint && !mood.tint) throw new ToolInputError(`"tint" must be { color: a #hex, rgb() or hsl() colour, strength: 0.05 to 0.6 }`);
+      if (!Object.keys(mood.tokens).length && !mood.tint && !mood.ambience) throw new ToolInputError("The mood changes nothing: give it tokens, a tint or an ambience.");
+      const next = was ? moods.map((m) => (same(m) ? { ...mood, id: m.id } : m)) : cleanMoods([...moods, mood]);
+      return { config: { ...config, theme: { ...theme, moods: next } }, summary: `${was ? "Change" : "Add"} the ${name} mood` };
+    }
+    case "set_portrait": {
+      const theme = themeOf(config);
+      const name = (str(input, "name") ?? "").trim();
+      if (!name) throw new ToolInputError(`"name" is required`);
+      const same = (b: PortraitBinding) => b.name.toLowerCase() === name.toLowerCase();
+      const list = cleanPortraits(theme.portraits);
+      if (bool(input, "remove")) {
+        if (!list.some(same)) throw new ToolInputError(`${name}'s portrait doesn't follow the state.`);
+        return { config: { ...config, theme: { ...theme, portraits: list.filter((b) => !same(b)) } }, summary: `Stop ${name}'s portrait following the state` };
+      }
+      const was = list.find(same);
+      const draft: Partial<PortraitBinding> = { ...was, name };
+      for (const k of ["emotion", "outfit"] as const) if (input[k] !== undefined) draft[k] = str(input, k, true) || undefined;
+      if (input.hurt !== undefined) draft.hurt = (input.hurt || undefined) as PortraitBinding["hurt"];
+      for (const k of ["emotions", "outfits"] as const) if (input[k] !== undefined) draft[k] = strings(input, k);
+      const [binding] = cleanPortraits([draft]);
+      if (!binding) throw new ToolInputError("Give at least one of emotion, outfit, hurt { path, below, emotion }, emotions or outfits.");
+      if (input.hurt && !binding.hurt) throw new ToolInputError(`"hurt" must be { path, below: a number, emotion }`);
+      const next = was ? list.map((b) => (same(b) ? binding : b)) : [...list, binding];
+      return { config: { ...config, theme: { ...theme, portraits: next } }, summary: `Make ${name}'s portrait follow the state` };
     }
     case "set_panel": {
       const panel = { ...config.panel };

@@ -371,6 +371,13 @@ var cfUi = {
     if (src) return '<span class="cf-avatar" style="background-image:url(\'' + cfEsc(src).replace(/'/g, "%27") + '\')" role="img" aria-label="' + cfEsc(name || "") + '"></span>';
     return '<span class="cf-avatar" aria-hidden="true">' + cfEsc(String(name || "?").charAt(0).toUpperCase()) + "</span>";
   },
+  /**
+   * A character's portrait that follows the state: the emotion and outfit their values name, with a
+   * crossfade when they change. { emotion, outfit } fix the look; { size: "s" | "m" | "l", shape: "tall" }.
+   */
+  portrait: function (name, o) {
+    return cfPortraitHtml(name, o, "latest");
+  },
   list: function (items) {
     return (
       '<ul class="cf-list">' +
@@ -553,6 +560,9 @@ function cfFrame(win, options) {
   listen("cf:settings", function (settings) {
     cfStyle(doc, settings);
   });
+  // Moods and live portraits follow this screen's state.
+  var living = cfLivingStart(doc, messageId, listen);
+  if (living) cleanups.push(living);
 
   var routes = null;
   var history = [];
@@ -621,6 +631,23 @@ function cfFrame(win, options) {
     fx: cfFx,
     art: cfArt,
     scene: cfScene,
+    /** The moods on at this screen's message. */
+    mood: {
+      active: function () {
+        return cfMood.active(messageId);
+      },
+      is: function (idOrName) {
+        return cfMood.is(idOrName, messageId);
+      },
+      list: cfMood.list,
+      look: function (name) {
+        return cfMood.look(name, messageId);
+      },
+    },
+    /** A character's portrait at this screen's state (see CF.ui.portrait). */
+    portrait: function (name, o) {
+      return cfPortraitHtml(name, o, messageId);
+    },
     settings: cfSettings,
     setSettings: cfSetSettings,
     asset: cfAsset,
@@ -1087,6 +1114,7 @@ var CardForgeApi = {
   fx: cfFx,
   art: cfArt,
   scene: cfScene,
+  mood: cfMood,
   frame: cfFrame,
   mount: cfMount,
   mountSlot: cfMountSlot,

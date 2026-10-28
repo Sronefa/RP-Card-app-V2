@@ -44,6 +44,51 @@ export interface CardTheme {
   preset: PresetId;
   /** The author's changes, applied to both modes. */
   overrides: Partial<ThemeTokens>;
+  /** Moods: theme changes that follow the game state, in order (a later one wins). */
+  moods?: ThemeMood[];
+  /** Characters whose portrait follows the state: expression, outfit, injury. */
+  portraits?: PortraitBinding[];
+}
+
+/** The ambience a mood can lay over screens: CF.fx particles. */
+export const AMBIENCES = ["rain", "snow", "embers", "petals", "dust"] as const;
+export type Ambience = (typeof AMBIENCES)[number];
+
+/**
+ * A mood: while a value of the state matches, the theme shifts. Colours and the texture change, a
+ * tint lies over the screens and particles drift over the open screen, all fading in and out.
+ */
+export interface ThemeMood {
+  id: string;
+  /** What the player and the author call it: "Night", "Danger", "Corrupted". */
+  name: string;
+  /** The value it follows ("Time.PartOfDay", "World.Danger"). */
+  path: string;
+  /** Text values that turn it on, any of them (case doesn't matter). */
+  is?: string[];
+  /** A number range that turns it on, both ends included. */
+  min?: number;
+  max?: number;
+  /** Theme changes while it's on, for both modes. */
+  tokens: Partial<ThemeTokens>;
+  /** A colour laid over the screens, 0 to 0.6 strong. */
+  tint?: { color: string; strength: number };
+  ambience?: Ambience;
+}
+
+/** A character whose portrait follows the state. Paths name values; a missing one is left out. */
+export interface PortraitBinding {
+  /** The character's name, as the card's images are tagged. */
+  name: string;
+  /** The value that holds their emotion ("Mina.Mood"). */
+  emotion?: string;
+  /** The value that holds their outfit ("Mina.Outfit"). */
+  outfit?: string;
+  /** Below this, they look hurt: { path: "Mina.Health", below: 30, emotion: "hurt" }. */
+  hurt?: { path: string; below: number; emotion: string };
+  /** The emotions and outfits to have art for, when the values aren't fixed lists. */
+  emotions?: string[];
+  outfits?: string[];
 }
 
 export const FONTS: Record<string, string> = {
@@ -551,25 +596,98 @@ export function cleanOverrides(overrides: Partial<ThemeTokens> | undefined): Par
   return out;
 }
 
-/** The tokens as CSS custom properties. */
-export function themeVars(tokens: ThemeTokens): string {
-  return [
-    `--cf-bg: ${tokens.bg}`,
-    `--cf-surface: ${tokens.surface}`,
-    `--cf-surface2: ${tokens.surface2}`,
-    `--cf-text: ${tokens.text}`,
-    `--cf-muted: ${tokens.muted}`,
-    `--cf-accent: ${tokens.accent}`,
-    `--cf-accent2: ${tokens.accent2}`,
-    `--cf-border: ${tokens.border}`,
-    `--cf-good: ${tokens.good}`,
-    `--cf-bad: ${tokens.bad}`,
-    `--cf-radius: ${tokens.radius}px`,
-    `--cf-font: ${tokens.font}`,
-    `--cf-heading: ${tokens.heading}`,
-    `--cf-texture: ${tokens.texture}`,
-    `--cf-shadow: ${tokens.shadow}`,
-  ].join("; ");
+const TOKEN_ORDER: (keyof ThemeTokens)[] = ["bg", "surface", "surface2", "text", "muted", "accent", "accent2", "border", "good", "bad", "radius", "font", "heading", "texture", "shadow"];
+
+/** The tokens as CSS custom properties; a partial set gives only its own. */
+export function themeVars(tokens: Partial<ThemeTokens>): string {
+  return TOKEN_ORDER.filter((k) => tokens[k] !== undefined)
+    .map((k) => `--cf-${k}: ${tokens[k]}${k === "radius" ? "px" : ""}`)
+    .join("; ");
+}
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+/** Moods with only what's safe and complete: a path, a way to turn on, something to change. */
+export function cleanMoods(moods: unknown): ThemeMood[] {
+  if (!Array.isArray(moods)) return [];
+  const seen = new Set<string>();
+  const out: ThemeMood[] = [];
+  for (const raw of moods as Partial<ThemeMood>[]) {
+    if (!raw || typeof raw !== "object") continue;
+    const name = String(raw.name ?? "").trim().slice(0, 40);
+    const path = String(raw.path ?? "").trim();
+    let id = slug(String(raw.id ?? "") || name);
+    if (!name || !path || !id) continue;
+    while (seen.has(id)) id += "-2";
+    seen.add(id);
+    const is = Array.isArray(raw.is) ? raw.is.map((v) => String(v).trim()).filter(Boolean) : [];
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+    const min = num(raw.min);
+    const max = num(raw.max);
+    const color = raw.tint && typeof raw.tint.color === "string" ? raw.tint.color.trim() : "";
+    const strength = raw.tint ? Number(raw.tint.strength) : 0;
+    out.push({
+      id,
+      name,
+      path,
+      ...(is.length ? { is } : {}),
+      ...(min !== undefined ? { min } : {}),
+      ...(max !== undefined ? { max } : {}),
+      tokens: cleanOverrides(raw.tokens),
+      ...(color && COLOR.test(color) && strength > 0 ? { tint: { color, strength: Math.min(0.6, strength) } } : {}),
+      ...(raw.ambience && (AMBIENCES as readonly string[]).includes(raw.ambience) ? { ambience: raw.ambience } : {}),
+    });
+  }
+  return out;
+}
+
+/** Portrait bindings with a name and at least one value to follow. */
+export function cleanPortraits(list: unknown): PortraitBinding[] {
+  if (!Array.isArray(list)) return [];
+  const words = (v: unknown) => (Array.isArray(v) ? [...new Set(v.map((x) => String(x).trim()).filter(Boolean))] : []);
+  const out: PortraitBinding[] = [];
+  for (const raw of list as Partial<PortraitBinding>[]) {
+    if (!raw || typeof raw !== "object") continue;
+    const name = String(raw.name ?? "").trim();
+    const emotion = String(raw.emotion ?? "").trim();
+    const outfit = String(raw.outfit ?? "").trim();
+    const h = raw.hurt;
+    const hurt =
+      h && String(h.path ?? "").trim() && Number.isFinite(Number(h.below))
+        ? { path: String(h.path).trim(), below: Number(h.below), emotion: String(h.emotion ?? "").trim() || "hurt" }
+        : undefined;
+    if (!name || out.some((b) => b.name.toLowerCase() === name.toLowerCase())) continue;
+    const emotions = words(raw.emotions);
+    const outfits = words(raw.outfits);
+    if (!emotion && !outfit && !hurt && !emotions.length && !outfits.length) continue;
+    out.push({
+      name,
+      ...(emotion ? { emotion } : {}),
+      ...(outfit ? { outfit } : {}),
+      ...(hurt ? { hurt } : {}),
+      ...(emotions.length ? { emotions } : {}),
+      ...(outfits.length ? { outfits } : {}),
+    });
+  }
+  return out;
+}
+
+/** Moods and portraits as the engine core gets them: each mood's changes already as CSS. */
+export function livingTheme(theme: CardTheme) {
+  return {
+    moods: cleanMoods(theme.moods).map((m) => ({
+      id: m.id,
+      name: m.name,
+      path: m.path,
+      ...(m.is ? { is: m.is } : {}),
+      ...(m.min !== undefined ? { min: m.min } : {}),
+      ...(m.max !== undefined ? { max: m.max } : {}),
+      vars: themeVars(m.tokens),
+      ...(m.tint ? { tint: m.tint } : {}),
+      ...(m.ambience ? { ambience: m.ambience } : {}),
+    })),
+    portraits: cleanPortraits(theme.portraits),
+  };
 }
 
 /** Both modes, for the engine core to switch between. */
@@ -577,5 +695,6 @@ export function themeBundle(theme: CardTheme) {
   const preset = PRESETS[theme.preset] ?? PRESETS.phone;
   const light = themeTokens(theme, "light");
   const dark = themeTokens(theme, "dark");
-  return { preset: preset.id, mode: preset.mode, light, dark, fonts: usedFonts([light.font, light.heading, dark.font, dark.heading]) };
+  const moodFonts = cleanMoods(theme.moods).flatMap((m) => [m.tokens.font ?? "", m.tokens.heading ?? ""]);
+  return { preset: preset.id, mode: preset.mode, light, dark, fonts: usedFonts([light.font, light.heading, dark.font, dark.heading, ...moodFonts]) };
 }

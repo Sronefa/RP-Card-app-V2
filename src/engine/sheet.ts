@@ -22,7 +22,7 @@ import type { EngineModule } from "./modules/types";
 import { panelHtml } from "./panel";
 import { ENGINE_VERSION, runtime, scriptSource, type StateSchema } from "./runtime";
 import kitCss from "./runtime/kit.css?raw";
-import { fontFaces, newTheme, themeBundle, themeVars, usedFonts, type CardTheme } from "./theme";
+import { fontFaces, livingTheme, newTheme, themeBundle, themeVars, usedFonts, type CardTheme } from "./theme";
 
 export type VarType = "number" | "text" | "toggle" | "choice" | "list" | "counts";
 
@@ -407,7 +407,7 @@ export function settingsSource(config: EngineConfig, charName = "", assets: Mani
     panelTitle: config.panel.title || "Status",
     panelDoc: config.panel.enabled ? panelHtml(config) : "",
     statusButton: `📊 ${config.panel.title || "Status"}`,
-    theme: { preset: theme.preset, mode: theme.mode, light: themeVars(theme.light), dark: themeVars(theme.dark), fonts: fontFaces(cardFonts(config)) },
+    theme: { preset: theme.preset, mode: theme.mode, light: themeVars(theme.light), dark: themeVars(theme.dark), fonts: fontFaces(cardFonts(config)), ...livingTheme(themeOf(config)) },
     kit: kitCss,
     modules: moduleRuntime(config),
     charName,

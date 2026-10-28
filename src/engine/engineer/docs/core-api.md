@@ -30,6 +30,7 @@ interface CardForge {
   fx: Fx;
   art: Art;
   scene: Scene;
+  mood: Mood;
   /** Sets a screen up in a window: theme, kit, delegated controls, and an App bound to its message. */
   frame(win: Window, options?: { messageId?: number | "latest" }): App;
   /** Mounts a module's screen into an element (default: the page's #cf-root). */
@@ -99,6 +100,10 @@ interface App {
   fx: Fx;
   art: Art;
   scene: Scene;
+  /** The moods on at this screen's message (the same calls as CF.mood, without messageId). */
+  mood: { active(): { id: string; name: string }[]; is(idOrName: string): boolean; list(): { id: string; name: string; path: string }[]; look(name: string): { emotion: string; outfit: string } };
+  /** A character's portrait at this screen's state: see UiKit.portrait. */
+  portrait(name: string, o?: PortraitOptions): string;
   /** The state at this screen's message (the latest for hub screens), or one value by path. */
   state(path?: string): any;
   /** What changed in this screen's message. */
@@ -139,6 +144,8 @@ interface UiKit {
   grid(items: { label: string; value: any; delta?: number }[]): string;
   chip(text: string): string;
   avatar(src: string | null, name?: string): string;
+  /** A character's portrait that follows the state (the latest; app.portrait for the screen's message), crossfading when it changes. */
+  portrait(name: string, o?: PortraitOptions): string;
   list(items: { title: string; sub?: string; right?: any; avatar?: string | null }[]): string;
   bubble(text: string, me?: boolean): string;
   button(label: string, o?: { primary?: boolean; ghost?: boolean; icon?: IconName; send?: string; payload?: any; text?: string; now?: boolean; open?: string; close?: boolean; back?: boolean }): string;
@@ -206,6 +213,24 @@ interface Scene {
   check(steps: SceneStep[]): string[];
   /** Whether a scene played with { once: key } has played in this chat; with no key, the list of keys. */
   seen(key?: string): boolean | string[];
+}
+
+/** Without emotion and outfit, a portrait follows the card's portrait binding (the Look tab, set_portrait) or `follow`. */
+interface PortraitOptions {
+  emotion?: string;
+  outfit?: string;
+  follow?: { emotion?: string; outfit?: string; hurt?: { path: string; below: number; emotion: string } };
+  size?: "s" | "m" | "l";
+  shape?: "round" | "tall";
+}
+
+/** Theme moods that follow the state (set in the Look tab or with set_mood). */
+interface Mood {
+  active(messageId?: number | "latest"): { id: string; name: string }[];
+  is(idOrName: string, messageId?: number | "latest"): boolean;
+  list(): { id: string; name: string; path: string }[];
+  /** The emotion and outfit a character's portrait shows. */
+  look(name: string, messageId?: number | "latest"): { emotion: string; outfit: string };
 }
 
 type ChartItem = number | { label?: string; value: number; color?: string };
@@ -394,6 +419,29 @@ scene.done.then(function (r) { if (r.choice && r.choice.value === "sorry") app.w
 
 Examples: `read_example("prologue")` (a hub screen whose intro plays once, with a choice) and `read_example("chapter-card")` (an inline block that plays a chapter card when the chapter changes).
 
+## Moods and portraits (CF.mood, CF.ui.portrait)
+
+The theme and the cast follow the story without any code in your screen.
+
+**Moods** live in the card theme, not in a module: set them with `set_mood` (or the user does in the Look tab). A mood follows one value and is on while it matches: `is` lists text values (`["Night", "Midnight"]`), `min`/`max` a number range, and with neither it's on while the value is true. While it's on, its `tokens` replace the theme's (colours, `texture` by name), its `tint` lies over every screen (`{ color, strength }`, 0.1 to 0.25 reads as a mood, more hides the screen) and its `ambience` (rain, snow, embers, petals, dust) drifts over the newest screen only. Colours fade from one mood to the next; less motion drops the fade and the particles. Several moods can be on: a later one wins where two change the same token, and the last tint and ambience show.
+
+```text
+set_mood { name: "Night", path: "Time.PartOfDay", is: ["Night"], tokens: { bg: "#0b1020", surface: "#121a2e", accent: "#8fa6d6" }, tint: { color: "#0a1440", strength: 0.12 } }
+set_mood { name: "Danger", path: "World.Danger", min: 70, tokens: { accent: "#e0313f" }, tint: { color: "#400", strength: 0.15 }, ambience: "embers" }
+```
+
+- Screens just use the theme variables, and they follow. For changes the tokens can't make, style by mood: the screen's body has `data-cf-mood="night danger"` (the moods' ids), so `[data-cf-mood~="danger"] .hp { animation: … }` works.
+- In code: `app.mood.active()` lists the moods on at the screen's message, `app.mood.is("Danger")` checks one (old panels keep the mood of their own message).
+- Values a mood follows must exist: the lint says when one doesn't.
+
+**Expressive portraits:** `app.portrait("Mina")` draws Mina's portrait as markup, the way `CF.ui.avatar` does. With a portrait binding (`set_portrait { name: "Mina", emotion: "Mina.Mood", outfit: "Mina.Outfit", hurt: { path: "Mina.Health", below: 30, emotion: "hurt" } }`), it shows the image tagged with the emotion her value names and swaps it with a crossfade when the value changes, with no redraw needed. It looks for the emotion in that outfit (an image tagged "joy armor"), then the emotion or a close one (joy for amusement), then the outfit, then her portrait; with no image at all it shows her initial. Below the hurt value, the hurt emotion wins.
+
+- `{ emotion: "angry" }` or `{ outfit: "Armor" }` fix the look for one place (a flashback, a choice preview); `{ follow: { emotion: "Mina.Mood" } }` follows values without a binding; `{ size: "s" | "m" | "l", shape: "tall" }` for lists, headers and a full figure.
+- Missing art: `read_theme` lists the emotions and outfits a binding can name that have no image yet; ask for them with `request_asset`, and tell the user they're on the Image Studio's shot list. The Look tab shows the same list with one button.
+- When a screen redraws with a new look, the new portrait fades from the one shown before.
+
+Examples: `read_example("companion-card")` (a panel section with a portrait that follows mood, outfit and health) and `read_example("danger-meter")` (a panel section that pairs with a Danger mood).
+
 ## Procedural art (CF.art)
 
 Pictures drawn in code, for screens that need no image or until the art exists. The same seed always draws the same picture, so a place's map or a house's crest stays the same every reply. Nothing moves, so there is nothing to cut for less motion.
@@ -420,7 +468,7 @@ Examples: `read_example("world-map")` (a procedural island with pins, crests and
 
 Use these in your CSS instead of fixed colours, so the screen follows the card theme, light or dark mode and the player's accent:
 
-`--cf-bg`, `--cf-surface`, `--cf-surface2`, `--cf-text`, `--cf-muted`, `--cf-accent`, `--cf-accent2`, `--cf-border`, `--cf-good`, `--cf-bad`, `--cf-radius`, `--cf-font`, `--cf-heading`, `--cf-texture`, `--cf-shadow`, and `--cf-scale` (the player's text size; the kit's `.cf` font size already uses it).
+`--cf-bg`, `--cf-surface`, `--cf-surface2`, `--cf-text`, `--cf-muted`, `--cf-accent`, `--cf-accent2`, `--cf-border`, `--cf-good`, `--cf-bad`, `--cf-radius`, `--cf-font`, `--cf-heading`, `--cf-texture`, `--cf-shadow`, and `--cf-scale` (the player's text size; the kit's `.cf` font size already uses it). Moods change these while they're on, so a screen that uses them follows the mood too.
 
 ```css
 .shop-item { background: var(--cf-surface2); border: 1px solid var(--cf-border); border-radius: var(--cf-radius); }

@@ -222,6 +222,25 @@
 .cf-scene-title p { margin: 0; color: var(--cf-muted); font-size: 1.05em; }
 .cf-scene-talk { position: absolute; left: 10px; right: 10px; bottom: 12px; z-index: 4; }
 .cf-scene-skip { position: absolute; top: 8px; right: 8px; z-index: 5; background: color-mix(in srgb, var(--cf-surface) 70%, transparent); }
+/* Moods (CF.mood): the colour tokens are colours, so a mood's change fades; the tint over the screen. */
+@property --cf-bg { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-surface { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-surface2 { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-text { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-muted { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-accent { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-accent2 { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-border { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-good { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --cf-bad { syntax: "<color>"; inherits: true; initial-value: transparent; }
+.cf-mood-tint { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 0.9s ease, background-color 0.9s ease; }
+/* Expressive portraits (CF.ui.portrait). */
+.cf-portrait { position: relative; display: inline-block; flex: none; width: 72px; aspect-ratio: 1; border-radius: 50%; overflow: hidden; vertical-align: middle; background: var(--cf-surface2); border: 2px solid color-mix(in srgb, var(--cf-accent) 40%, var(--cf-border)); font-size: 28px; }
+.cf-portrait.s { width: 40px; font-size: 16px; border-width: 1px; }
+.cf-portrait.l { width: 128px; font-size: 48px; }
+.cf-portrait.tall { aspect-ratio: 3 / 4; border-radius: var(--cf-radius); }
+.cf-portrait-img { position: absolute; inset: 0; background: center 15% / cover no-repeat; }
+.cf-portrait-letter { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--cf-heading); font-weight: 600; color: var(--cf-accent); }
 /* Less motion (the device's or the player's own setting): the kit holds still. */
 .cf-reduce-motion *, .cf-reduce-motion *::before, .cf-reduce-motion *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 .cf-reduce-motion .cf-fx-glow::after { opacity: 0.7; }
