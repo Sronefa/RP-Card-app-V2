@@ -12,6 +12,7 @@ A module is one package the engine merges into the card. It can have values, lor
 - **css**: the screen's styles. They are added to the screen's document only.
 - **js**: the screen's script. It runs as `function (CF, app, root, settings)`.
 - **script**: the card-script part. It runs once per chat as `function (CF, settings, hooks)`.
+- **live**: its living screens, if any: feeds the model writes in the background after replies, each with a content pack (voice, tone, format, length), a cadence and fallback lines. Off by default; set them with `set_live_feed` and read them in the screen with `app.live(id)` (see the core API's "Living screens"). Any module can have them, built-ins too.
 
 Core modules (`time`, `settings`) are written by CardForge. You can read them as examples and change their options with `set_module_settings`, but not their files, unless you fork them (see "Forking a built-in").
 

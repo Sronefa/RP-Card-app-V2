@@ -72,7 +72,18 @@ function generations(s) {
   return '<div class="cf-stack">' + check("sideCalls", "Background generations (texts, feeds, shop stock)", s.sideCalls) +
     '<p class="cf-small cf-muted">They use your own API and cost extra tokens. Turned off, those screens just wait for the story.</p>' +
     (CF.sideCall() ? '<p class="cf-small">This card also keeps the game state with one after each reply, about ' + CF.sideCall().tokens + " tokens a turn. Turned off, the values stop changing.</p>" : "") +
-    "</div>";
+    living(s) + "</div>";
+}
+function living(s) {
+  var feeds = CF.live ? CF.live.feeds() : [];
+  if (!feeds.length) return "";
+  var off = s.liveOff || [];
+  return '<div class="cf-stack" style="gap:6px"><span class="cf-label">Living screens</span>' +
+    feeds.map(function (f) {
+      var how = f.every === 1 ? "after each reply" : f.every > 1 ? "every " + f.every + " replies" : "when the story changes it";
+      return '<label class="cf-row"><input type="checkbox" data-live="' + esc(f.id) + '"' + (off.indexOf(f.id) < 0 && s.sideCalls !== false ? " checked" : "") + (s.sideCalls === false ? " disabled" : "") + "> " +
+        '<span class="cf-stack" style="gap:0">' + esc(f.name) + '<span class="cf-small cf-muted">About ' + f.tokens + " tokens, " + how + "</span></span></label>";
+    }).join("") + "</div>";
 }
 function sound(s) {
   return '<div class="cf-stack">' +
@@ -129,6 +140,13 @@ root.addEventListener("click", function (e) {
   }
 });
 root.addEventListener("change", function (e) {
+  var live = e.target.getAttribute("data-live");
+  if (live) {
+    var off = (app.settings().liveOff || []).filter(function (id) { return id !== live; });
+    if (!e.target.checked) off.push(live);
+    app.setSettings({ liveOff: off }).then(render);
+    return;
+  }
   var name = e.target.getAttribute("data-setting");
   if (!name) return;
   var value = e.target.type === "checkbox" ? e.target.checked : e.target.type === "range" || name === "textScale" || name === "livePanels" ? Number(e.target.value) : e.target.value;

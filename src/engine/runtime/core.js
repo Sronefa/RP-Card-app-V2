@@ -23,6 +23,7 @@ var CF_DEFAULT_SETTINGS = {
   ambience: 70,
   motion: "auto",
   minigames: "play",
+  liveOff: [],
 };
 var CF_SCRIPT_TAG = "scr" + "ipt";
 var cfHooks = [];
@@ -379,6 +380,10 @@ var cfUi = {
   portrait: function (name, o) {
     return cfPortraitHtml(name, o, "latest");
   },
+  /** Three dots while someone is writing: a living screen's feed that's pending (CF.live.pending). */
+  typing: function (label) {
+    return '<span class="cf-typing" role="status" aria-label="' + cfEsc(label || "Writing…") + '"><i></i><i></i><i></i></span>';
+  },
   list: function (items) {
     return (
       '<ul class="cf-list">' +
@@ -652,6 +657,10 @@ function cfFrame(win, options) {
     /** A character's portrait at this screen's state (see CF.ui.portrait). */
     portrait: function (name, o) {
       return cfPortraitHtml(name, o, messageId);
+    },
+    /** A living screen's items up to this screen's message, oldest first (see CF.live.items). */
+    live: function (id, o) {
+      return cfLiveItems(id, Object.assign({ messageId: messageId }, o));
     },
     settings: cfSettings,
     setSettings: cfSetSettings,
@@ -1121,6 +1130,7 @@ var CardForgeApi = {
   scene: cfScene,
   mood: cfMood,
   game: cfGame,
+  live: cfLive,
   frame: cfFrame,
   mount: cfMount,
   mountSlot: cfMountSlot,

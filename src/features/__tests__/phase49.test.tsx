@@ -13,6 +13,7 @@ import type { EngineModule } from "../../engine/modules/types";
 import coreSource from "../../engine/runtime/core.js?raw";
 import artSource from "../../engine/runtime/art.js?raw";
 import gameSource from "../../engine/runtime/game.js?raw";
+import liveSource from "../../engine/runtime/live.js?raw";
 import moodSource from "../../engine/runtime/mood.js?raw";
 import sceneSource from "../../engine/runtime/scene.js?raw";
 import fxSource from "../../engine/runtime/fx.js?raw";
@@ -74,7 +75,7 @@ describe("bundled fonts and textures", () => {
       "eventOn",
       "eventRemoveListener",
       "eventEmit",
-      `${fxSource}\n${artSource}\n${sceneSource}\n${moodSource}\n${gameSource}\n${coreSource}\nreturn { cfThemeCss };`,
+      `${fxSource}\n${artSource}\n${sceneSource}\n${moodSource}\n${gameSource}\n${liveSource}\n${coreSource}\nreturn { cfThemeCss };`,
     )(config, () => ({}), async () => ({}), () => {}, () => {}, async () => {}) as { cfThemeCss: () => string };
     expect(core.cfThemeCss()).toMatch(/^@font-face \{ font-family: "Cinzel"; \}\n:root \{ --cf-bg: #111/);
   });

@@ -28,6 +28,7 @@ import { settingsAppModule } from "./settingsApp";
 import { shipModule } from "./ship";
 import { timeModule } from "./time";
 import { titleModule } from "./title";
+import { liveRuntime } from "./live";
 import { kindOf, type EngineModule, type ModuleRegex } from "./types";
 
 /** The core modules every engine card starts with. */
@@ -60,6 +61,12 @@ export const PHONE_APP_TAG = "phone-app";
  * other modules, for the phone's extra apps.
  */
 export function resolveModule(m: EngineModule, all: EngineModule[] = []): EngineModule {
+  const out = resolveCore(m, all);
+  // A built-in's living screens are the card's own: they survive its code being rebuilt.
+  return m.live?.length && out.live !== m.live ? { ...out, live: m.live } : out;
+}
+
+function resolveCore(m: EngineModule, all: EngineModule[]): EngineModule {
   if (m.core === "time") return timeModule(m.settings, m.enabled);
   if (m.core === "settings") return settingsAppModule(m.settings, m.enabled);
   if (m.core === "creator") return creatorModule(m.settings, m.enabled);
@@ -286,6 +293,7 @@ export function moduleRuntime(config: EngineConfig) {
     js: m.js,
     script: m.script,
     settings: m.settings,
+    live: liveRuntime(m),
     enabled: true,
   }));
 }

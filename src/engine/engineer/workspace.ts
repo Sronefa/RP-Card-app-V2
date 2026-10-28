@@ -7,6 +7,7 @@ import { ToolInputError } from "../../ai/toolError";
 import type { ToolCall } from "../../ai/types";
 import { BUILT_IN_SCREENS, coreModules, modulesOf, newModule } from "../modules/compile";
 import { forkModule } from "../modules/fork";
+import { cleanLiveFeed, liveTokens, newLiveFeed } from "../modules/live";
 import { addModules, cleanModule } from "../modules/pack";
 import { SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../modules/types";
 import { newVar, themeOf, VAR_TYPES, type EngineConfig, type EngineVar, type VarType } from "../sheet";
@@ -408,6 +409,36 @@ export function applyOp(config: EngineConfig, call: ToolCall): { config: EngineC
       const next = was ? list.map((b) => (same(b) ? binding : b)) : [...list, binding];
       return { config: { ...config, theme: { ...theme, portraits: next } }, summary: `Make ${name}'s portrait follow the state` };
     }
+    case "set_live_feed": {
+      const { index, module } = findModule(config, input.module);
+      const id = (str(input, "id") ?? "").trim();
+      if (!id) throw new ToolInputError(`"id" is required`);
+      const feeds = module.live ?? [];
+      const was = feeds.find((f) => f.id === id);
+      if (bool(input, "remove")) {
+        if (!was) throw new ToolInputError(`${module.id} has no feed "${id}". Its feeds: ${feeds.map((f) => f.id).join(", ") || "none"}.`);
+        return { config: withModule(config, index, { ...module, live: feeds.filter((f) => f !== was) }), summary: `Remove the ${was.name} feed` };
+      }
+      const pack = input.pack;
+      if (pack !== undefined && (!pack || typeof pack !== "object" || Array.isArray(pack))) throw new ToolInputError(`"pack" must be { voice, tone, format, length }`);
+      const draft: Record<string, unknown> = { ...(was ?? newLiveFeed(id, { id })), id };
+      if (pack) draft.pack = { ...(was?.pack ?? {}), ...(pack as object) };
+      for (const k of ["name", "from", "into"] as const) if (input[k] !== undefined) draft[k] = str(input, k);
+      for (const k of ["count", "every", "history", "keep"] as const) if (input[k] !== undefined) draft[k] = num(input, k);
+      for (const k of ["on", "fallback"] as const) if (input[k] !== undefined) draft[k] = strings(input, k);
+      const enabled = bool(input, "enabled");
+      if (enabled !== undefined) draft.enabled = enabled;
+      const feed = cleanLiveFeed(draft);
+      if (!feed) throw new ToolInputError(`"id" must have letters or digits`);
+      feed.id = id.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || feed.id;
+      if (!feed.pack.voice.trim() && !feed.pack.format.trim()) throw new ToolInputError("Give it a content pack: at least pack.voice and pack.format, so the background call knows what to write.");
+      if (!was && feeds.some((f) => f.id === feed.id)) throw new ToolInputError(`${module.id} already has a feed "${feed.id}".`);
+      const live = was ? feeds.map((f) => (f === was ? feed : f)) : [...feeds, feed];
+      return {
+        config: withModule(config, index, { ...module, live }),
+        summary: `${was ? "Change" : "Add"} the ${feed.name} feed (about ${liveTokens(feed)} tokens a run, ${feed.enabled ? "on" : "off"})`,
+      };
+    }
     case "set_panel": {
       const panel = { ...config.panel };
       const enabled = bool(input, "enabled");
@@ -469,6 +500,7 @@ export function configFiles(config: EngineConfig): Record<string, string> {
       tags: m.tags,
       ...(m.core ? { core: m.core } : {}),
       settings: m.settings,
+      ...(m.live?.length ? { live: m.live.map((f) => ({ ...f, tokens_per_run: liveTokens(f) })) } : {}),
     });
     files[`${base}/values.json`] = valuesJson(m.vars);
     if (m.rules.length) files[`${base}/rules.json`] = pretty(m.rules);
