@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { scanGaps } from "../../app/handoff";
+import { readEngine } from "../../engine/sheet";
 import { acceptAll, collectInbox, rejectAll, SOURCE_LABEL, useInboxVersion, type InboxItem, type InboxSource } from "../../app/inbox";
 import { useUi } from "../../app/store";
 import { toast } from "../../components/toast";
-import { Button, Dialog } from "../../components/ui";
+import { AutoTextarea, Button, Dialog } from "../../components/ui";
 import { useCowriter, useLoreChat } from "../../cowriter/store";
 import { useEditor } from "../../editor/store";
 import { useEngineer } from "../../engine/engineer/session";
@@ -49,6 +51,20 @@ export function InboxDialog({ items, open, onClose }: { items: InboxItem[]; open
     useUi.getState().goTo(item.lands.section, item.lands.tab);
     onClose();
   };
+  const record = useEditor((s) => s.record);
+  const engineOn = !!record && !!readEngine(record.card.data);
+  const [editing, setEditing] = useState<{ key: string; text: string }>();
+  const scan = () =>
+    run(async () => {
+      if (!record) return;
+      const out = await scanGaps(record.id, record.card.data);
+      const n = out.filed.length;
+      toast(
+        out.found === 0
+          ? "No gaps: the card and the engine match."
+          : `${n ? `${n} new ${n === 1 ? "task" : "tasks"} to approve` : "Nothing new"}${out.skipped ? `; ${out.skipped} you dismissed or started before ${out.skipped === 1 ? "isn't" : "aren't"} listed again` : ""}.`,
+      );
+    });
   const groups = new Map<InboxSource, InboxItem[]>();
   for (const item of items) groups.set(item.source, [...(groups.get(item.source) ?? []), item]);
   const acceptable = items.filter((i) => i.accept).length;
@@ -56,8 +72,16 @@ export function InboxDialog({ items, open, onClose }: { items: InboxItem[]; open
   return (
     <Dialog open={open} title="Inbox" onClose={onClose}>
       <div className="flex flex-col gap-3 text-sm">
+        {engineOn && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button disabled={busy} onClick={() => void scan()}>
+              Find gaps between card and engine
+            </Button>
+            <span className="text-xs text-ink-muted">NPCs without contacts, values without rules, screens without words: each becomes a task to approve.</span>
+          </div>
+        )}
         {items.length === 0 ? (
-          <p className="text-ink-muted">Nothing is waiting. Proposals from the co-writer, the UI engineer, the Game Wizard, bulk items and the Image Studio show up here.</p>
+          <p className="text-ink-muted">Nothing is waiting. Proposals from the co-writer, the UI engineer, the Game Wizard, bulk items and the Image Studio show up here, and so do the tasks the co-writer and the engineer hand each other.</p>
         ) : (
           <>
             <p className="text-ink-muted">
@@ -85,17 +109,40 @@ export function InboxDialog({ items, open, onClose }: { items: InboxItem[]; open
                         <button type="button" className="ml-2 text-xs text-accent underline" onClick={() => go(item)}>
                           {item.lands.label} →
                         </button>
+                        {item.detail && <span className="block text-xs text-ink-muted">{item.detail}</span>}
                       </span>
+                      {item.edit && (
+                        <Button
+                          variant="ghost"
+                          aria-label={`Edit ${item.summary}`}
+                          disabled={busy}
+                          onClick={() => setEditing(editing?.key === item.key ? undefined : { key: item.key, text: item.edit!.text })}
+                        >
+                          Edit
+                        </Button>
+                      )}
                       {item.accept ? (
-                        <Button variant="ghost" aria-label={`Accept ${item.summary}`} disabled={busy} onClick={() => void run(item.accept!)}>
-                          Accept
+                        <Button variant="ghost" aria-label={`${item.edit ? "Approve" : "Accept"} ${item.summary}`} disabled={busy} onClick={() => void run(item.accept!)}>
+                          {item.edit ? "Approve" : "Accept"}
                         </Button>
                       ) : (
                         <span className="text-xs text-ink-muted">{item.note}</span>
                       )}
-                      <Button variant="ghost" aria-label={`Reject ${item.summary}`} disabled={busy} onClick={() => void run(item.reject)}>
-                        Reject
+                      <Button variant="ghost" aria-label={`${item.edit ? "Dismiss" : "Reject"} ${item.summary}`} disabled={busy} onClick={() => void run(item.reject)}>
+                        {item.edit ? "Dismiss" : "Reject"}
                       </Button>
+                      {editing?.key === item.key && item.edit && (
+                        <div className="flex w-full flex-col gap-2">
+                          <AutoTextarea aria-label={`Brief for ${item.summary}`} value={editing.text} onChange={(e) => setEditing({ key: item.key, text: e.target.value })} />
+                          <Button
+                            className="self-start"
+                            disabled={busy || !editing.text.trim()}
+                            onClick={() => void run(() => item.edit!.save(editing.text.trim()), "Brief saved").then(() => setEditing(undefined))}
+                          >
+                            Save the brief
+                          </Button>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

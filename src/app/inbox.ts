@@ -4,7 +4,6 @@
  * Wizard modules and bulk items can be parked here instead of added from their dialogs; Image Studio
  * shots with generated images nobody has picked yet wait here as well.
  */
-import { create } from "zustand";
 import { getRecord, saveRecord } from "../db/db";
 import { useCowriter, useLoreChat, type ChatState } from "../cowriter/store";
 import { useEngineer } from "../engine/engineer/session";
@@ -16,9 +15,11 @@ import { saveToLibrary } from "../features/mechanics/library";
 import { latestStudio, updateStudio } from "../images/shots";
 import { fileInCard, markPicked } from "../images/pick";
 import { newId } from "../lib/id";
+import { dismissTask, editTask, markStarted, reopenTask, pendingTasks, taskBrief, type HandoffTask } from "./handoff";
+import { useInboxVersion } from "./inboxVersion";
 import type { SectionId } from "./sections";
 
-export type InboxSource = "cowriter" | "lore" | "engineer" | "wizard" | "bulk" | "images";
+export type InboxSource = "cowriter" | "lore" | "engineer" | "wizard" | "bulk" | "images" | "for-engineer" | "for-cowriter";
 
 export const SOURCE_LABEL: Record<InboxSource, string> = {
   cowriter: "Co-writer",
@@ -27,6 +28,8 @@ export const SOURCE_LABEL: Record<InboxSource, string> = {
   wizard: "Game Wizard",
   bulk: "Bulk items",
   images: "Image Studio",
+  "for-engineer": "Tasks for the UI engineer",
+  "for-cowriter": "Tasks for the co-writer",
 };
 
 /** Where an accepted item lands, to open it there. */
@@ -46,6 +49,10 @@ export interface InboxItem {
   reject: () => Promise<void>;
   /** Why it can't be accepted from the inbox. */
   note?: string;
+  /** A task's brief, which the user can change before approving it. */
+  edit?: { text: string; save: (text: string) => Promise<void> };
+  /** Where the item came from, shown under its summary. */
+  detail?: string;
 }
 
 /** A Game Wizard module or a batch of items, parked for later. */
@@ -61,11 +68,7 @@ interface ParkedRecord {
 
 export const inboxKey = (cardId: string) => `inbox:${cardId}`;
 
-/** Bumped when parked items change, so the inbox counts again. */
-export const useInboxVersion = create<{ version: number; bump: () => void }>((set) => ({
-  version: 0,
-  bump: () => set((s) => ({ version: s.version + 1 })),
-}));
+export { useInboxVersion };
 
 export async function loadParked(cardId: string): Promise<Parked[]> {
   return (await getRecord<ParkedRecord>(inboxKey(cardId)))?.items ?? [];
@@ -145,6 +148,8 @@ export async function collectInbox(cardId: string): Promise<InboxItem[]> {
       reject: async () => void (await unpark(cardId, p.id)),
     });
 
+  for (const t of await pendingTasks(cardId)) items.push(taskItem(cardId, t));
+
   const studio = await latestStudio(cardId);
   for (const shot of studio.shots) {
     const list = studio.candidates?.[shot.id] ?? [];
@@ -196,3 +201,56 @@ export async function acceptAll(items: InboxItem[]) {
 export async function rejectAll(items: InboxItem[]) {
   for (const item of items) await item.reject();
 }
+
+const TASK_FROM: Record<HandoffTask["from"], string> = { cowriter: "From the co-writer", engineer: "From the UI engineer", scan: "From the catch-up scan" };
+
+function taskItem(cardId: string, t: HandoffTask): InboxItem {
+  return {
+    key: `task:${t.id}`,
+    source: t.to === "engineer" ? "for-engineer" : "for-cowriter",
+    summary: t.title,
+    detail: `${TASK_FROM[t.from]}${t.source ? `, about ${t.source.label}` : ""}`,
+    lands: t.to === "engineer" ? { label: "Engineer", section: "engine", tab: "engineer" } : { label: "Co-writer chat", section: "cowriter" },
+    accept: () => approveTask(cardId, t),
+    reject: () => dismissTask(cardId, t.id),
+    edit: { text: t.brief, save: (text) => editTask(cardId, t.id, text) },
+  };
+}
+
+/**
+ * Starts an approved task: an engineer task runs in the background (on this card, open or not); a
+ * co-writer task becomes a message in the open card's co-writer chat.
+ */
+export async function approveTask(cardId: string, task: HandoffTask) {
+  const brief = taskBrief(task);
+  if (task.to === "engineer") {
+    const record = useEditor.getState().record;
+    const name = record?.id === cardId ? record.card.data.name : "";
+    await markStarted(cardId, task.id);
+    void useEngineer.getState().queue(cardId, name, task.title, brief);
+    return;
+  }
+  if (useEditor.getState().record?.id !== cardId) throw new Error("Open the card to start a co-writer task.");
+  await markStarted(cardId, task.id);
+  // Co-writer tasks take turns: each waits for the chat to be free.
+  cowriterTasks = cowriterTasks
+    .then(cowriterIdle)
+    .then(async () => {
+      if (useEditor.getState().record?.id !== cardId) return void (await reopenTask(cardId, task.id));
+      await useCowriter.getState().load(cardId);
+      await useCowriter.getState().send(brief, `Task: ${task.title}`);
+    })
+    .catch(() => undefined);
+}
+
+let cowriterTasks: Promise<void> = Promise.resolve();
+
+const cowriterIdle = () =>
+  new Promise<void>((resolve) => {
+    if (!useCowriter.getState().busy) return resolve();
+    const stop = useCowriter.subscribe((s) => {
+      if (s.busy) return;
+      stop();
+      resolve();
+    });
+  });

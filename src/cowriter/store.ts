@@ -13,7 +13,8 @@ import type { ChatMessage, ModeId, ToolCall, ToolDef, ToolResult } from "../ai/t
 import { aKind, KINDS, plainFields, type TypedKind } from "../editor/world";
 import { useUsage } from "../ai/usage";
 import { complete, gatherContext, isAbort, partsText, projectSettings } from "./engine";
-import { ENGINE_TOOLS } from "../ai/engineTools";
+import { ENGINE_TOOLS, ENGINE_WRITING_TOOLS } from "../ai/engineTools";
+import { askFor, fileNewGaps } from "../app/handoff";
 import { readEngine } from "../engine/sheet";
 import { addCall } from "./worldScan";
 import { logChange } from "./changeLog";
@@ -83,6 +84,16 @@ export interface ChatState {
   useVariant: (proposalId: string, text: string, label: string) => void;
   /** Marks an accepted edit's hand changes as dealt with. */
   markLearned: (proposalId: string) => void;
+}
+
+/** Files an ask_engineer call as a task in the inbox, and answers the co-writer. */
+function askEngineer(cardId: string, call: ToolCall): ToolResult {
+  const title = typeof call.input.title === "string" ? call.input.title.trim() : "";
+  const brief = typeof call.input.brief === "string" ? call.input.brief.trim() : "";
+  if (!title || !brief) return { id: call.id, content: 'Give the task a "title" and a "brief".', isError: true };
+  const source = typeof call.input.source === "string" && call.input.source.trim() ? { label: call.input.source.trim() } : undefined;
+  void askFor(cardId, "engineer", "cowriter", title, brief, source).catch(() => undefined);
+  return { id: call.id, content: `Filed for the UI engineer: "${title}". It waits for the user's approval in the inbox; when approved, the engineer builds it in the background.` };
 }
 
 function createChatStore(channel: Channel) {
@@ -197,7 +208,9 @@ function createChatStore(channel: Channel) {
         try {
           const parts = await gatherContext(record);
           const engineAware = !!readEngine(record.card.data) || !!(await projectSettings(record.projectId)).settings.engineMode;
-          const tools = engineAware ? [...channel.tools, ...ENGINE_TOOLS] : channel.tools;
+          const tools = engineAware
+            ? [...channel.tools, ...ENGINE_TOOLS, ...(readEngine(record.card.data) ? ENGINE_WRITING_TOOLS : [])]
+            : channel.tools;
           // Decisions made while the context was gathered are in the latest chat.
           chat = get().chat?.cardId === chat.cardId ? get().chat! : chat;
           const composed = composeUserMessage(request, parts, chat.sentContext, chat.unreported);
@@ -233,7 +246,10 @@ function createChatStore(channel: Channel) {
                 ai.slopRewrite === false
                   ? { calls: result.toolCalls, fixed: {} }
                   : await cleanCalls(record, result.toolCalls, ai.slopPhrases ?? DEFAULT_SLOP_PHRASES, controller.signal);
-              const ran = runTools(next, cleaned.calls, cleaned.fixed);
+              // A task for the UI engineer goes to the inbox, not into a proposal.
+              const asks = new Map(cleaned.calls.filter((c) => c.name === "ask_engineer").map((c) => [c.id, askEngineer(record.id, c)]));
+              const ran = runTools(next, cleaned.calls.filter((c) => !asks.has(c.id)), cleaned.fixed);
+              ran.results = cleaned.calls.map((c) => asks.get(c.id) ?? ran.results.find((r) => r.id === c.id)!);
               // What the model wrote before any rewrite, so its habits are counted.
               void trackPhrases(result.toolCalls.map(textOf).filter((t): t is string => !!t), record.projectId);
               next = {
@@ -427,7 +443,11 @@ function createChatStore(channel: Channel) {
             const edit = planEdit(editor.record.card.data, proposal.call);
             summary = describeEdit(edit);
             if (accept && edit.kind !== "pitch") {
-              editor.replaceData(applyEdit(editor.record.card.data, edit));
+              const before = editor.record.card.data;
+              const after = applyEdit(before, edit);
+              editor.replaceData(after);
+              // What the edit should show on a screen goes to the UI engineer as tasks.
+              void fileNewGaps(editor.record.id, before, after, "cowriter").catch(() => undefined);
               void logChange(editor.record.id, "cowriter", [summary]);
             }
           } catch (e) {

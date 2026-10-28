@@ -14,6 +14,7 @@ import type { ChatMessage, ToolCall } from "../../ai/types";
 import { complete, isAbort } from "../../cowriter/engine";
 import { deleteChat, engineerChatKey, getCard, getRecord, listCards, saveRecord } from "../../db/db";
 import { useActivity, type Outcome } from "../../app/activity";
+import { askFor, fileNewGaps } from "../../app/handoff";
 import { useEditor } from "../../editor/store";
 import { newId } from "../../lib/id";
 import { loadSandboxLibs, type SandboxLibs } from "../sandbox/sandbox";
@@ -107,6 +108,8 @@ interface EngineerState {
   load: (cardId: string) => Promise<void>;
   /** Queues a message to the open card's engineer; resolves when its turn has run. */
   send: (request: string) => Promise<void>;
+  /** Queues a turn on any card (an approved task); `label` is what the activity list shows. */
+  queue: (cardId: string, cardName: string, label: string, request: string) => Promise<Outcome>;
   stop: () => void;
   decide: (proposalId: string, accept: boolean) => void;
   clear: () => Promise<void>;
@@ -350,6 +353,15 @@ export const useEngineer = create<EngineerState>((set, get) => {
           proposals: [...chat.proposals, proposal],
         });
       } else commit({ ...chat, sample: ctx.sample });
+      if (ctx.tasks?.length) {
+        for (const t of ctx.tasks) await askFor(record.id, "cowriter", "engineer", t.title, t.brief).catch(() => undefined);
+        const n = ctx.tasks.length;
+        const latest = get().chat?.cardId === chat.cardId ? get().chat! : chat;
+        chat = commit({
+          ...latest,
+          unreported: [...latest.unreported, `Your ${n === 1 ? "task for the co-writer is" : `${n} tasks for the co-writer are`} waiting for the user's approval in the inbox.`],
+        });
+      }
       if (ctx.cardCalls?.length) {
         const n = ctx.cardCalls.length;
         await useCowriter
@@ -415,6 +427,11 @@ export const useEngineer = create<EngineerState>((set, get) => {
         .enqueue({ kind: "engineer", cardId: record.id, cardName: record.card.data.name, label: request }, () => runTurn(record.id, request));
     },
 
+    async queue(cardId, cardName, label, request) {
+      const name = cardName || (await getCard(cardId))?.card.data.name || "";
+      return useActivity.getState().enqueue({ kind: "engineer", cardId, cardName: name, label }, () => runTurn(cardId, request));
+    },
+
     stop() {
       controller?.abort();
     },
@@ -432,7 +449,10 @@ export const useEngineer = create<EngineerState>((set, get) => {
         try {
           if (!data || !config) throw new ToolInputError("The engine is off.");
           const converted = proposal.calls.some((c) => c.name === "keep_light_backup");
-          editor.replaceData(finishConversion(applyEngine(data, replay(config, proposal.calls).config)));
+          const after = finishConversion(applyEngine(data, replay(config, proposal.calls).config));
+          editor.replaceData(after);
+          // What the change needs in words goes to the co-writer as tasks.
+          if (editor.record) void fileNewGaps(editor.record.id, data, after, "engineer").catch(() => undefined);
           if (converted && editor.record) void offerStartingStates(editor.record.id);
           if (editor.record) void logChange(editor.record.id, "engineer", proposal.summaries);
         } catch (e) {

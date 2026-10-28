@@ -7,8 +7,11 @@ import YAML from "yaml";
 import type { CardDataV3, LorebookEntry } from "../card";
 import { emptyBook, newEntry } from "../editor/lorebook";
 import { applyOp } from "../engine/engineer/workspace";
-import { effectiveConfig } from "../engine/modules/compile";
-import { newEngine, readEngine, varLabel, varPath, VAR_TYPES, type EngineConfig } from "../engine/sheet";
+import { effectiveConfig, modulesOf } from "../engine/modules/compile";
+import { liveFeedsOf } from "../engine/modules/live";
+import { sceneCheck } from "../engine/runtime";
+import { newEngine, readEngine, themeOf, varLabel, varPath, VAR_TYPES, type EngineConfig } from "../engine/sheet";
+import { cleanMoods, cleanPortraits } from "../engine/theme";
 import { ToolInputError } from "./toolError";
 import type { ToolCall, ToolDef } from "./types";
 
@@ -88,7 +91,123 @@ export const ENGINE_TOOLS: ToolDef[] = [
   },
 ];
 
-export const ENGINE_TOOL_NAMES = new Set(ENGINE_TOOLS.map((t) => t.name));
+/** Writing for the engine's screens and handing build work to the UI engineer. */
+export const ENGINE_WRITING_TOOLS: ToolDef[] = [
+  {
+    name: "ask_engineer",
+    description:
+      "File a task for the UI engineer when what you wrote should show on a screen: a new NPC who should be a phone contact, a shop whose goods belong in the shop app, a place for the map, a stat that needs a meter. It waits for the user's approval in the inbox, then the engineer builds it in the background from your brief and the lore it names. Don't use it for words: write those yourself.",
+    parameters: obj(
+      {
+        title: str("One line for the inbox, like 'Add Mina as a phone contact'"),
+        brief: str("What the screen should show or do, and why, in plain words"),
+        source: str("The lorebook entry, value or greeting it comes from, by name"),
+      },
+      ["title", "brief"],
+    ),
+  },
+  {
+    name: "write_live_pack",
+    description:
+      "Write the content pack of a living screen (a feed the model writes during play: an NPC's texts, a news feed): the voice, tone, format and length its background writer follows, and fallback lines in that voice for when the call fails. It doesn't turn the feed on.",
+    parameters: obj(
+      {
+        module: str("The module the feed is on"),
+        feed: str("The feed's id"),
+        voice: str("Who writes and how: 'Mina texting: lowercase, quick, teasing; an emoji only when flustered'"),
+        tone: str("Their attitude now: 'warm, a little jealous'"),
+        format: str("The shape of one item: 'a text message to {{user}}', 'a headline, a dash, one sentence'"),
+        length: str("How long one item is: 'one or two short lines'"),
+        fallback: { type: "array", items: { type: "string" }, description: "Two or three lines in that voice, like 'Mina: you up?'" },
+      },
+      ["module", "feed", "voice", "format"],
+    ),
+  },
+  {
+    name: "write_scene",
+    description:
+      "Write a cutscene for a module's scene director (its settings.scenes): a list of steps. Steps: { bg: 'place' } or { bg: { time: 'night' } }, { show: 'Mina', side: 'left'|'right'|'center', emotion }, { hide: 'Mina' }, { say: 'line', who: 'Mina' }, { title: 'Chapter 1', sub }, { fx: 'shake'|'flash'|'rain'|'snow' }, { wait: 800 }, { choice: [{ label, value }] }, { clear: true }. Keep it short: five to twelve steps.",
+    parameters: obj(
+      {
+        module: str("The module that plays it"),
+        name: str("The scene's name, like 'intro'"),
+        steps: { type: "array", items: { type: "object" }, description: "The steps, in order" },
+      },
+      ["module", "name", "steps"],
+    ),
+  },
+  {
+    name: "write_minigame_lines",
+    description:
+      "Write a minigame's outcome lines: what the story is told when {{user}} wins, loses or skips. {score} and the module's settings (like {bet}) can be used. One sentence each, in the story's voice.",
+    parameters: obj(
+      { module: str("The minigame's module"), win: str("The win line"), loss: str("The loss line"), skip: str("The skip line, optional") },
+      ["module", "win", "loss"],
+    ),
+  },
+  {
+    name: "name_mood",
+    description: "Name a theme mood the player will feel (night, danger, a curse) and describe in one sentence how the story feels while it's on.",
+    parameters: obj(
+      { mood: str("The mood's current name"), name: str("Its new name, one or two words"), description: str("One sentence: how the story feels then") },
+      ["mood", "name", "description"],
+    ),
+  },
+  {
+    name: "list_expressions",
+    description:
+      "List the expressions (and outfits) a character's portrait needs art for, the ones the story uses most: neutral first, five to eight in all. They go on the Image Studio's shot list.",
+    parameters: obj(
+      {
+        name: str("The character"),
+        emotions: { type: "array", items: { type: "string" }, description: "Expressions, like neutral, happy, flustered, angry, hurt" },
+        outfits: { type: "array", items: { type: "string" }, description: "Outfits, like Casual, Uniform" },
+      },
+      ["name", "emotions"],
+    ),
+  },
+];
+
+export const ENGINE_TOOL_NAMES = new Set([...ENGINE_TOOLS, ...ENGINE_WRITING_TOOLS].map((t) => t.name));
+
+/** The engine screens that need words, for the co-writer's view of the card. */
+export function engineFeaturesText(config: EngineConfig): string {
+  const modules = modulesOf(config).filter((m) => m.enabled);
+  const lines: string[] = [];
+  for (const { module: m, feed } of liveFeedsOf(modules))
+    lines.push(
+      `- living screen ${feed.id} on module ${m.id} ("${feed.name}", ${feed.enabled ? "on" : "off"}): ${feed.pack.voice.trim() || feed.pack.format.trim() ? `voice "${feed.pack.voice}", tone "${feed.pack.tone}", format "${feed.pack.format}", length "${feed.pack.length}"` : "no content pack yet"}`,
+    );
+  for (const m of modules) {
+    if (!m.core && /\b(?:app\.game|CF\.game\.create)\(/.test(m.js)) {
+      const o = (m.settings?.outcomes ?? {}) as Record<string, { line?: string } | undefined>;
+      lines.push(`- minigame ${m.id} ("${m.name}"): win "${o.win?.line ?? ""}", loss "${o.loss?.line ?? ""}"${o.skip?.line ? `, skip "${o.skip.line}"` : ""}`);
+    }
+    const scenes = m.settings?.scenes;
+    if (scenes && typeof scenes === "object" && !Array.isArray(scenes))
+      lines.push(`- scenes on ${m.id}: ${Object.entries(scenes).map(([n, steps]) => `${n} (${Array.isArray(steps) ? steps.length : 0} steps)`).join(", ")}`);
+  }
+  const theme = themeOf(config);
+  for (const mood of cleanMoods(theme.moods)) lines.push(`- mood "${mood.name}" (follows ${mood.path})${mood.description ? `: ${mood.description}` : ", no description yet"}`);
+  for (const b of cleanPortraits(theme.portraits))
+    lines.push(`- portrait of ${b.name}: ${b.emotions?.length ? `expressions ${b.emotions.join(", ")}` : b.emotion ? `expression from ${b.emotion}` : "no expressions listed yet"}${b.outfits?.length ? `; outfits ${b.outfits.join(", ")}` : ""}`);
+  return lines.join("\n");
+}
+
+function engineOp(data: CardDataV3, name: string, input: Record<string, unknown>, id: string): Extract<EngineEdit, { kind: "engine" }> {
+  const config = readEngine(data);
+  if (!config) throw new ToolInputError("The engine is off on this card");
+  const out = applyOp(config, { id, name, input });
+  return { kind: "engine", summary: out.summary, before: config, after: out.config };
+}
+
+function moduleNamed(config: EngineConfig, id: unknown) {
+  const m = modulesOf(config).find((x) => x.id === id);
+  if (!m) throw new ToolInputError(`There's no module "${String(id)}". Modules: ${modulesOf(config).map((x) => x.id).join(", ")}`);
+  return m;
+}
+
+const text = (input: Record<string, unknown>, key: string) => (typeof input[key] === "string" ? (input[key] as string).trim() : "");
 
 export type EngineEdit =
   | { kind: "engine"; summary: string; before?: EngineConfig; after: EngineConfig }
@@ -207,6 +326,62 @@ export function planEngineEdit(data: CardDataV3, call: ToolCall): EngineEdit | u
       const yaml = YAML.stringify(state).trim();
       const after = `${splitGreetingState(before).prose.trimEnd()}\n\n<initvar>\n${yaml}\n</initvar>`;
       return { kind: "greetingState", greeting: n, before, after };
+    }
+    case "write_live_pack": {
+      const config = readEngine(data);
+      if (!config) throw new ToolInputError("The engine is off on this card");
+      const m = moduleNamed(config, input.module);
+      const feed = (m.live ?? []).find((f) => f.id === input.feed);
+      if (!feed) throw new ToolInputError(`${m.id} has no feed "${String(input.feed)}". Its feeds: ${(m.live ?? []).map((f) => f.id).join(", ") || "none"}`);
+      const pack = { voice: text(input, "voice"), tone: text(input, "tone") || feed.pack.tone, format: text(input, "format"), length: text(input, "length") || feed.pack.length };
+      const fallback = Array.isArray(input.fallback) ? input.fallback.filter((l): l is string => typeof l === "string") : undefined;
+      const edit = engineOp(data, "set_live_feed", { module: m.id, id: feed.id, pack, ...(fallback ? { fallback } : {}) }, call.id);
+      return { ...edit, summary: `Write the content pack for ${feed.name}` };
+    }
+    case "write_scene": {
+      const config = readEngine(data);
+      if (!config) throw new ToolInputError("The engine is off on this card");
+      const m = moduleNamed(config, input.module);
+      const name = text(input, "name");
+      if (!name) throw new ToolInputError(`"name" is required`);
+      const problems = sceneCheck(input.steps);
+      if (problems.length) throw new ToolInputError(`The scene doesn't play: ${problems.join("; ")}`);
+      const scenes = { ...((m.settings?.scenes as Record<string, unknown> | undefined) ?? {}), [name]: input.steps };
+      const edit = engineOp(data, "set_module_settings", { module: m.id, settings: { scenes } }, call.id);
+      return { ...edit, summary: `Write the "${name}" scene for ${m.name}` };
+    }
+    case "write_minigame_lines": {
+      const config = readEngine(data);
+      if (!config) throw new ToolInputError("The engine is off on this card");
+      const m = moduleNamed(config, input.module);
+      if (!/\b(?:app\.game|CF\.game\.create)\(/.test(m.js)) throw new ToolInputError(`${m.id} isn't a minigame`);
+      const old = (m.settings?.outcomes ?? {}) as Record<string, Record<string, unknown>>;
+      const outcomes = { ...old };
+      for (const k of ["win", "loss", "skip"]) {
+        const line = text(input, k);
+        if (line) outcomes[k] = { ...old[k], line };
+      }
+      if (!text(input, "win") || !text(input, "loss")) throw new ToolInputError(`"win" and "loss" lines are required`);
+      const edit = engineOp(data, "set_module_settings", { module: m.id, settings: { outcomes } }, call.id);
+      return { ...edit, summary: `Write the outcome lines for ${m.name}` };
+    }
+    case "name_mood": {
+      const config = readEngine(data);
+      if (!config) throw new ToolInputError("The engine is off on this card");
+      const theme = themeOf(config);
+      const moods = cleanMoods(theme.moods);
+      const was = moods.find((x) => x.name.toLowerCase() === text(input, "mood").toLowerCase());
+      if (!was) throw new ToolInputError(`There's no mood "${text(input, "mood")}". Moods: ${moods.map((x) => x.name).join(", ") || "none"}`);
+      const name = text(input, "name");
+      if (!name) throw new ToolInputError(`"name" is required`);
+      if (moods.some((x) => x !== was && x.name.toLowerCase() === name.toLowerCase())) throw new ToolInputError(`There's already a mood named ${name}`);
+      const next = moods.map((x) => (x === was ? { ...x, name, description: text(input, "description") } : x));
+      return { kind: "engine", summary: `Name the ${was.name} mood "${name}"`, before: config, after: { ...config, theme: { ...theme, moods: next } } };
+    }
+    case "list_expressions": {
+      const list = (k: string) => (Array.isArray(input[k]) ? (input[k] as unknown[]).filter((x): x is string => typeof x === "string") : undefined);
+      const edit = engineOp(data, "set_portrait", { name: text(input, "name"), emotions: list("emotions") ?? [], ...(list("outfits") ? { outfits: list("outfits") } : {}) }, call.id);
+      return { ...edit, summary: `List ${text(input, "name")}'s expressions` };
     }
     default:
       return undefined;

@@ -62,6 +62,8 @@ export interface ThemeMood {
   id: string;
   /** What the player and the author call it: "Night", "Danger", "Corrupted". */
   name: string;
+  /** How the story feels while it's on, in a sentence (the co-writer's words). */
+  description?: string;
   /** The value it follows ("Time.PartOfDay", "World.Danger"). */
   path: string;
   /** Text values that turn it on, any of them (case doesn't matter). */
@@ -626,9 +628,11 @@ export function cleanMoods(moods: unknown): ThemeMood[] {
     const max = num(raw.max);
     const color = raw.tint && typeof raw.tint.color === "string" ? raw.tint.color.trim() : "";
     const strength = raw.tint ? Number(raw.tint.strength) : 0;
+    const description = typeof raw.description === "string" ? raw.description.trim().slice(0, 300) : "";
     out.push({
       id,
       name,
+      ...(description ? { description } : {}),
       path,
       ...(is.length ? { is } : {}),
       ...(min !== undefined ? { min } : {}),
