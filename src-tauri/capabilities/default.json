@@ -10,6 +10,7 @@
     "opener:default",
     "dialog:allow-save",
     "fs:allow-write-file",
+    "keepalive:default",
     {
       "identifier": "http:default",
       "allow": [

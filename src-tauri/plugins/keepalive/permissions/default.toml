@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Lets the app start, update and stop the background work notification."
+permissions = ["allow-start", "allow-update", "allow-stop"]

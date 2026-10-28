@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { isActive, KIND_LABEL, useActivity, type ActivityItem } from "../../app/activity";
+import { runningLine } from "../../app/keepAlive";
 import { useUi } from "../../app/store";
 import { Button, Dialog } from "../../components/ui";
 import { useEditor } from "../../editor/store";
@@ -15,9 +16,7 @@ const first = (s: string, n = 60) => {
 export function useActivityLine(): string | undefined {
   const running = useActivity((s) => s.items.find((i) => i.status === "running"));
   const { round, worker } = useEngineer();
-  if (!running) return undefined;
-  const step = worker ? `step ${worker.steps.length + 1}, building ${first(worker.task, 40)}` : `step ${Math.max(round, 1)}, planning`;
-  return `${KIND_LABEL[running.kind]}: ${step}`;
+  return running && runningLine(running, { round, worker });
 }
 
 /** The chip on every page: what's running in the background, and a dot when something finished. */
