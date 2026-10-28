@@ -5,6 +5,7 @@
  * tests), so what CardForge shows is what SillyTavern will do.
  */
 import coreSource from "./runtime/core.js?raw";
+import fxSource from "./runtime/fx.js?raw";
 import glueSource from "./runtime/glue.js?raw";
 import updaterSource from "./runtime/updater.js?raw";
 
@@ -45,7 +46,7 @@ export const runtime: Runtime = new Function(
   `${updaterSource}\nreturn { cfUpdate, cfExtractCommands, cfPath, cfYaml, cfForAi };`,
 )() as Runtime;
 
-/** The whole Tavern Helper script: the card's settings, the updater, the engine core, then the glue that starts it. */
+/** The whole Tavern Helper script: the card's settings, the updater, the effects kit and the engine core, then the glue that starts it. */
 export function scriptSource(settings: string): string {
-  return `(function () {\n"use strict";\n${settings}\n${updaterSource}\n${coreSource}\n${glueSource}\n})();\n`;
+  return `(function () {\n"use strict";\n${settings}\n${updaterSource}\n${fxSource}\n${coreSource}\n${glueSource}\n})();\n`;
 }

@@ -187,4 +187,127 @@ root.innerHTML = l.Body
   script: "",
 };
 
-export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock];
+const vnScene: EngineModule = {
+  ...base(),
+  id: "vn-scene",
+  name: "Visual-novel scene",
+  description: "An inline block in the style of a visual novel: the speaker's portrait by their mood, a typed line, weather over the scene, and a shake when the scene hits hard. Uses CF.ui.dialogue and CF.fx.",
+  slot: "message",
+  vars: [
+    newVar({ id: "ex-vn-who", group: "Scene", name: "Speaker", type: "text", start: "Mina", rule: "Who speaks the scene's key line, by name." }),
+    newVar({ id: "ex-vn-line", group: "Scene", name: "Line", type: "text", start: "", rule: "The scene's key line, as the speaker says it, one or two sentences." }),
+    newVar({ id: "ex-vn-mood", group: "Scene", name: "Mood", type: "choice", options: ["neutral", "happy", "sad", "angry", "surprised"], start: "neutral", rule: "The speaker's mood as they say it." }),
+    newVar({ id: "ex-vn-place", group: "Scene", name: "Place", type: "text", start: "", rule: "Where the scene happens, as a place name from the card." }),
+    newVar({ id: "ex-vn-weather", group: "Scene", name: "Weather", type: "text", start: "clear", rule: "The weather in the scene, a word or two." }),
+    newVar({ id: "ex-vn-impact", group: "Scene", name: "Impact", type: "toggle", start: "no", rule: "yes for a line that lands like a blow (a shock, a slap, an explosion); no otherwise." }),
+  ],
+  rules: [
+    {
+      comment: "Scene block",
+      content: 'At a turning point, put <cf-module id="vn-scene"/> on its own line after the narration, with the Scene values set for it.',
+      constant: true,
+      keys: [],
+      depth: 4,
+      order: 100,
+    },
+  ],
+  regex: [],
+  html: "",
+  css: ".vn-stage { position: relative; min-height: 220px; display: flex; align-items: flex-end; padding: 10px; border-radius: var(--cf-radius); overflow: hidden; background: linear-gradient(180deg, var(--cf-surface2), var(--cf-bg)); background-size: cover; background-position: center; }",
+  js: `var s = app.state("Scene") || {};
+var who = s.Speaker || "Mina";
+var place = CF.assets.background(s.Place || "", "");
+root.innerHTML =
+  '<div class="vn-stage"' + (place ? ' style="background-image:url(\\'' + CF.ui.esc(place) + '\\')"' : "") + ">" +
+  CF.ui.dialogue({ name: who, text: "", portrait: CF.assets.portrait(who, { emotion: s.Mood || "neutral" }), more: true }) +
+  "</div>";
+var stage = root.querySelector(".vn-stage");
+CF.fx.weather(stage, s.Weather || "");
+CF.fx.typewriter(root.querySelector(".cf-vn-text"), s.Line || "…").done.then(function () {
+  if (s.Impact && app.delta()["Scene.Line"]) CF.fx.shake(stage);
+});`,
+  script: "",
+};
+
+const journeyApp: EngineModule = {
+  ...base(),
+  id: "journey-app",
+  name: "Journey",
+  description: "A hub app that shows the new kit pieces together: a map with pins, a carousel of places, a timeline, a progress ring, flip cards, a drawer, a toast, a count-up and page transitions.",
+  slot: "overlay",
+  button: "🧭 Journey",
+  vars: [
+    newVar({ id: "ex-j-where", group: "Journey", name: "Location", type: "choice", options: ["Harbor", "Market", "Tower"], start: "Harbor", rule: "Where {{user}} is now." }),
+    newVar({ id: "ex-j-days", group: "Journey", name: "Log", type: "list", start: "", rule: "Insert one short line per notable event, as 'Day N — what happened'." }),
+    newVar({ id: "ex-j-energy", group: "Journey", name: "Energy", type: "number", start: "8", min: 0, max: 10, rule: "−1 per hard task, +3 after a night's rest." }),
+    newVar({ id: "ex-j-gold", group: "Journey", name: "Gold", type: "number", start: "40", min: 0, rule: "delta when {{user}} pays or is paid." }),
+  ],
+  rules: [
+    {
+      comment: "Journey actions",
+      content: '<action app="journey">{"travel":P}</action> means {{user}} sets off for P: narrate the way there and set /Journey/Location to P on arrival.',
+      constant: false,
+      keys: ['app="journey"'],
+      depth: 2,
+      order: 100,
+    },
+  ],
+  regex: [],
+  html: "",
+  css: ".jr-body { min-height: 0; } .jr-place { padding: 14px; min-height: 110px; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; background: var(--cf-surface2); } .jr-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; } .jr-gold { font-variant-numeric: tabular-nums; }",
+  js: `var PLACES = [
+  { name: "Harbor", x: 22, y: 70, about: "Gulls, tar and the morning ferry." },
+  { name: "Market", x: 52, y: 48, about: "Spice stalls and a fortune teller." },
+  { name: "Tower", x: 78, y: 20, about: "Locked at night. Someone lives at the top." },
+];
+var tab = "map";
+var lastGold = null;
+function bar() {
+  return CF.ui.appBar("Journey") + '<div class="cf-row" style="padding:6px 10px">' +
+    ["map", "places", "log"].map(function (t) { return CF.ui.button(t === "map" ? "Map" : t === "places" ? "Places" : "Log", { ghost: t !== tab }).replace("<button", '<button data-tab="' + t + '"'); }).join("") +
+    '<span style="flex:1"></span>' + CF.ui.button("Bag", { icon: "bag" }).replace("<button", "<button data-bag") + "</div>";
+}
+function page() {
+  var s = app.state("Journey") || {};
+  if (tab === "map")
+    return '<div class="cf-stack">' + CF.ui.map({ image: CF.assets.scene("map"), label: "Island", pins: PLACES.map(function (p) {
+      return p.name === s.Location ? { label: p.name, x: p.x, y: p.y, here: true } : { label: p.name, x: p.x, y: p.y, send: "journey", payload: { travel: p.name }, text: "I head for the " + p.name + "." };
+    }) }) + '<div class="cf-spread">' + CF.ui.ring({ value: Number(s.Energy) || 0, max: 10, label: "Energy" }) + '<span class="cf-label">Gold <b class="jr-gold">' + (Number(s.Gold) || 0) + "</b></span></div></div>";
+  if (tab === "places")
+    return CF.ui.carousel(PLACES.map(function (p) { return '<div class="jr-place"><h2>' + CF.ui.esc(p.name) + '</h2><p class="cf-muted">' + CF.ui.esc(p.about) + "</p></div>"; }), { label: "Places" }) +
+      '<div class="jr-cards">' + ["The Tower", "The Star", "The Moon"].map(function (c) { return CF.ui.flip({ front: "<b>?</b>", back: "<b>" + c + "</b>", label: "Fortune card" }); }).join("") + "</div>";
+  var log = Array.isArray(s.Log) ? s.Log : [];
+  return log.length ? CF.ui.timeline(log.map(function (l, i) { var m = /^(Day \\d+)\\s*[—-]\\s*(.*)$/.exec(l) || [, "", l]; return { title: m[2], time: m[1], done: i < log.length - 1, current: i === log.length - 1 }; })) : '<p class="cf-muted">Nothing has happened yet.</p>';
+}
+function draw(dir) {
+  if (!root.querySelector(".jr-body")) root.innerHTML = '<div class="cf-app"><div class="jr-bar"></div><div class="cf-appbody jr-body"></div></div>';
+  root.querySelector(".jr-bar").innerHTML = bar();
+  var body = root.querySelector(".jr-body");
+  var done = dir ? CF.fx.transition(body, page(), dir) : Promise.resolve((body.innerHTML = page()));
+  var gold = Number(app.state("Journey.Gold")) || 0;
+  done.then(function () {
+    var el = root.querySelector(".jr-gold");
+    if (el && lastGold !== null && lastGold !== gold) CF.fx.countUp(el, gold, { from: lastGold });
+    lastGold = gold;
+  });
+}
+root.addEventListener("click", function (e) {
+  var t = e.target.closest("[data-tab]");
+  if (t) {
+    var order = ["map", "places", "log"];
+    var next = t.getAttribute("data-tab");
+    if (next === tab) return;
+    var dir = order.indexOf(next) > order.indexOf(tab) ? "left" : "right";
+    tab = next;
+    draw(dir);
+    return;
+  }
+  if (e.target.closest("[data-bag]")) app.drawer(CF.ui.list([{ title: "Lantern", right: "×1" }, { title: "Rope", right: "×2" }]), { title: "Bag" });
+  if (e.target.closest("[data-cf-send]")) app.toast("Written in the input box: send it when you're ready", { icon: "send" });
+});
+draw();
+app.onState(function () { draw(); });`,
+  script: "",
+};
+
+export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp];

@@ -21,6 +21,7 @@ var CF_DEFAULT_SETTINGS = {
   sideCalls: true,
   music: 70,
   ambience: 70,
+  motion: "auto",
 };
 var CF_SCRIPT_TAG = "scr" + "ipt";
 var cfHooks = [];
@@ -135,7 +136,11 @@ function cfStyle(doc, settings) {
     head.insertBefore(style, head.firstChild);
   }
   style.textContent = cfThemeCss(settings) + "\n" + CF_CONFIG.kit;
-  if (doc.body) doc.body.classList.add("cf");
+  if (doc.body) {
+    doc.body.classList.add("cf");
+    // The kit's own animations stop when the player wants less motion.
+    doc.body.classList.toggle("cf-reduce-motion", cfReducedMotion(doc.defaultView));
+  }
 }
 
 // ---------------------------------------------------------------- state
@@ -407,6 +412,101 @@ var cfUi = {
       "</div>"
     );
   },
+  /** A round progress ring with the value (or `text`) in the middle. */
+  ring: function (o) {
+    var min = o.min == null ? 0 : o.min;
+    var max = o.max == null ? 100 : o.max;
+    var pct = Math.max(0, Math.min(1, (Number(o.value) - min) / (max - min || 1)));
+    var size = o.size || 64;
+    var r = 15.5;
+    var len = 2 * Math.PI * r;
+    return (
+      '<div class="cf-ring" style="width:' + size + "px;height:" + size + 'px" role="meter" aria-valuemin="' + min + '" aria-valuemax="' + max + '" aria-valuenow="' + Number(o.value) + '" aria-label="' + cfEsc(o.label || "") + '">' +
+      '<svg viewBox="0 0 36 36" aria-hidden="true"><circle class="cf-ring-track" cx="18" cy="18" r="' + r + '"/><circle class="cf-ring-fill" cx="18" cy="18" r="' + r + '" stroke-dasharray="' + len.toFixed(2) + '" stroke-dashoffset="' + (len * (1 - pct)).toFixed(2) + '"/></svg>' +
+      '<span class="cf-ring-text">' + cfEsc(o.text != null ? o.text : Math.round(Number(o.value))) + "</span>" +
+      (o.label ? '<span class="cf-ring-label">' + cfEsc(o.label) + "</span>" : "") +
+      "</div>"
+    );
+  },
+  /** Slides that swipe sideways, with arrows and dots. `slides` are HTML strings. */
+  carousel: function (slides, o) {
+    o = o || {};
+    slides = slides || [];
+    return (
+      '<div class="cf-carousel" data-cf-carousel role="region" aria-roledescription="carousel" aria-label="' + cfEsc(o.label || "Slides") + '">' +
+      '<div class="cf-carousel-track">' +
+      slides.map(function (html, i) {
+        return '<div class="cf-slide" role="group" aria-roledescription="slide" aria-label="' + (i + 1) + " of " + slides.length + '">' + html + "</div>";
+      }).join("") +
+      "</div>" +
+      (slides.length > 1
+        ? '<div class="cf-carousel-nav"><button type="button" class="cf-btn ghost" data-cf-slide="-1" aria-label="Previous">' + cfUi.icon("back") + '</button><span class="cf-dots">' +
+          slides.map(function (_, i) {
+            return '<button type="button" class="cf-dot" data-cf-slide-to="' + i + '" aria-label="Slide ' + (i + 1) + '"' + (i === 0 ? ' aria-current="true"' : "") + "></button>";
+          }).join("") +
+          '</span><button type="button" class="cf-btn ghost cf-next" data-cf-slide="1" aria-label="Next">' + cfUi.icon("back") + "</button></div>"
+        : "") +
+      "</div>"
+    );
+  },
+  /**
+   * A visual-novel dialogue box: the speaker's name, their portrait (a URL, say from
+   * CF.assets.portrait) on the left or right, the line, and choices as buttons.
+   */
+  dialogue: function (o) {
+    o = o || {};
+    var portrait = o.portrait ? '<div class="cf-vn-portrait" style="background-image:url(\'' + cfEsc(o.portrait).replace(/'/g, "%27") + '\')" role="img" aria-label="' + cfEsc(o.name || "") + '"></div>' : "";
+    return (
+      '<div class="cf-vn' + (o.side === "right" ? " right" : "") + (portrait ? "" : " no-portrait") + '">' + portrait +
+      '<div class="cf-vn-box">' + (o.name ? '<div class="cf-vn-name">' + cfEsc(o.name) + "</div>" : "") +
+      '<div class="cf-vn-text">' + cfEsc(o.text) + "</div>" +
+      (o.choices && o.choices.length
+        ? '<div class="cf-vn-choices">' + o.choices.map(function (c) { return cfUi.button(c.label, c); }).join("") + "</div>"
+        : o.more ? '<span class="cf-vn-more" aria-hidden="true">▼</span>' : "") +
+      "</div></div>"
+    );
+  },
+  /**
+   * A map with pins: an image (or the theme's plain ground) and pins at x/y percentages. A pin
+   * takes the button options (send, payload, text, open) to act when tapped.
+   */
+  map: function (o) {
+    o = o || {};
+    var bg = o.image ? ' style="background-image:url(\'' + cfEsc(o.image).replace(/'/g, "%27") + '\')"' : "";
+    return (
+      '<div class="cf-map' + (o.image ? "" : " plain") + '"' + bg + ' role="group" aria-label="' + cfEsc(o.label || "Map") + '">' +
+      (o.pins || []).map(function (p) {
+        var attrs = "";
+        if (p.send) attrs += ' data-cf-send="' + cfEsc(p.send) + '" data-cf-payload="' + cfEsc(JSON.stringify(p.payload == null ? null : p.payload)) + '"' + (p.text ? ' data-cf-text="' + cfEsc(p.text) + '"' : "") + (p.now ? " data-cf-now" : "");
+        if (p.open) attrs += ' data-cf-open="' + cfEsc(p.open) + '"';
+        var x = Math.max(0, Math.min(100, Number(p.x) || 0));
+        var y = Math.max(0, Math.min(100, Number(p.y) || 0));
+        return '<button type="button" class="cf-pin' + (p.here ? " here" : "") + (p.locked ? " locked" : "") + '" style="left:' + x + "%;top:" + y + '%"' + attrs + (p.locked ? " disabled" : "") + ' aria-label="' + cfEsc(p.label) + (p.here ? ", you are here" : "") + '">' +
+          '<span class="cf-pin-dot">' + cfUi.icon(p.icon || (p.here ? "user" : "map")) + '</span><span class="cf-pin-label">' + cfEsc(p.label) + "</span></button>";
+      }).join("") +
+      "</div>"
+    );
+  },
+  /** A timeline: events top to bottom, done ones ticked and the current one marked. */
+  timeline: function (items) {
+    return (
+      '<ol class="cf-timeline">' +
+      (items || []).map(function (i) {
+        return '<li class="cf-tl-item' + (i.done ? " done" : "") + (i.current ? " current" : "") + '"' + (i.current ? ' aria-current="step"' : "") + '><span class="cf-tl-dot">' + (i.done ? cfUi.icon("check") : "") + "</span>" +
+          '<div class="cf-tl-body"><div class="cf-spread"><b>' + cfEsc(i.title) + "</b>" + (i.time ? '<span class="cf-small cf-muted">' + cfEsc(i.time) + "</span>" : "") + "</div>" +
+          (i.sub ? '<div class="cf-small cf-muted">' + cfEsc(i.sub) + "</div>" : "") + "</div></li>";
+      }).join("") +
+      "</ol>"
+    );
+  },
+  /** A card that flips over when tapped: `front` and `back` are HTML. */
+  flip: function (o) {
+    o = o || {};
+    return (
+      '<button type="button" class="cf-flip' + (o.flipped ? " flipped" : "") + '" data-cf-flip aria-pressed="' + !!o.flipped + '" aria-label="' + cfEsc(o.label || "Card") + '">' +
+      '<span class="cf-flip-inner"><span class="cf-flip-face cf-flip-front">' + (o.front || "") + '</span><span class="cf-flip-face cf-flip-back">' + (o.back || "") + "</span></span></button>"
+    );
+  },
   appBar: function (title, o) {
     o = o || {};
     return (
@@ -484,11 +584,40 @@ function cfFrame(win, options) {
     if (scroller) scroller.scrollTop = inner;
   }
 
+  /** A dialog or drawer on this screen's document: closed by its backdrop, Escape or data-cf-close. */
+  function cfSheet(cls, html, label) {
+    var back = doc.createElement("div");
+    back.className = "cf-modal-back" + (/drawer/.test(cls) ? " cf-drawer-back" : "");
+    back.innerHTML = '<div class="' + cls + ' cf-card" role="dialog" aria-modal="true"' + (label ? ' aria-label="' + cfEsc(label) + '"' : "") + ' tabindex="-1">' + html + "</div>";
+    var before = doc.activeElement;
+    function close() {
+      back.remove();
+      doc.removeEventListener("keydown", key);
+      if (before && before.focus) before.focus();
+    }
+    function key(e) {
+      if (e.key === "Escape") close();
+    }
+    back.addEventListener("click", function (e) {
+      if (e.target === back || (e.target.closest && e.target.closest("[data-cf-close]"))) {
+        e.stopPropagation();
+        close();
+      }
+    });
+    doc.addEventListener("keydown", key);
+    doc.body.appendChild(back);
+    var box = back.firstChild;
+    if (box && box.focus) box.focus();
+    back.close = close;
+    return back;
+  }
+
   var app = {
     window: win,
     document: doc,
     messageId: messageId,
     ui: cfUi,
+    fx: cfFx,
     settings: cfSettings,
     setSettings: cfSetSettings,
     asset: cfAsset,
@@ -523,7 +652,9 @@ function cfFrame(win, options) {
     emit: function (name, detail) {
       return eventEmit("cf:" + name, detail);
     },
-    toast: function (text) {
+    /** A short message at the top. { kind: "good" | "bad", icon, ms }. */
+    toast: function (text, o) {
+      o = o || {};
       var box = doc.querySelector(".cf-toasts");
       if (!box) {
         box = doc.createElement("div");
@@ -531,26 +662,25 @@ function cfFrame(win, options) {
         doc.body.appendChild(box);
       }
       var el = doc.createElement("div");
-      el.className = "cf-toast";
+      el.className = "cf-toast" + (o.kind === "good" || o.kind === "bad" ? " " + o.kind : "");
       el.setAttribute("role", "status");
-      el.textContent = text;
+      el.innerHTML = (o.icon ? cfUi.icon(o.icon) + " " : "") + cfEsc(text);
       box.appendChild(el);
       win.setTimeout(function () {
         el.remove();
-      }, 2600);
+      }, o.ms || 2600);
+      return el;
     },
-    modal: function (html) {
-      var back = doc.createElement("div");
-      back.className = "cf-modal-back";
-      back.innerHTML = '<div class="cf-modal cf-card" role="dialog" aria-modal="true">' + html + "</div>";
-      back.addEventListener("click", function (e) {
-        if (e.target === back || (e.target.closest && e.target.closest("[data-cf-close]"))) {
-          e.stopPropagation();
-          back.remove();
-        }
-      });
-      doc.body.appendChild(back);
-      return back;
+    /** A dialog over this screen. { title } adds a heading and a close button. Escape, the backdrop or data-cf-close closes it. */
+    modal: function (html, o) {
+      o = o || {};
+      return cfSheet("cf-modal", (o.title ? '<div class="cf-spread"><h2>' + cfEsc(o.title) + '</h2><button type="button" class="cf-btn ghost" data-cf-close aria-label="Close">' + cfUi.icon("close") + "</button></div>" : "") + html, o.title);
+    },
+    /** A panel that slides in from the side ("right", the default, or "left") or the "bottom". */
+    drawer: function (html, o) {
+      o = o || {};
+      var side = o.side === "left" || o.side === "bottom" ? o.side : "right";
+      return cfSheet("cf-drawer " + side, (o.title ? '<div class="cf-spread"><h2>' + cfEsc(o.title) + '</h2><button type="button" class="cf-btn ghost" data-cf-close aria-label="Close">' + cfUi.icon("close") + "</button></div>" : "") + html, o.title);
     },
     /** A router for app-like screens: routes are functions (params, app) returning HTML. */
     router: function (root, table, start, params) {
@@ -576,7 +706,29 @@ function cfFrame(win, options) {
       });
       set.querySelectorAll("[data-cf-panel]").forEach(function (p) {
         p.hidden = p.getAttribute("data-cf-panel") !== id;
+        if (!p.hidden) cfAnimate(p, [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }], { duration: cfReducedMotion(win) ? 0 : 160, easing: "ease-out" });
       });
+      return;
+    }
+    var flip = target.closest("[data-cf-flip]");
+    if (flip) {
+      var on = !flip.classList.contains("flipped");
+      flip.classList.toggle("flipped", on);
+      flip.setAttribute("aria-pressed", String(on));
+      return;
+    }
+    var slide = target.closest("[data-cf-slide], [data-cf-slide-to]");
+    if (slide) {
+      var carousel = slide.closest("[data-cf-carousel]");
+      var track = carousel && carousel.querySelector(".cf-carousel-track");
+      if (!track) return;
+      var count = track.children.length;
+      var at = Math.round(track.scrollLeft / (track.clientWidth || 1));
+      var next = slide.hasAttribute("data-cf-slide-to") ? Number(slide.getAttribute("data-cf-slide-to")) : at + Number(slide.getAttribute("data-cf-slide"));
+      next = (next + count) % count;
+      if (typeof track.scrollTo === "function") track.scrollTo({ left: next * track.clientWidth, behavior: cfReducedMotion(win) ? "auto" : "smooth" });
+      else track.scrollLeft = next * track.clientWidth;
+      cfCarouselDots(carousel, next);
       return;
     }
     var send = target.closest("[data-cf-send]");
@@ -596,7 +748,25 @@ function cfFrame(win, options) {
     }
     if (target.closest("[data-cf-close]") && !target.closest(".cf-modal-back")) cfClose();
   });
+  // Carousels' dots follow a swipe.
+  doc.addEventListener(
+    "scroll",
+    function (e) {
+      var track = e.target;
+      if (!track || !track.classList || !track.classList.contains("cf-carousel-track")) return;
+      cfCarouselDots(track.parentNode, Math.round(track.scrollLeft / (track.clientWidth || 1)));
+    },
+    true,
+  );
   return app;
+}
+
+function cfCarouselDots(carousel, index) {
+  if (!carousel) return;
+  carousel.querySelectorAll("[data-cf-slide-to]").forEach(function (d) {
+    if (Number(d.getAttribute("data-cf-slide-to")) === index) d.setAttribute("aria-current", "true");
+    else d.removeAttribute("aria-current");
+  });
 }
 
 /** Mounts a module's screen into an element of a document (by default the page's #cf-root). */
@@ -911,6 +1081,7 @@ function cfRunHooks(stat, before, messageId) {
 var CardForgeApi = {
   version: CF_CONFIG.version,
   ui: cfUi,
+  fx: cfFx,
   frame: cfFrame,
   mount: cfMount,
   mountSlot: cfMountSlot,

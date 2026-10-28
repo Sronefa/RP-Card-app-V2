@@ -1,6 +1,6 @@
 /**
  * Core module: the player settings app, opened from the hub. The player picks light or dark, an
- * accent and the text size, how panels behave, sound levels, and can fix or reset game values by
+ * accent, the text size and how much motion, how panels behave, sound levels, and can fix or reset game values by
  * hand; those edits go to a log the model sees, so it doesn't "correct" them back. Settings are kept
  * per chat.
  */
@@ -59,6 +59,7 @@ function look(s) {
     field("Accent colour", '<div class="cf-row"><input type="color" data-setting="accent" value="' + esc(s.accent || "#888888") + '" style="width:56px;height:36px;border:0;background:none">' +
       (s.accent ? '<button type="button" class="cf-btn ghost" data-reset="accent">Card colour</button>' : '<span class="cf-small cf-muted">The card’s own colour</span>') + "</div>") +
     field("Text size", '<select class="cf-input" data-setting="textScale">' + [0.85, 1, 1.15, 1.3].map(function (n) { return option(n, Math.round(n * 100) + "%", s.textScale); }).join("") + "</select>") +
+    field("Motion", '<select class="cf-input" data-setting="motion">' + option("auto", "As my device is set", s.motion) + option("full", "Full effects", s.motion) + option("reduce", "Less motion", s.motion) + "</select>") +
     "</div>";
 }
 function panels(s) {
@@ -143,7 +144,7 @@ export function settingsAppModule(raw?: Record<string, unknown>, enabled = true)
     id: "settings",
     name: "Settings app",
     version: "1.0.0",
-    description: "The player's own settings: light or dark, accent, text size, panels, generations, sound, and fixing values by hand.",
+    description: "The player's own settings: light or dark, accent, text size, motion, panels, generations, sound, and fixing values by hand.",
     slot: "overlay",
     button: "⚙ Settings",
     tags: ["core", "settings"],
