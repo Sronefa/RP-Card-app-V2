@@ -53,6 +53,15 @@ const screenParam = str(
   'Which screen: "chat", "panel" (the newest status panel), "overlay" (the open hub screen), "message:N", or part of a screen\'s name',
 );
 
+/** Handing word work to the co-writer. */
+export const HANDOFF_TOOLS: ToolDef[] = [
+  tool(
+    "ask_cowriter",
+    "File a task for the co-writer when what you build needs words you shouldn't invent: update rules and tiers for a new value, lorebook pages for new places or characters, a content pack for a living screen, outcome lines for a minigame, mood names, the expressions a portrait needs. It waits for the user's approval in the inbox; when approved, the co-writer gets your brief. Say what to write, for which value, module or screen, and what you built that needs it.",
+    obj({ title: str("One line for the inbox, like 'Write tiers for Mina.Trust'"), brief: str("What to write and why, with the names of the values, modules or feeds involved") }, ["title", "brief"]),
+  ),
+];
+
 export const READ_TOOLS: ToolDef[] = [
   tool("list_modules", "List the card's modules: id, name, slot, size, values and rules."),
   tool(
@@ -525,6 +534,8 @@ export interface EngineerContext {
   library?: EngineModule[];
   /** World entries to propose in the co-writer chat (add_npc and the like). */
   cardCalls?: ToolCall[];
+  /** Tasks for the co-writer (ask_cowriter), filed in the inbox when the turn ends. */
+  tasks?: { title: string; brief: string }[];
   /** The card being worked on, for the Image Studio's shot list. */
   cardId?: string;
   /** False when the model gets no screenshots (it can't see, or the user skipped them). */
@@ -812,6 +823,13 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
     switch (call.name) {
       case "list_modules":
         return text(call.id, listModulesText(ctx.draft));
+      case "ask_cowriter": {
+        const title = typeof input.title === "string" ? input.title.trim() : "";
+        const brief = typeof input.brief === "string" ? input.brief.trim() : "";
+        if (!title || !brief) throw new ToolInputError('Give the task a "title" and a "brief".');
+        ctx.tasks = [...(ctx.tasks ?? []), { title, brief }];
+        return text(call.id, `Filed for the co-writer: "${title}". It waits for the user's approval in the inbox when your turn ends; you don't need to wait for it.`);
+      }
       case "read_module":
         return text(call.id, readModuleText(ctx.draft, input.module));
       case "read_values":
@@ -1147,6 +1165,8 @@ export function describeCall(call: ToolCall): string {
       return "Played a turn";
     case "lint":
       return "Ran the checks";
+    case "ask_cowriter":
+      return `Asked the co-writer: ${s(i.title)}`;
     case "run_worker":
       return `Worker: ${s(i.task).split("\n")[0].slice(0, 120)}`;
     default:

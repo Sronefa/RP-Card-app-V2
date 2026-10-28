@@ -16,6 +16,7 @@ import {
   CONVERT_TOOLS,
   describeCall,
   ENGINEER_TOOLS,
+  HANDOFF_TOOLS,
   KNOWLEDGE_TOOLS,
   LORE_TOOLS,
   loreSources,
@@ -61,10 +62,11 @@ const LEAD_NAMES = new Set([
   "list_parts",
   "list_assets",
   "lint",
+  "ask_cowriter",
 ]);
 
 export const LEAD_TOOLS: ToolDef[] = [
-  ...[...READ_TOOLS, ...LORE_TOOLS, ...CONVERT_TOOLS, ...KNOWLEDGE_TOOLS, ...ART_TOOLS, ...TEST_TOOLS].filter((t) => LEAD_NAMES.has(t.name)),
+  ...[...READ_TOOLS, ...LORE_TOOLS, ...CONVERT_TOOLS, ...KNOWLEDGE_TOOLS, ...ART_TOOLS, ...TEST_TOOLS, ...HANDOFF_TOOLS].filter((t) => LEAD_NAMES.has(t.name)),
   RUN_WORKER,
 ];
 

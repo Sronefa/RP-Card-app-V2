@@ -111,6 +111,10 @@ export function MoodsEditor({ config, theme, setTheme, preview, setPreview }: { 
               </label>
               <ValueSelect label="Follows" values={values} value={m.path} onChange={(path) => setMood(i, { path, is: undefined, min: undefined, max: undefined }, "path")} />
             </div>
+            <label className="flex flex-col gap-1 text-sm">
+              How the story feels then
+              <TextInput value={m.description ?? ""} placeholder="e.g. Every shadow could be a wolf; people talk in whispers." onChange={(e) => setMood(i, { description: e.target.value }, "description")} />
+            </label>
             <MoodWhen mood={m} v={v} set={(patch) => setMood(i, patch, "when")} />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {MOOD_COLOURS.map(([key, label]) => {

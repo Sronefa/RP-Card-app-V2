@@ -10,7 +10,7 @@ import { LOGIC_NAMES } from "../editor/mechanics";
 import { BUILT_IN_SKILLS } from "../engine/engineer/knowledge";
 import { effectiveConfig } from "../engine/modules/compile";
 import { readEngine, varLabel, varPath } from "../engine/sheet";
-import { tiersEntryOf } from "./engineTools";
+import { engineFeaturesText, tiersEntryOf } from "./engineTools";
 import { KINDS, pageMeta, worldFieldsText } from "../editor/world";
 import { estimateTokens } from "../lib/tokens";
 import { YOU_DECIDE, type CowriterSettings, type DarkLevel, type ProseSettings, type UnhingedLevel, type InterviewDepth, type InterviewRound } from "./records";
@@ -196,6 +196,8 @@ export function settingsContext(
     ...proseLines(settings.prose),
     settings.engineMode &&
       `This card is built for the Immersive Engine (an MVU card: a variable sheet the model updates each reply, shown in panels and screens). Write for it from the start with the engine tools (add_variable, set_update_rule, write_tiers, set_greeting_state), following this guide:\n${engineGuide}`,
+    settings.engineMode &&
+      "You and the UI engineer hand each other work. When something you write should show on a screen (a new NPC the player could text, a shop's goods, a place for the map, a stat worth a meter), file it for the engineer with ask_engineer; the user approves it in the inbox. When the engine's screens need words (a living screen's content pack, a minigame's outcome lines, a cutscene, a mood's name, a portrait's expressions), write them with write_live_pack, write_minigame_lines, write_scene, name_mood and list_expressions. A message that starts with \"A task from\" was approved by the user: do it.",
     settings.tone && `Tone: ${settings.tone}.`,
     settings.genre && `Setting and genre: ${settings.genre}.`,
     SUGGESTIONS[settings.suggestions],
@@ -246,6 +248,8 @@ export function cardContext(data: CardDataV3, kind: CardKind): string {
           })
           .join("\n") || "(none yet)"),
     );
+    const features = engineFeaturesText(engine);
+    if (features) out.push(`## engine screens that need words (write them with the engine writing tools)\n${features}`);
   }
   if (arcHidden(data))
     out.push(
