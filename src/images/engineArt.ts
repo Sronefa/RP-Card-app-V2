@@ -3,8 +3,9 @@
  * and the art slots the installed parts can fill.
  */
 import type { CardDataV3 } from "../card";
-import { applyEngine, readEngine } from "../engine/sheet";
-import { modulesOf } from "../engine/modules/compile";
+import { applyEngine, readEngine, varPath } from "../engine/sheet";
+import { cleanPortraits } from "../engine/theme";
+import { effectiveConfig, modulesOf } from "../engine/modules/compile";
 import { stageSettings } from "../engine/modules/stage";
 import { newId } from "../lib/id";
 import type { AssetKind } from "./filing";
@@ -52,6 +53,8 @@ export function requestedShot(data: CardDataV3, input: Record<string, unknown>):
       return { ...base, group: "avatars", kind: "avatar", label: label("portrait"), outfit: "default", framing: "portrait" };
     case "emotion":
       return { ...base, group: "emotions", kind: "emotion", label: label(variant || "neutral"), emotion: variant || "neutral", outfit: "default", framing: "half" };
+    case "outfit":
+      return { ...base, group: "character", kind: "outfit", label: label(variant || "outfit"), outfit: variant || "default", framing: "half" };
     case "background": {
       const { subject: place, ...rest } = base;
       return { ...rest, group: "backgrounds", kind: "background", label: [name, variant].filter(Boolean).join(", ") || "Background", ...(place ? { place } : {}), ...(variant ? { time: variant } : {}), weather: "clear", framing: "landscape" };
@@ -133,6 +136,51 @@ export function artSlots(data: CardDataV3): ArtSlot[] {
           { kind: "emotion", subject: member.name, variant: mood, description: `${member.name} looking ${mood}` },
         );
       }
+  }
+  // Expressive portraits: every emotion and outfit their values can name.
+  const theme = config.theme;
+  if (theme) {
+    const vars = effectiveConfig(config).vars;
+    const optionsAt = (path?: string) => {
+      const v = path ? vars.find((x) => varPath(x).join(".").toLowerCase() === path.toLowerCase()) : undefined;
+      return v && v.type === "choice" ? (v.options ?? []).map((o) => o.trim()).filter(Boolean) : [];
+    };
+    const keys = new Set(out.map((s) => s.key));
+    for (const b of cleanPortraits(theme.portraits)) {
+      const subject = subjects.find((s) => lower(s.name) === lower(b.name));
+      const tagSubject = subject ? { subject: subject.key } : {};
+      const uniq = (list: string[]) => list.filter((x, i) => list.findIndex((y) => lower(y) === lower(x)) === i);
+      for (const emotion of uniq([...optionsAt(b.emotion), ...(b.emotions ?? []), ...(b.hurt ? [b.hurt.emotion] : [])])) {
+        const key = `emotion:${b.name}:${emotion}`;
+        if (keys.has(key)) continue;
+        keys.add(key);
+        add(
+          {
+            key,
+            label: `${b.name}, ${emotion}`,
+            part: "Expressive portraits",
+            filled: has((e) => e.k === "emotion" && lower(e.s) === lower(b.name) && lower(e.v ?? "") === lower(emotion)),
+            tag: { kind: "emotion", ...tagSubject, variant: emotion },
+          },
+          { kind: "emotion", subject: b.name, variant: emotion, description: `${b.name} looking ${emotion}` },
+        );
+      }
+      for (const outfit of uniq([...optionsAt(b.outfit), ...(b.outfits ?? [])])) {
+        const key = `outfit:${b.name}:${outfit}`;
+        if (keys.has(key)) continue;
+        keys.add(key);
+        add(
+          {
+            key,
+            label: `${b.name} in ${outfit}`,
+            part: "Expressive portraits",
+            filled: has((e) => e.k === "outfit" && lower(e.s) === lower(b.name) && lower(e.v ?? "") === lower(outfit)),
+            tag: { kind: "outfit", ...tagSubject, variant: outfit },
+          },
+          { kind: "outfit", subject: b.name, variant: outfit, description: `${b.name} wearing ${outfit}` },
+        );
+      }
+    }
   }
   return out;
 }

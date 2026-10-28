@@ -3,7 +3,7 @@
  * the result on a hidden sandbox page. Writes change only the turn's draft; the finished turn
  * becomes one proposal.
  */
-import { assetCall, requestedShot } from "../../images/engineArt";
+import { artSlots, assetCall, requestedShot } from "../../images/engineArt";
 import { assetManifest } from "../../images/manifest";
 import { mergeShots, updateStudio } from "../../images/shots";
 import { conversionOps, planConversion, planText } from "../convert";
@@ -15,7 +15,7 @@ import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { SandboxLibs } from "../sandbox/sandbox";
 import { applyEngine, cardFonts, initialState, scenarioOf, stateSchema, themeOf, varPath, VAR_TYPES, type EngineConfig } from "../sheet";
 import { sampleStates, type SampleState as ScrubState } from "../scrubber";
-import { FONTS, PRESET_IDS, TEXTURES, textureName, themeBundle } from "../theme";
+import { AMBIENCES, cleanMoods, cleanPortraits, FONTS, PRESET_IDS, TEXTURES, textureName, themeBundle } from "../theme";
 import { pieceId } from "../modules/fork";
 import { SLOTS, type EngineModule } from "../modules/types";
 import { allParts, hasPart, installParts, partsText, searchParts } from "../parts/catalog";
@@ -336,6 +336,40 @@ export const WRITE_TOOLS: ToolDef[] = [
         reset: { type: "array", items: { type: "string" }, description: "Tokens to set back to the preset's" },
       },
       [],
+    ),
+  ),
+  tool(
+    "set_mood",
+    "Add or change a theme mood (by name): while a value matches, the theme shifts on every screen, fading in. Give the value's path and when it's on (is: text values, or min/max for a number; neither means any true value), then what changes: tokens (colours, texture by name), a tint over the screens and an ambience. { remove: true } deletes it. A later mood wins where two change the same token. Read the style doc's moods section first.",
+    obj(
+      {
+        name: str("What it's called: Night, Danger, Corrupted"),
+        path: str("The value it follows, like World.Danger"),
+        is: { type: "array", items: { type: "string" }, description: "Text values that turn it on" },
+        min: { type: "number", description: "Turns on at or above this" },
+        max: { type: "number", description: "Turns on at or below this" },
+        tokens: { type: "object", description: "Theme tokens while on, like { bg: '#1a0f12', accent: '#e0313f', texture: 'Vignette' }" },
+        tint: { type: "object", description: "{ color: '#300', strength: 0.15 }: a colour over the screens, 0 to 0.6" },
+        ambience: { type: "string", enum: [...AMBIENCES, ""], description: "Particles over the open screen" },
+        remove: bool("Delete this mood"),
+      },
+      ["name"],
+    ),
+  ),
+  tool(
+    "set_portrait",
+    "Make a character's portrait follow the state (by name): the emotion value, the outfit value, and a health value under which they look hurt. Screens show it with app.portrait(name). read_theme then lists the emotions and outfits that have no art yet; ask for them with request_asset. { remove: true } stops it.",
+    obj(
+      {
+        name: str("The character, as their images are tagged"),
+        emotion: str("The value holding their emotion, like Mina.Mood"),
+        outfit: str("The value holding their outfit, like Mina.Outfit"),
+        hurt: { type: "object", description: "{ path: 'Mina.Health', below: 30, emotion: 'hurt' }" },
+        emotions: { type: "array", items: { type: "string" }, description: "Emotions to have art for, when the emotion value isn't a choice" },
+        outfits: { type: "array", items: { type: "string" }, description: "Outfits to have art for, when the outfit value isn't a choice" },
+        remove: bool("Stop following the state"),
+      },
+      ["name"],
     ),
   ),
   tool(
@@ -769,6 +803,15 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
             mode: bundle.mode,
             light: named(bundle.light),
             dark: named(bundle.dark),
+            ...(cleanMoods(theme.moods).length ? { moods: cleanMoods(theme.moods).map((m) => ({ ...m, tokens: named(m.tokens) })) } : {}),
+            ...(cleanPortraits(theme.portraits).length
+              ? {
+                  portraits: cleanPortraits(theme.portraits),
+                  portrait_art_missing: artSlots(applyEngine(ctx.data, ctx.draft))
+                    .filter((a) => a.part === "Expressive portraits" && !a.filled)
+                    .map((a) => a.label),
+                }
+              : {}),
             fonts: Object.keys(FONTS),
             textures: Object.keys(TEXTURES),
             embedded_fonts: cardFonts(ctx.draft),

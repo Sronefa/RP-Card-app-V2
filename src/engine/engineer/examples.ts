@@ -570,4 +570,65 @@ else {
   script: "",
 };
 
-export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart, prologue, chapterCard];
+const companionCard: EngineModule = {
+  ...base(),
+  id: "companion-card",
+  name: "Companion card",
+  description:
+    "A panel section: a companion's portrait that follows her mood, outfit and health (hurt below 30), with a crossfade when they change, beside her mood, outfit and a health bar. It follows the values with { follow }; with a portrait binding (set_portrait) app.portrait(who) alone does the same.",
+  slot: "panel",
+  vars: [
+    newVar({ id: "ex-m-mood", group: "Mina", name: "Mood", type: "choice", options: ["neutral", "joy", "sadness", "anger", "fear"], start: "neutral", rule: "Mina's feeling at the end of the reply, as the scene shows it." }),
+    newVar({ id: "ex-m-outfit", group: "Mina", name: "Outfit", type: "choice", options: ["Casual", "Uniform", "Armor"], start: "Casual", rule: "Changes only when the story says she changes clothes." }),
+    newVar({ id: "ex-m-hp", group: "Mina", name: "Health", type: "number", start: "100", min: 0, max: 100, rule: "−5 to −30 when she's hurt; +10 when she rests or is treated." }),
+  ],
+  rules: [],
+  regex: [],
+  html: "",
+  css: ".cc-row { display: flex; gap: 12px; align-items: center; } .cc-info { flex: 1; min-width: 0; } .cc-info h3 { margin: 0; font-family: var(--cf-heading); } .cc-info .cf-row { flex-wrap: wrap; }",
+  js: `var who = "Mina";
+// What the portrait follows. With set_portrait for Mina, app.portrait(who, { size: "l" }) is enough.
+var follow = { emotion: who + ".Mood", outfit: who + ".Outfit", hurt: { path: who + ".Health", below: 30, emotion: "hurt" } };
+function draw() {
+  var s = app.state(who) || {};
+  var hp = Number(s.Health) || 0;
+  var d = app.delta()[who + ".Health"];
+  root.innerHTML =
+    '<div class="cc-row">' +
+    app.portrait(who, { follow: follow, size: "l", shape: "tall" }) +
+    '<div class="cf-stack cc-info"><h3>' + CF.ui.esc(who) + "</h3>" +
+    '<div class="cf-row">' + CF.ui.chip(hp < 30 ? "hurt" : s.Mood || "neutral") + CF.ui.chip(s.Outfit || "Casual") + "</div>" +
+    CF.ui.meter({ label: "Health", value: hp, max: 100, delta: d ? d[1] - d[0] : 0 }) +
+    "</div></div>";
+}
+draw();
+// A redraw keeps the crossfade: the new portrait fades from the one shown before.
+app.onState(draw);`,
+  script: "",
+};
+
+const dangerMeter: EngineModule = {
+  ...base(),
+  id: "danger-meter",
+  name: "Danger meter",
+  description:
+    'A panel section that pairs with a theme mood: the danger level as a meter and the moods that are on as chips; its fill turns red while the Danger mood is on. Add the mood with set_mood { name: "Danger", path: "World.Danger", min: 70, tokens: { accent: "#e0313f" }, tint: { color: "#400", strength: 0.15 }, ambience: "embers" } and every screen shifts with it.',
+  slot: "panel",
+  vars: [newVar({ id: "ex-danger", group: "World", name: "Danger", type: "number", start: "10", min: 0, max: 100, rule: "+10 to +25 when a threat closes in; −10 when {{user}} reaches safety. 70 and up is open danger." })],
+  rules: [],
+  regex: [],
+  html: "",
+  css: '.dm { display: flex; flex-direction: column; gap: 6px; } [data-cf-mood~="danger"] .dm .cf-meter-fill { background: var(--cf-bad); }',
+  js: `function draw() {
+  var danger = Number(app.state("World.Danger")) || 0;
+  var d = app.delta()["World.Danger"];
+  // The moods on at this panel's reply: an older panel keeps its own.
+  var on = app.mood.active().map(function (m) { return CF.ui.chip(m.name); }).join("");
+  root.innerHTML = '<div class="dm">' + CF.ui.meter({ label: "Danger", value: danger, max: 100, delta: d ? d[1] - d[0] : 0 }) + (on ? '<div class="cf-row">' + on + "</div>" : "") + "</div>";
+}
+draw();
+app.onState(draw);`,
+  script: "",
+};
+
+export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart, prologue, chapterCard, companionCard, dangerMeter];

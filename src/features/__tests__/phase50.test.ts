@@ -4,6 +4,7 @@ import { BUILT_IN_SKILLS, readDoc, searchDocs } from "../../engine/engineer/know
 import { lintConfig } from "../../engine/engineer/lint";
 import { scriptSource } from "../../engine/runtime";
 import artSource from "../../engine/runtime/art.js?raw";
+import moodSource from "../../engine/runtime/mood.js?raw";
 import sceneSource from "../../engine/runtime/scene.js?raw";
 import coreSource from "../../engine/runtime/core.js?raw";
 import fxSource from "../../engine/runtime/fx.js?raw";
@@ -38,7 +39,7 @@ const art = new Function(
   "eventOn",
   "eventRemoveListener",
   "eventEmit",
-  `${fxSource}\n${artSource}\n${sceneSource}\n${coreSource}\nreturn { cfArt, api: CardForgeApi };`,
+  `${fxSource}\n${artSource}\n${sceneSource}\n${moodSource}\n${coreSource}\nreturn { cfArt, api: CardForgeApi };`,
 )({ version: "t", theme: { mode: "dark", dark: "", light: "" }, kit: kitCss, modules: [] }, () => ({}), async () => ({}), () => {}, () => {}, async () => {}) as {
   cfArt: Art;
   api: Record<string, unknown>;

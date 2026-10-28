@@ -7,6 +7,7 @@ import type { EngineModule } from "../../engine/modules/types";
 import { scriptSource } from "../../engine/runtime";
 import coreSource from "../../engine/runtime/core.js?raw";
 import artSource from "../../engine/runtime/art.js?raw";
+import moodSource from "../../engine/runtime/mood.js?raw";
 import sceneSource from "../../engine/runtime/scene.js?raw";
 import fxSource from "../../engine/runtime/fx.js?raw";
 import kitCss from "../../engine/runtime/kit.css?raw";
@@ -31,7 +32,7 @@ function loadCore(): Core {
     "eventOn",
     "eventRemoveListener",
     "eventEmit",
-    `${fxSource}\n${artSource}\n${sceneSource}\n${coreSource}\nreturn { cfUi, cfFx, cfFrame, cfStyle };`,
+    `${fxSource}\n${artSource}\n${sceneSource}\n${moodSource}\n${coreSource}\nreturn { cfUi, cfFx, cfFrame, cfStyle };`,
   )(
     config,
     () => ({ cardforge: { settings: stored } }),

@@ -8,7 +8,8 @@ import { originalOf, originalUpdated } from "../modules/fork";
 import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { EngineModule } from "../modules/types";
 import { runtime, sceneCheck, scriptSource } from "../runtime";
-import { rulesText, settingsSource, varPath, type EngineConfig } from "../sheet";
+import { rulesText, settingsSource, themeOf, varPath, type EngineConfig } from "../sheet";
+import { cleanMoods, cleanPortraits } from "../theme";
 import type { ScreenReport } from "../sandbox/sandbox";
 
 export interface Finding {
@@ -206,6 +207,18 @@ export function lintConfig(config: EngineConfig): Finding[] {
         message: `${m.id} is a fork of CardForge's ${m.fork!.core}, which has been updated since. The fork keeps its own code; tell the user if they want the original's changes.`,
       });
   }
+
+  // Moods and portraits that follow the state must follow values that exist.
+  const theme = themeOf(config);
+  const follows = [
+    ...cleanMoods(theme.moods).map((m) => ({ what: `The ${m.name} mood`, path: m.path })),
+    ...cleanPortraits(theme.portraits).flatMap((b) =>
+      [b.emotion, b.outfit, b.hurt?.path].filter((p): p is string => !!p).map((path) => ({ what: `${b.name}'s portrait`, path })),
+    ),
+  ];
+  for (const f of follows)
+    if (!pathKnown(f.path, known))
+      out.push({ level: "error", check: "values", message: `${f.what} follows "${f.path}", but the sheet and modules have no such value. Add it with set_value, or fix the path.` });
 
   const size = scriptSource(settingsSource(config)).length;
   const kb = Math.round(size / 1024);

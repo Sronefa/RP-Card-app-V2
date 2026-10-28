@@ -1,11 +1,12 @@
-/** The engine's Look tab: the card theme every screen shares, and the status panel. */
+/** The engine's Look tab: the card theme every screen shares, its moods and portraits, and the status panel. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, TextInput } from "../../components/ui";
 import { panelGroups, panelHtml } from "../../engine/panel";
 import kitCss from "../../engine/runtime/kit.css?raw";
 import { themeOf, type EngineConfig, type PanelAction, type PanelTab } from "../../engine/sheet";
 import { sampleStates } from "../../engine/scrubber";
-import { BUNDLED_FONTS, fontFaces, FONTS, PRESET_IDS, PRESETS, TEXTURES, textureName, themeTokens, themeVars, usedFonts, type CardTheme, type ThemeMode, type ThemeTokens } from "../../engine/theme";
+import { BUNDLED_FONTS, cleanMoods, fontFaces, FONTS, PRESET_IDS, PRESETS, TEXTURES, textureName, themeTokens, themeVars, usedFonts, type CardTheme, type ThemeMode, type ThemeMood, type ThemeTokens } from "../../engine/theme";
+import { MoodsEditor, PortraitsEditor } from "./MoodEditors";
 import { selectClass } from "./VarEditor";
 
 type Save = (c: EngineConfig, key?: string) => void;
@@ -31,6 +32,8 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
   const [mode, setMode] = useState<ThemeMode>(preset.mode);
   useEffect(() => setMode(preset.mode), [preset.mode]);
   const tokens = themeTokens(theme, mode);
+  const [previewMood, setPreviewMood] = useState("");
+  const mood = cleanMoods(theme.moods).find((m) => m.id === previewMood);
   const setTheme = (next: CardTheme, key?: string) => save({ ...config, theme: next }, key && `engine.theme.${key}`);
   const override = (patch: Partial<ThemeTokens>, key: string) => setTheme({ ...theme, overrides: { ...theme.overrides, ...patch } }, key);
   const clear = (key: keyof ThemeTokens) => {
@@ -153,6 +156,9 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
         )}
       </section>
 
+      <MoodsEditor config={config} theme={theme} setTheme={setTheme} preview={previewMood} setPreview={setPreviewMood} />
+      <PortraitsEditor config={config} theme={theme} setTheme={setTheme} />
+
       <section className="flex flex-col gap-2" aria-label="Theme preview">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-medium">Preview</h2>
@@ -170,7 +176,8 @@ export function LookPage({ config, save }: { config: EngineConfig; save: Save })
             ))}
           </div>
         </div>
-        <ThemeSample tokens={tokens} mode={mode} />
+        {mood && <p className="text-xs text-ink-muted">With the {mood.name} mood on.</p>}
+        <ThemeSample tokens={mood ? { ...tokens, ...mood.tokens } : tokens} mode={mode} mood={mood} />
       </section>
 
       <section className="flex flex-col gap-3" aria-label="Status panel">
@@ -285,8 +292,9 @@ const SAMPLE = `<div class="cf-app"><div class="cf-appbar"><h1>Inventory</h1><bu
 </div></div>`;
 
 /** The kit's pieces in the theme, the way a hub screen shows them. */
-function ThemeSample({ tokens, mode }: { tokens: ThemeTokens; mode: ThemeMode }) {
-  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${facesFor(tokens)}\n:root { ${themeVars(tokens)}; color-scheme: ${mode}; } html, body { margin: 0; background: var(--cf-bg); }\n${kitCss}</style></head><body class="cf">${SAMPLE}</body></html>`;
+function ThemeSample({ tokens, mode, mood }: { tokens: ThemeTokens; mode: ThemeMode; mood?: ThemeMood }) {
+  const tint = mood?.tint ? `<div class="cf-mood-tint" style="background:${mood.tint.color};opacity:${mood.tint.strength}"></div>` : "";
+  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${facesFor(tokens)}\n:root { ${themeVars(tokens)}; color-scheme: ${mode}; } html, body { margin: 0; background: var(--cf-bg); }\n${kitCss}</style></head><body class="cf">${SAMPLE}${tint}</body></html>`;
   return <iframe title="Theme preview" sandbox="" srcDoc={doc} className="h-80 w-full rounded-lg border border-border" />;
 }
 
