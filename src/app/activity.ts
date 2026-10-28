@@ -7,10 +7,10 @@ import { create } from "zustand";
 import { toast } from "../components/toast";
 import { newId } from "../lib/id";
 
-export type ActivityKind = "engineer";
+export type ActivityKind = "engineer" | "cowriter";
 export type ActivityStatus = "queued" | "running" | "done" | "needs-user" | "failed" | "stopped";
 
-export const KIND_LABEL: Record<ActivityKind, string> = { engineer: "Engineer" };
+export const KIND_LABEL: Record<ActivityKind, string> = { engineer: "Engineer", cowriter: "Co-writer" };
 
 export interface ActivityItem {
   id: string;
@@ -22,6 +22,8 @@ export interface ActivityItem {
   status: ActivityStatus;
   /** How it ended, in a sentence. */
   detail?: string;
+  /** Where a running job is, in a few words, for jobs that report it ("12 of 20 written"). */
+  progress?: string;
   at: number;
   endedAt?: number;
   /** The user has seen how it ended. */
@@ -41,14 +43,23 @@ const KEEP_FINISHED = 20;
 interface ActivityState {
   items: ActivityItem[];
   /** Adds a job to the end of the queue; resolves with how it ended. */
-  enqueue: (item: Pick<ActivityItem, "kind" | "cardId" | "cardName" | "label">, run: () => Promise<Outcome>) => Promise<Outcome>;
+  enqueue: (
+    item: Pick<ActivityItem, "kind" | "cardId" | "cardName" | "label">,
+    run: (id: string) => Promise<Outcome>,
+    /** Stops the job once it's running; the engineer's job is stopped through its own session. */
+    stop?: () => void,
+  ) => Promise<Outcome>;
+  /** Stops the running job `id`, when it was queued with a way to stop it. */
+  stop: (id: string) => void;
+  /** Sets what a running job reports about where it is. */
+  setProgress: (id: string, progress: string) => void;
   /** Takes a job that hasn't started out of the queue. */
   cancel: (id: string) => void;
   markSeen: () => void;
   clearFinished: () => void;
 }
 
-const jobs = new Map<string, { run: () => Promise<Outcome>; done: (o: Outcome) => void }>();
+const jobs = new Map<string, { run: (id: string) => Promise<Outcome>; done: (o: Outcome) => void; stop?: () => void }>();
 
 function notice(item: ActivityItem) {
   const who = `${KIND_LABEL[item.kind]} on ${item.cardName || "an unnamed card"}`;
@@ -73,12 +84,12 @@ export const useActivity = create<ActivityState>((set, get) => {
     patch(next.id, { status: "running" });
     let outcome: Outcome;
     try {
-      outcome = await job.run();
+      outcome = await job.run(next.id);
     } catch (e) {
       outcome = { status: "failed", detail: (e as Error).message || "Something went wrong." };
     }
     jobs.delete(next.id);
-    patch(next.id, { status: outcome.status, detail: outcome.detail, endedAt: Date.now() });
+    patch(next.id, { status: outcome.status, detail: outcome.detail, progress: undefined, endedAt: Date.now() });
     const ended = get().items.find((i) => i.id === next.id);
     if (ended && outcome.status !== "stopped") notice(ended);
     // Old finished jobs drop off the list.
@@ -93,9 +104,9 @@ export const useActivity = create<ActivityState>((set, get) => {
 
   return {
     items: [],
-    enqueue(item, run) {
+    enqueue(item, run, stop) {
       const id = newId();
-      const done = new Promise<Outcome>((resolve) => jobs.set(id, { run, done: resolve }));
+      const done = new Promise<Outcome>((resolve) => jobs.set(id, { run, done: resolve, stop }));
       set({ items: [...get().items, { ...item, id, status: "queued", at: Date.now() }] });
       void pump();
       return done;
@@ -107,6 +118,12 @@ export const useActivity = create<ActivityState>((set, get) => {
       jobs.delete(id);
       patch(id, { status: "stopped", detail: "Taken out of the queue.", endedAt: Date.now(), seen: true });
       job?.done({ status: "stopped" });
+    },
+    stop(id) {
+      if (get().items.find((i) => i.id === id)?.status === "running") jobs.get(id)?.stop?.();
+    },
+    setProgress(id, progress) {
+      if (get().items.find((i) => i.id === id)?.status === "running") patch(id, { progress });
     },
     markSeen: () => set({ items: get().items.map((i) => (isActive(i) || i.seen ? i : { ...i, seen: true })) }),
     clearFinished: () => set({ items: get().items.filter(isActive) }),

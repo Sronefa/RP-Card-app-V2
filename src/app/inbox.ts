@@ -6,6 +6,7 @@
  */
 import { getRecord, saveRecord } from "../db/db";
 import { useCowriter, useLoreChat, type ChatState } from "../cowriter/store";
+import { acceptBatchItem, dropBatchItem, loadBatches } from "../cowriter/batch";
 import { useEngineer } from "../engine/engineer/session";
 import { useEditor } from "../editor/store";
 import { applyMechanics, readMechanics, type MechanicModule } from "../editor/mechanics";
@@ -19,7 +20,7 @@ import { dismissTask, editTask, markStarted, reopenTask, pendingTasks, taskBrief
 import { useInboxVersion } from "./inboxVersion";
 import type { SectionId } from "./sections";
 
-export type InboxSource = "cowriter" | "lore" | "engineer" | "wizard" | "bulk" | "images" | "for-engineer" | "for-cowriter";
+export type InboxSource = "cowriter" | "lore" | "engineer" | "wizard" | "bulk" | "images" | "for-engineer" | "for-cowriter" | "batch";
 
 export const SOURCE_LABEL: Record<InboxSource, string> = {
   cowriter: "Co-writer",
@@ -30,6 +31,7 @@ export const SOURCE_LABEL: Record<InboxSource, string> = {
   images: "Image Studio",
   "for-engineer": "Tasks for the UI engineer",
   "for-cowriter": "Tasks for the co-writer",
+  batch: "Co-writer batches",
 };
 
 /** Where an accepted item lands, to open it there. */
@@ -53,6 +55,8 @@ export interface InboxItem {
   edit?: { text: string; save: (text: string) => Promise<void> };
   /** Where the item came from, shown under its summary. */
   detail?: string;
+  /** The start of what it says, shown under it. */
+  preview?: string;
 }
 
 /** A Game Wizard module or a batch of items, parked for later. */
@@ -149,6 +153,20 @@ export async function collectInbox(cardId: string): Promise<InboxItem[]> {
     });
 
   for (const t of await pendingTasks(cardId)) items.push(taskItem(cardId, t));
+
+  for (const b of await loadBatches(cardId))
+    b.items.forEach((item, i) =>
+      items.push({
+        key: `batch:${b.id}:${item.id}`,
+        source: "batch",
+        summary: item.summary,
+        detail: `From the batch "${b.label}", ${i + 1} of ${b.items.length}`,
+        preview: item.preview,
+        lands: landsFor(item.call.name),
+        accept: () => acceptBatchItem(cardId, b.id, item),
+        reject: () => dropBatchItem(cardId, b.id, item.id),
+      }),
+    );
 
   const studio = await latestStudio(cardId);
   for (const shot of studio.shots) {

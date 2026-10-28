@@ -14,6 +14,7 @@ export function runningLine(item: ActivityItem, engineer: { round: number; worke
     const line = s.split("\n")[0].trim();
     return line.length > n ? `${line.slice(0, n - 1)}…` : line;
   };
+  if (item.kind !== "engineer") return `${KIND_LABEL[item.kind]}: ${item.progress ?? "starting"}`;
   const { round, worker } = engineer;
   const step = worker ? `step ${worker.steps.length + 1}, building ${short(worker.task, 40)}` : `step ${Math.max(round, 1)}, planning`;
   return `${KIND_LABEL[item.kind]}: ${step}`;

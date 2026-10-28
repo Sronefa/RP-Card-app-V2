@@ -81,7 +81,7 @@ export function InboxDialog({ items, open, onClose }: { items: InboxItem[]; open
           </div>
         )}
         {items.length === 0 ? (
-          <p className="text-ink-muted">Nothing is waiting. Proposals from the co-writer, the UI engineer, the Game Wizard, bulk items and the Image Studio show up here, and so do the tasks the co-writer and the engineer hand each other.</p>
+          <p className="text-ink-muted">Nothing is waiting. Proposals from the co-writer and its background batches, the UI engineer, the Game Wizard, bulk items and the Image Studio show up here, and so do the tasks the co-writer and the engineer hand each other.</p>
         ) : (
           <>
             <p className="text-ink-muted">
@@ -110,6 +110,7 @@ export function InboxDialog({ items, open, onClose }: { items: InboxItem[]; open
                           {item.lands.label} →
                         </button>
                         {item.detail && <span className="block text-xs text-ink-muted">{item.detail}</span>}
+                        {item.preview && <span className="mt-1 block text-xs whitespace-pre-wrap text-ink">{item.preview}</span>}
                       </span>
                       {item.edit && (
                         <Button
