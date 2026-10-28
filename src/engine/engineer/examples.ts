@@ -310,4 +310,77 @@ app.onState(function () { draw(); });`,
   script: "",
 };
 
-export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp];
+const heroSheet: EngineModule = {
+  ...base(),
+  id: "hero-sheet",
+  name: "Hero sheet",
+  description:
+    "A hub app styled from the style guide's dark fantasy recipe: the place's art under a scrim with a gradient fallback, a bundled heading font (Cinzel, embedded because the CSS names it), a framed portrait, one focal value, staggered entrances, a count-up and a single glow for a level up, all calm when the player wants less motion.",
+  slot: "overlay",
+  button: "🛡️ Hero",
+  vars: [
+    newVar({ id: "ex-h-name", group: "Hero", name: "Name", type: "text", start: "Aldric", rule: "The hero's name." }),
+    newVar({ id: "ex-h-level", group: "Hero", name: "Level", type: "number", start: "3", min: 1, max: 20, rule: "+1 when the story grants a level, at most once a scene." }),
+    newVar({ id: "ex-h-hp", group: "Hero", name: "Health", type: "number", start: "42", min: 0, max: 60, rule: "Lose 5 to 20 on a wound; regain 10 after rest." }),
+    newVar({ id: "ex-h-gold", group: "Hero", name: "Gold", type: "number", start: "120", min: 0, rule: "delta when the hero pays or is paid." }),
+    newVar({ id: "ex-h-place", group: "Hero", name: "Place", type: "text", start: "Ashford", rule: "Where the hero is, as a place name from the card." }),
+    newVar({ id: "ex-h-traits", group: "Hero", name: "Traits", type: "list", start: "Oathbound, Scarred", rule: "Insert a trait the story earns; at most six." }),
+  ],
+  rules: [],
+  regex: [],
+  html: "",
+  css: `.hs { min-height: 100%; display: flex; flex-direction: column; background-color: var(--cf-bg); }
+.hs-hero { position: relative; padding: 56px 16px 16px; display: flex; gap: 12px; align-items: flex-end; overflow: hidden;
+  background: radial-gradient(ellipse at 30% 0%, color-mix(in srgb, var(--cf-accent) 35%, transparent), transparent 60%), linear-gradient(160deg, var(--cf-surface2), var(--cf-bg)); }
+.hs-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 20%, color-mix(in srgb, var(--cf-bg) 92%, transparent)); pointer-events: none; }
+.hs-hero > * { position: relative; z-index: 1; }
+.hs-art { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: cover; }
+.hs-portrait { width: 72px; aspect-ratio: 3 / 4; border-radius: 3px; object-fit: cover; flex: none; border: 1px solid color-mix(in srgb, var(--cf-accent) 60%, var(--cf-border)); outline: 1px solid color-mix(in srgb, var(--cf-accent) 30%, transparent); outline-offset: 3px; box-shadow: var(--cf-shadow); background: var(--cf-surface2); display: grid; place-items: center; font: 600 1.8em "Cinzel", Georgia, serif; color: var(--cf-accent); }
+.hs-name { font-family: "Cinzel", Georgia, serif; font-size: 1.6em; letter-spacing: .04em; overflow-wrap: anywhere; }
+.hs-level { color: var(--cf-accent); font-variant-numeric: tabular-nums; }
+.hs-body { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 16px; }
+.hs-rule { display: flex; align-items: center; gap: 8px; color: var(--cf-muted); font-size: .8em; }
+.hs-rule::before, .hs-rule::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--cf-accent) 35%, var(--cf-border)); }
+.hs-gold { font-size: 1.6em; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--cf-accent); }
+.hs.first .hs-in { animation: hs-rise .32s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i, 0) * 50ms); }
+@keyframes hs-rise { from { opacity: 0; transform: translateY(8px); } }
+.cf-reduce-motion .hs.first .hs-in { animation: none; }`,
+  js: `var lastLevel = null;
+function draw() {
+  var h = app.state("Hero") || {};
+  var name = String(h.Name || "Hero");
+  var art = CF.assets.background(h.Place || "");
+  var face = CF.assets.portrait(name);
+  var traits = Array.isArray(h.Traits) ? h.Traits : [];
+  var i = 0;
+  // Each block rises in after the one before it.
+  function item(cls, html) { return '<div class="hs-in ' + cls + '" style="--i:' + i++ + '">' + html + "</div>"; }
+  // The entrance plays when the screen opens, not on every update.
+  root.innerHTML = '<div class="hs cf-app' + (lastLevel === null ? " first" : "") + '">' +
+    '<div class="hs-hero">' + (art ? '<img class="hs-art" alt="" src="' + CF.ui.esc(art) + '">' : "") +
+      (face ? '<img class="hs-portrait" alt="" src="' + CF.ui.esc(face) + '">' : '<div class="hs-portrait" aria-hidden="true">' + CF.ui.esc(name.charAt(0)) + "</div>") +
+      '<div><h1 class="hs-name">' + CF.ui.esc(name) + '</h1><span class="cf-label">Level <b class="hs-level">' + (Number(h.Level) || 1) + "</b> · " + CF.ui.esc(h.Place || "On the road") + "</span></div></div>" +
+    '<div class="hs-body">' +
+      item("", CF.ui.meter({ label: "Health", value: Number(h.Health) || 0, max: 60, delta: app.delta()["Hero.Health"] })) +
+      item("cf-spread", '<span class="cf-label">Gold</span><span class="hs-gold">' + (Number(h.Gold) || 0) + "</span>") +
+      item("hs-rule", "✦") +
+      item("", traits.length ? '<div class="cf-row">' + traits.map(function (t) { return CF.ui.chip(t); }).join("") + "</div>" : '<p class="cf-muted">No traits yet. The road will give them.</p>') +
+    "</div></div>";
+  var d = app.delta();
+  var gold = root.querySelector(".hs-gold");
+  if (d["Hero.Gold"]) CF.fx.countUp(gold, d["Hero.Gold"][1], { from: d["Hero.Gold"][0] });
+  var level = Number(h.Level) || 1;
+  // The screen's one big moment: a level up.
+  if (lastLevel !== null && level > lastLevel) {
+    var stop = CF.fx.glow(root.querySelector(".hs-portrait"));
+    setTimeout(stop, 2400);
+    app.toast("Level " + level + "!", { icon: "star" });
+  }
+  lastLevel = level;
+}
+draw();
+app.onState(draw);`,
+  script: "",
+};
+
+export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet];

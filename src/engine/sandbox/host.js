@@ -1201,11 +1201,40 @@
     }
   }
 
+  /** The animations running in a document. */
+  function animationsIn(doc) {
+    try {
+      return doc.getAnimations ? doc.getAnimations() : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /** Each animated element in a document, with the CSS properties its animations change. */
+  function animatedProperties(doc) {
+    var out = new Map();
+    animationsIn(doc).forEach(function (a) {
+      var el = a.effect && a.effect.target;
+      if (!el || a.effect.pseudoElement) return;
+      var props = out.get(el) || [];
+      if (a.transitionProperty) props.push(a.transitionProperty);
+      else if (a.effect.getKeyframes)
+        a.effect.getKeyframes().forEach(function (k) {
+          Object.keys(k).forEach(function (p) {
+            if (["offset", "computedOffset", "easing", "composite"].indexOf(p) < 0) props.push(p.replace(/[A-Z]/g, function (m) { return "-" + m.toLowerCase(); }));
+          });
+        });
+      out.set(el, props);
+    });
+    return out;
+  }
+
   function snapshotMarkup(win, pictures) {
     var doc = win.document;
     var originals = doc.documentElement.querySelectorAll("*");
     var clone = doc.documentElement.cloneNode(true);
     var copies = clone.querySelectorAll("*");
+    var moving = animatedProperties(doc);
     for (var i = originals.length - 1; i >= 0; i--) {
       var o = originals[i];
       var c = copies[i];
@@ -1214,6 +1243,12 @@
       if (tag === "SCRIPT" || tag === "NOSCRIPT") {
         c.remove();
         continue;
+      }
+      // A moving element is drawn where it is right now: its animated values, held still.
+      var props = moving.get(o);
+      if (props && c.style) {
+        var now = win.getComputedStyle(o);
+        props.forEach(function (p) { c.style.setProperty(p, now.getPropertyValue(p)); });
       }
       if (tag === "IFRAME") {
         // The frame's own picture goes in its place, with its computed style, so whatever sits
@@ -1252,6 +1287,10 @@
         });
       }
     }
+    // The picture's own copy of the page mustn't start its animations over from the first frame.
+    var still = doc.createElement("style");
+    still.textContent = "*, *::before, *::after { animation: none !important; transition: none !important; }";
+    (clone.querySelector("head") || clone).appendChild(still);
     var body = clone.querySelector("body");
     if (body && (win.scrollX || win.scrollY)) body.style.translate = -win.scrollX + "px " + -win.scrollY + "px";
     clone.style.width = win.innerWidth + "px";
@@ -1301,6 +1340,62 @@
     var canvas = await snapshot(window);
     var data = canvas.toDataURL("image/png");
     return { image: data.slice(data.indexOf(",") + 1), width: canvas.width, height: canvas.height };
+  }
+
+  /** Every running animation on screen, in the page and its frames. */
+  function runningAnimations() {
+    return screens().reduce(function (all, screen) {
+      return all.concat(animationsIn(screen.win.document).filter(function (a) { return a.playState === "running"; }));
+    }, []);
+  }
+
+  /** A line for each moving element: what it is, which animation, how far along, and where it is now. */
+  function movingLines(anims) {
+    return anims.slice(0, 8).map(function (a) {
+      var el = a.effect && a.effect.target;
+      if (!el || !el.ownerDocument) return "";
+      var now = el.ownerDocument.defaultView.getComputedStyle(el);
+      var timing = a.effect.getComputedTiming ? a.effect.getComputedTiming() : {};
+      var name = a.animationName || (a.transitionProperty ? "transition of " + a.transitionProperty : "script animation");
+      return describe(el) + " " + name + " " + Math.round((timing.progress || 0) * 100) + "% · opacity " + now.opacity + (now.transform && now.transform !== "none" ? " · transform " + now.transform : "");
+    }).filter(Boolean);
+  }
+
+  async function frameTrigger(t) {
+    if (!t) return;
+    if (t.type === "open") {
+      if (!window.CardForge) throw new Error("The engine core isn't running, so there's nothing to open.");
+      window.CardForge.open(t.module);
+    } else if (t.type === "click") await click(t, true);
+    else if (t.type === "setVariables") await setVariables(t.id, t.variables);
+  }
+
+  /**
+   * Pictures at set times after a trigger (a click, opening a screen, a change of state), to check
+   * an animation. Animations are held still while each picture is drawn, and the times count only
+   * the time they ran.
+   */
+  async function frames(command) {
+    var at = (command.at || []).map(Number).filter(function (n) { return n >= 0 && n <= 10000; }).sort(function (a, b) { return a - b; }).slice(0, 6);
+    await frameTrigger(command.trigger);
+    var start = performance.now();
+    var out = { width: Math.round(window.innerWidth), height: Math.round(window.innerHeight), frames: [] };
+    for (var i = 0; i < at.length; i++) {
+      var wait = start + at[i] - performance.now();
+      if (wait > 0) await new Promise(function (resolve) { setTimeout(resolve, wait); });
+      var held = performance.now();
+      var anims = runningAnimations();
+      anims.forEach(function (a) { try { a.pause(); } catch (e) {} });
+      var frame = { at: at[i], moving: movingLines(anims) };
+      if (command.images !== false) {
+        var data = (await snapshot(window)).toDataURL("image/png");
+        frame.image = data.slice(data.indexOf(",") + 1);
+      }
+      anims.forEach(function (a) { try { a.play(); } catch (e) {} });
+      out.frames.push(frame);
+      start += performance.now() - held;
+    }
+    return out;
   }
 
   /** Every document the player can see, with a name for reports. */
@@ -1456,7 +1551,7 @@
     return list.filter(function (s) { return s.name.indexOf(where) >= 0; })[0];
   }
 
-  async function click(command) {
+  async function click(command, quick) {
     var screen = findScreen(command.screen);
     if (!screen) throw new Error("There's no '" + (command.screen || "chat") + "' on screen. Screens: " + screens().map(function (s) { return s.name; }).join(", ") + ".");
     var doc = screen.win.document;
@@ -1474,7 +1569,7 @@
     var before = input().value;
     log("UI engineer", "clicked", describe(target) + ' "' + target.textContent.trim().slice(0, 40) + '" on the ' + screen.name);
     target.click();
-    await new Promise(function (resolve) { setTimeout(resolve, 400); });
+    if (!quick) await new Promise(function (resolve) { setTimeout(resolve, 400); });
     return { clicked: describe(target), screen: screen.name, input: input().value !== before ? input().value : "" };
   }
 
@@ -1583,6 +1678,13 @@
         return;
       case "capture":
         return capture();
+      case "frames":
+        return frames(command);
+      case "settings":
+        if (!window.CardForge) throw new Error("The engine core isn't running, so there are no settings to change.");
+        await window.CardForge.setSettings(command.settings);
+        await new Promise(function (resolve) { setTimeout(resolve, 120); });
+        return;
       case "inspect":
         return inspect();
       case "click":

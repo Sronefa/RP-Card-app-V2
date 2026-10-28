@@ -10,7 +10,7 @@ import { forkModule } from "../modules/fork";
 import { addModules, cleanModule } from "../modules/pack";
 import { SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../modules/types";
 import { newVar, themeOf, VAR_TYPES, type EngineConfig, type EngineVar, type VarType } from "../sheet";
-import { cleanOverrides, PRESET_IDS, type PresetId, type ThemeTokens } from "../theme";
+import { cleanOverrides, FONTS, PRESET_IDS, TEXTURES, type PresetId, type ThemeTokens } from "../theme";
 
 export const MODULE_FILES = ["html", "css", "js", "script"] as const;
 export type ModuleFile = (typeof MODULE_FILES)[number];
@@ -334,12 +334,15 @@ export function applyOp(config: EngineConfig, call: ToolCall): { config: EngineC
       const raw = input.tokens;
       if (raw !== undefined && (!raw || typeof raw !== "object" || Array.isArray(raw)))
         throw new ToolInputError(`"tokens" must be an object`);
-      const tokens = (raw ?? {}) as Partial<ThemeTokens>;
+      const tokens = { ...((raw ?? {}) as Partial<ThemeTokens>) };
+      // Fonts and textures can be given by name.
+      for (const key of ["font", "heading"] as const) if (typeof tokens[key] === "string" && FONTS[tokens[key]!]) tokens[key] = FONTS[tokens[key]!];
+      if (typeof tokens.texture === "string" && TEXTURES[tokens.texture]) tokens.texture = TEXTURES[tokens.texture];
       const clean = cleanOverrides(tokens);
       const refused = Object.keys(tokens).filter((k) => !(k in clean));
       if (refused.length)
         throw new ToolInputError(
-          `These tokens aren't usable: ${refused.join(", ")}. Colours are #hex, rgb() or hsl(); fonts come from the design guide's list; no url().`,
+          `These tokens aren't usable: ${refused.join(", ")}. Colours are #hex, rgb() or hsl(); fonts and textures come from the design guide's lists (by name or exact value); no url() of your own.`,
         );
       const overrides = { ...theme.overrides, ...clean };
       for (const key of strings(input, "reset") ?? []) delete overrides[key as keyof ThemeTokens];

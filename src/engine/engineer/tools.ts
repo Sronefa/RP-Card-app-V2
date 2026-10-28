@@ -13,14 +13,15 @@ import { applyEdit, CARD_TOOLS, describeEdit, isWorldTool, planEdit, ToolInputEr
 import type { ToolCall, ToolDef, ToolResult } from "../../ai/types";
 import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { SandboxLibs } from "../sandbox/sandbox";
-import { applyEngine, scenarioOf, stateSchema, themeOf, varPath, VAR_TYPES, type EngineConfig } from "../sheet";
-import { PRESET_IDS, themeBundle } from "../theme";
+import { applyEngine, cardFonts, initialState, scenarioOf, stateSchema, themeOf, varPath, VAR_TYPES, type EngineConfig } from "../sheet";
+import { sampleStates, type SampleState as ScrubState } from "../scrubber";
+import { FONTS, PRESET_IDS, TEXTURES, textureName, themeBundle } from "../theme";
 import { pieceId } from "../modules/fork";
 import { SLOTS, type EngineModule } from "../modules/types";
 import { allParts, hasPart, installParts, partsText, searchParts } from "../parts/catalog";
 import { docsIndex, examplesIndex, readDoc, readExample, searchDocsText, skillsIndex, type Skill } from "./knowledge";
 import { findingsText, lintConfig, screenFindings, type Finding } from "./lint";
-import type { EnginePreview, PreviewDevice } from "./preview";
+import { deepMerge, type EnginePreview, type PreviewDevice } from "./preview";
 import { arcText, listLoreText, readLoreText, visualText, type LoreSource } from "./lore";
 import { applyOp, listModulesText, MODULE_FILES, readModuleText } from "./workspace";
 
@@ -327,7 +328,7 @@ export const WRITE_TOOLS: ToolDef[] = [
   ),
   tool(
     "set_theme",
-    "Change the card theme: the preset and token overrides. The design guide lists the tokens and allowed fonts.",
+    "Change the card theme: the preset and token overrides. The design guide lists the tokens; fonts (font, heading) and textures can be given by name, like { heading: \"Cinzel\", texture: \"Grain\" }. A bundled font is embedded in the card only when used.",
     obj(
       {
         preset: { type: "string", enum: PRESET_IDS },
@@ -365,6 +366,31 @@ export const TEST_TOOLS: ToolDef[] = [
         device: { type: "string", enum: ["phone", "desktop"], description: "phone is 390×760 (default), desktop 1280×800" },
         open: str('A module id to open as a hub screen, or "status" for the status panel screen'),
         fresh: bool("Start the chat over even if the card hasn't changed (default: keep clicks and turns)"),
+        frames: {
+          type: "array",
+          items: { type: "integer" },
+          description:
+            "A frame strip to check an animation: pictures this many ms after the trigger, like [0, 250, 900] for before, mid and after (up to 4, each at most 4000). The trigger is opening `open`, else `click`, else `values`; with none, the newest message is drawn again so its screens play their entrance.",
+        },
+        click: str("With frames: visible text of what to tap as the trigger"),
+        values: { type: "object", description: 'With frames: values to set as the trigger, like { "Player": { "Health": 20 } }, for this render only' },
+      },
+      [],
+    ),
+  ),
+  tool(
+    "preview_states",
+    "See screens at several states at once: the card's start, low and empty, high and full, and morning and night when it keeps time (or your own states), at phone and desktop width, in light and dark. Each render reports its layout problems; up to 6 pictures.",
+    obj(
+      {
+        states: {
+          type: "array",
+          items: { type: "object", properties: { label: str("A name for it, like Low health"), values: { type: "object", description: "Values by group, merged over the starting values" } }, required: ["label", "values"] },
+          description: "Your own states. Default: the card's start, low and empty, high and full, and morning and night when it keeps time",
+        },
+        devices: { type: "array", items: { type: "string", enum: ["phone", "desktop"] }, description: 'Default ["phone"]' },
+        modes: { type: "array", items: { type: "string", enum: ["light", "dark"] }, description: "Default: the theme's own mode only" },
+        open: str('A module id to open as a hub screen first, or "status" for the status panel screen'),
       },
       [],
     ),
@@ -537,17 +563,33 @@ function problemsText(problems: string[]) {
     : "No console errors.";
 }
 
+/** The hub screen to open, checked: a module that is on, or "status". */
+function openId(ctx: EngineerContext, value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const id = value.trim();
+  if (id !== "status" && !modulesOf(ctx.draft).some((m) => m.id === id && m.enabled)) throw new ToolInputError(`There's no module "${id}" that is on.`);
+  return id;
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** The times of a frame strip, checked. */
+function frameTimes(value: unknown): number[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.length || value.some((n) => typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 4000))
+    throw new ToolInputError('"frames" must be 1 to 4 times in ms from 0 to 4000, like [0, 250, 900].');
+  return [...new Set(value.map((n) => Math.round(n)))].sort((a, b) => a - b).slice(0, 4);
+}
+
 async function render(ctx: EngineerContext, call: ToolCall): Promise<ToolResult> {
   const input = call.input;
   const device = input.device === "desktop" ? "desktop" : "phone";
+  const at = frameTimes(input.frames);
+  const open = openId(ctx, input.open);
   const preview = await ensurePage(ctx, device, input.fresh === true);
   await preview.close();
-  if (typeof input.open === "string" && input.open.trim()) {
-    const id = input.open.trim();
-    if (id !== "status" && !modulesOf(ctx.draft).some((m) => m.id === id && m.enabled))
-      throw new ToolInputError(`There's no module "${id}" that is on.`);
-    await preview.open(id);
-  }
+  if (at) return renderFrames(ctx, call, preview, device, at, open);
+  if (open) await preview.open(open);
   const shots = ctx.shots !== false;
   const shot = shots ? await preview.capture() : undefined;
   const screens = await preview.inspect();
@@ -575,6 +617,97 @@ async function render(ctx: EngineerContext, call: ToolCall): Promise<ToolResult>
       `Screens:\n${outline}`,
     ].join("\n\n"),
     ...(shot ? { images: [{ mediaType: "image/png" as const, data: shot.image }] } : {}),
+  };
+}
+
+/** render_preview with a frame strip: a picture (or a list of what moves) at each time after the trigger. */
+async function renderFrames(ctx: EngineerContext, call: ToolCall, preview: EnginePreview, device: PreviewDevice, at: number[], open?: string): Promise<ToolResult> {
+  const input = call.input;
+  const click = typeof input.click === "string" && input.click.trim() ? input.click.trim() : undefined;
+  if (input.values !== undefined && !isRecord(input.values)) throw new ToolInputError('"values" must be an object of values by group.');
+  const values = isRecord(input.values) ? input.values : undefined;
+  const shots = ctx.shots !== false;
+  const strip = await preview.frames(at, open ? { open } : click ? { click: { text: click } } : { values: values ?? {} }, shots);
+  // Values set as a trigger are for this render only.
+  if (values && !open && !click) ctx.sampleDirty = true;
+  const screens = await preview.inspect();
+  const { problems } = preview.take();
+  const findings = screenFindings(screens, device);
+  const trigger = open ? `opening ${open}` : click ? `tapping "${click}"` : values ? "setting the values" : "drawing the newest message again";
+  const lines = strip.frames.map(
+    (f, i) => `${i + 1}. At ${f.at}ms${f.moving.length ? `, moving:\n${f.moving.map((m) => `   - ${m}`).join("\n")}` : ": nothing moving."}`,
+  );
+  const images = strip.frames.filter((f) => f.image).map((f) => ({ mediaType: "image/png" as const, data: f.image! }));
+  return {
+    id: call.id,
+    content: [
+      `Frame strip of the ${device} (${strip.width}×${strip.height}) after ${trigger}${images.length ? `: ${images.length} pictures attached, in order` : ""}.`,
+      lines.join("\n"),
+      problemsText(problems),
+      findings.length ? `Layout problems at the end:\n${findingsText(findings)}` : "No layout problems at the end.",
+    ].join("\n\n"),
+    ...(images.length ? { images } : {}),
+  };
+}
+
+const MAX_STATE_RENDERS = 6;
+
+/** preview_states: the same screens at several states, widths and modes, each with its layout problems. */
+async function previewStates(ctx: EngineerContext, call: ToolCall): Promise<ToolResult> {
+  const input = call.input;
+  const open = openId(ctx, input.open);
+  const start = initialState(effectiveConfig(ctx.draft));
+  let states: ScrubState[];
+  if (input.states !== undefined) {
+    if (!Array.isArray(input.states) || !input.states.length || input.states.some((s) => !isRecord(s) || typeof s.label !== "string" || !isRecord(s.values)))
+      throw new ToolInputError('"states" must be a list of { label, values }.');
+    states = input.states.map((s: Record<string, unknown>, i) => ({ id: `s${i}`, label: String(s.label), state: deepMerge(start, s.values) as Record<string, unknown> }));
+  } else states = sampleStates(ctx.draft);
+  const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback: T[]): T[] => {
+    const list = Array.isArray(value) ? [...new Set(value.filter((v): v is T => allowed.includes(v as T)))] : [];
+    return list.length ? list : fallback;
+  };
+  const devices = pick(input.devices, ["phone", "desktop"] as const, ["phone"]);
+  const themeMode = themeBundle(themeOf(ctx.draft)).mode;
+  const modes = pick(input.modes, ["light", "dark"] as const, [themeMode]);
+  const combos = devices.flatMap((device) => modes.flatMap((mode) => states.map((state) => ({ device, mode, state }))));
+  const shots = ctx.shots !== false;
+  const shown = combos.slice(0, MAX_STATE_RENDERS);
+  const lines: string[] = [];
+  const images: { mediaType: "image/png"; data: string }[] = [];
+  let page: { device: PreviewDevice; mode: string } | undefined;
+  try {
+    for (const [i, c] of shown.entries()) {
+      const preview = await ensurePage(ctx, c.device);
+      if (page?.device !== c.device || page.mode !== c.mode) {
+        await preview.settings({ mode: c.mode });
+        page = { device: c.device, mode: c.mode };
+      }
+      await preview.close();
+      await preview.setSample(c.state.state);
+      if (open) await preview.open(open);
+      const shot = shots ? await preview.capture() : undefined;
+      if (shot) images.push({ mediaType: "image/png", data: shot.image });
+      const screens = await preview.inspect();
+      const findings = screenFindings(screens, c.device);
+      const { problems } = preview.take();
+      const issues = [...findings.map((f) => `   - ${f.message}`), ...problems.slice(0, 5).map((p) => `   - ${p}`)];
+      lines.push(`${i + 1}. ${c.state.label} · ${c.device} · ${c.mode}${shot ? " (picture attached)" : ""}: ${issues.length ? `\n${issues.join("\n")}` : "no problems."}`);
+    }
+  } finally {
+    // The next render shows the engineer's own sample, in the player's default mode.
+    ctx.sampleDirty = true;
+    if (page && ctx.preview?.loaded) await ctx.preview.settings({ mode: "auto" }).catch(() => undefined);
+  }
+  const skipped = combos.length - shown.length;
+  return {
+    id: call.id,
+    content: [
+      `Rendered ${shown.length} states${skipped ? ` (${skipped} more left out: at most ${MAX_STATE_RENDERS} at a time, so ask for fewer states, devices or modes)` : ""}${open ? ` with ${open} open` : ""}.`,
+      lines.join("\n"),
+      `States:\n${states.map((s) => `- ${s.label}: ${JSON.stringify(s.state).slice(0, 300)}`).join("\n")}`,
+    ].join("\n\n"),
+    ...(images.length ? { images } : {}),
   };
 }
 
@@ -626,9 +759,20 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
       case "read_theme": {
         const theme = themeOf(ctx.draft);
         const bundle = themeBundle(theme);
+        // A texture from the set shows by name: its value is a long inline picture.
+        const named = <T extends { texture?: string }>(t: T) => (t.texture && textureName(t.texture) ? { ...t, texture: textureName(t.texture) } : t);
         return text(
           call.id,
-          YAML.stringify({ preset: theme.preset, overrides: theme.overrides, mode: bundle.mode, light: bundle.light, dark: bundle.dark }),
+          YAML.stringify({
+            preset: theme.preset,
+            overrides: named(theme.overrides),
+            mode: bundle.mode,
+            light: named(bundle.light),
+            dark: named(bundle.dark),
+            fonts: Object.keys(FONTS),
+            textures: Object.keys(TEXTURES),
+            embedded_fonts: cardFonts(ctx.draft),
+          }),
         );
       }
       case "read_card":
@@ -773,6 +917,8 @@ export async function runEngineerTool(ctx: EngineerContext, call: ToolCall): Pro
       }
       case "render_preview":
         return await render(ctx, call);
+      case "preview_states":
+        return await previewStates(ctx, call);
       case "click": {
         if (!ctx.preview?.loaded) throw new ToolInputError("Nothing is running yet. Call render_preview first.");
         const result = await ctx.preview.click({
@@ -923,7 +1069,9 @@ export function describeCall(call: ToolCall): string {
     case "set_sample_state":
       return i.clear ? "Cleared the sample state" : "Set sample state";
     case "render_preview":
-      return `Rendered on ${s(i.device) || "phone"}${s(i.open) ? `, ${s(i.open)} open` : ""}`;
+      return `${Array.isArray(i.frames) ? "Frame strip" : "Rendered"} on ${s(i.device) || "phone"}${s(i.open) ? `, ${s(i.open)} open` : ""}`;
+    case "preview_states":
+      return `Previewed ${Array.isArray(i.states) ? i.states.length : "sample"} states`;
     case "click":
       return `Clicked ${s(i.text) ? `"${s(i.text)}"` : s(i.selector)}`;
     case "run_turn":

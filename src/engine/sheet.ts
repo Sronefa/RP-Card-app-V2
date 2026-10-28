@@ -22,7 +22,7 @@ import type { EngineModule } from "./modules/types";
 import { panelHtml } from "./panel";
 import { ENGINE_VERSION, runtime, scriptSource, type StateSchema } from "./runtime";
 import kitCss from "./runtime/kit.css?raw";
-import { newTheme, themeBundle, themeVars, type CardTheme } from "./theme";
+import { fontFaces, newTheme, themeBundle, themeVars, usedFonts, type CardTheme } from "./theme";
 
 export type VarType = "number" | "text" | "toggle" | "choice" | "list" | "counts";
 
@@ -389,6 +389,13 @@ export const initvarText = (config: EngineConfig) => runtime.cfYaml(initialState
 /** JSON that can sit inside a script element. */
 const scriptJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 
+/** The bundled fonts the card uses, in its theme or its screens' code: only these are embedded. */
+export function cardFonts(config: EngineConfig): string[] {
+  const theme = themeBundle(themeOf(config));
+  const code = enabledModules(config).flatMap((m) => [m.html, m.css, m.js]);
+  return [...new Set([...theme.fonts, ...usedFonts(code)])];
+}
+
 /** The card settings the engine core reads: starting values, schema, modules, theme and kit. */
 export function settingsSource(config: EngineConfig, charName = "", assets: ManifestEntry[] = []): string {
   const full = effectiveConfig(config);
@@ -400,7 +407,7 @@ export function settingsSource(config: EngineConfig, charName = "", assets: Mani
     panelTitle: config.panel.title || "Status",
     panelDoc: config.panel.enabled ? panelHtml(config) : "",
     statusButton: `📊 ${config.panel.title || "Status"}`,
-    theme: { preset: theme.preset, mode: theme.mode, light: themeVars(theme.light), dark: themeVars(theme.dark) },
+    theme: { preset: theme.preset, mode: theme.mode, light: themeVars(theme.light), dark: themeVars(theme.dark), fonts: fontFaces(cardFonts(config)) },
     kit: kitCss,
     modules: moduleRuntime(config),
     charName,

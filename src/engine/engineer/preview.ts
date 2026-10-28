@@ -8,7 +8,9 @@ import {
   sandboxDocument,
   sandboxUrl,
   type ClickResult,
+  type FrameTrigger,
   type SandboxCapture,
+  type SandboxFrames,
   type SandboxCommand,
   type SandboxLibs,
   type SandboxMessage,
@@ -28,7 +30,7 @@ const COMMAND_MS = 30_000;
 
 type Pending = { resolve: (value: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
 
-function deepMerge(base: unknown, patch: unknown): unknown {
+export function deepMerge(base: unknown, patch: unknown): unknown {
   if (!patch || typeof patch !== "object" || Array.isArray(patch) || !base || typeof base !== "object" || Array.isArray(base)) return patch;
   const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
   for (const [k, v] of Object.entries(patch as Record<string, unknown>)) out[k] = deepMerge(out[k], v);
@@ -168,14 +170,36 @@ export class EnginePreview {
     return this.chat.at(-1)?.id ?? 0;
   }
 
-  /** Puts sample values (merged into what is there) and changes on the newest message. */
-  async setSample(state: Record<string, unknown>, delta?: Record<string, [unknown, unknown]>) {
+  /** The newest message's variables with sample values merged in (and changes, when given). */
+  private sampled(state: Record<string, unknown>, delta?: Record<string, [unknown, unknown]>) {
     const latest = this.chat.at(-1);
     const variables = { ...(latest?.variables ?? {}) } as Record<string, unknown>;
     variables.stat_data = deepMerge(variables.stat_data ?? {}, state);
     if (delta) variables.delta_data = delta;
-    await this.command({ type: "setVariables", id: latest?.id ?? 0, variables });
+    return { type: "setVariables" as const, id: latest?.id ?? 0, variables };
   }
+
+  /** Puts sample values (merged into what is there) and changes on the newest message. */
+  async setSample(state: Record<string, unknown>, delta?: Record<string, [unknown, unknown]>) {
+    await this.command(this.sampled(state, delta));
+  }
+
+  /**
+   * A frame strip: pictures `at` these times (ms) after a trigger. The trigger opens a screen,
+   * clicks something, or sets values; with none, the newest message is drawn again, so its
+   * screens play their entrance.
+   */
+  frames(at: number[], trigger: { open?: string; click?: { screen?: string; selector?: string; text?: string }; values?: Record<string, unknown> } = {}, images = true) {
+    const t: FrameTrigger = trigger.open
+      ? { type: "open", module: trigger.open }
+      : trigger.click
+        ? { type: "click", ...trigger.click }
+        : this.sampled(trigger.values ?? {});
+    return this.command<SandboxFrames>({ type: "frames", at, trigger: t, images }, COMMAND_MS + Math.max(0, ...at));
+  }
+
+  /** Changes the player's settings in the running chat, like { mode: "dark" }. */
+  settings = (settings: Record<string, unknown>) => this.command({ type: "settings", settings });
 
   open = (module: string) => this.command({ type: "open", module });
   close = () => this.command({ type: "close" });
