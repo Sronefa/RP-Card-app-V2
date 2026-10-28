@@ -29,6 +29,7 @@ export interface Finding {
     | "images"
     | "hidden"
     | "console"
+    | "motion"
     | "module";
   message: string;
 }
@@ -96,6 +97,16 @@ function syntaxError(m: EngineModule, file: "js" | "script"): string | undefined
   }
 }
 
+const LAYOUT_PROPS = /(?:^|[;{\s])(?:top|left|right|bottom|width|height|margin(?:-\w+)?)\s*:/;
+
+/** Whether CSS animates or transitions a layout property. */
+export function animatesLayout(css: string): boolean {
+  if (/transition(?:-property)?\s*:[^;}]*\b(?:width|height|top|left|right|bottom|margin|all)\b/.test(css)) return true;
+  const frames = /@keyframes[^{]*\{((?:[^{}]*\{[^{}]*\})*)[^{}]*\}/g;
+  for (let m = frames.exec(css); m; m = frames.exec(css)) if (LAYOUT_PROPS.test(m[1])) return true;
+  return false;
+}
+
 /** Values a module reads that don't exist, and actions it sends that no rule explains. */
 function readFindings(m: EngineModule, known: { path: string; open: boolean }[], ruleText: string): Finding[] {
   const out: Finding[] = [];
@@ -139,6 +150,18 @@ export function lintConfig(config: EngineConfig): Finding[] {
             check: "network",
             message: `${where(f)} uses ${what}. Cards run offline: nothing may load from the network. Inline it, or use app.asset() for card images.`,
           });
+      if (f === "css" && animatesLayout(code))
+        out.push({
+          level: "warn",
+          check: "motion",
+          message: `${where(f)} animates layout (width, height, top, left or margin), which stutters on phones. Animate transform and opacity instead.`,
+        });
+      if ((f === "js" || f === "script") && /\.animate\s*\(|requestAnimationFrame\s*\(/.test(code) && !/\bfx\.reduced\s*\(|prefers-reduced-motion/.test(code))
+        out.push({
+          level: "warn",
+          check: "motion",
+          message: `${where(f)} animates from script without checking for less motion. Use CF.fx (which honors the player's Motion setting), or skip the animation when CF.fx.reduced(root) is true.`,
+        });
       if (/<\/script/i.test(code))
         out.push({
           level: "error",

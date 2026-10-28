@@ -21,11 +21,13 @@ interface Settings {
   sideCalls: boolean;    // background generations allowed
   music: number;         // 0 to 100
   ambience: number;      // 0 to 100
+  motion: "auto" | "full" | "reduce"; // "auto" follows the device's reduced-motion setting
 }
 
 interface CardForge {
   version: string;
   ui: UiKit;
+  fx: Fx;
   /** Sets a screen up in a window: theme, kit, delegated controls, and an App bound to its message. */
   frame(win: Window, options?: { messageId?: number | "latest" }): App;
   /** Mounts a module's screen into an element (default: the page's #cf-root). */
@@ -92,6 +94,7 @@ interface App {
   document: Document;
   messageId: number | "latest";
   ui: UiKit;
+  fx: Fx;
   /** The state at this screen's message (the latest for hub screens), or one value by path. */
   state(path?: string): any;
   /** What changed in this screen's message. */
@@ -106,9 +109,12 @@ interface App {
   onState(fn: () => void): void;
   on(name: string, fn: (detail: any) => void): void;
   emit(name: string, detail?: any): Promise<void>;
-  toast(text: string): void;
-  /** A modal over this screen; returns its backdrop element (remove() closes it). */
-  modal(html: string): HTMLElement;
+  /** A short message at the top of this screen. */
+  toast(text: string, o?: { kind?: "good" | "bad"; icon?: IconName; ms?: number }): HTMLElement;
+  /** A dialog over this screen; returns its backdrop element (close() or remove() closes it). Escape, the backdrop and data-cf-close close it too. */
+  modal(html: string, o?: { title?: string }): HTMLElement & { close(): void };
+  /** A panel sliding in from the right (default), the left or the bottom; closes like a modal. */
+  drawer(html: string, o?: { side?: "right" | "left" | "bottom"; title?: string }): HTMLElement & { close(): void };
   /** A router for app-like screens. Routes are functions (params, app) => HTML string. */
   router(root: Element, routes: Record<string, (params: any, app: App) => string | void>, start: string, params?: any): { go(name: string, params?: any): void; back(): boolean; refresh(): void };
   go(name: string, params?: any): void;
@@ -134,6 +140,43 @@ interface UiKit {
   button(label: string, o?: { primary?: boolean; ghost?: boolean; icon?: IconName; send?: string; payload?: any; text?: string; now?: boolean; open?: string; close?: boolean; back?: boolean }): string;
   tabs(tabs: { id: string; label: string; html: string }[], selected?: string): string;
   appBar(title: string, o?: { back?: boolean; close?: boolean }): string;
+  /** A round progress ring with the value (or text) inside. */
+  ring(o: { value: number; min?: number; max?: number; label?: string; text?: string; size?: number }): string;
+  /** Slides that swipe sideways, with arrows and dots; works by itself. */
+  carousel(slides: string[], o?: { label?: string }): string;
+  /** A visual-novel dialogue box: name plate, portrait URL on the left or right, the line, and choices (button options each). */
+  dialogue(o: { name?: string; text: string; portrait?: string | null; side?: "left" | "right"; more?: boolean; choices?: ({ label: string } & ButtonOptions)[] }): string;
+  /** A map: an image (or a plain dotted ground) with pins at x/y percentages; a pin acts like a button. */
+  map(o: { image?: string | null; label?: string; pins: ({ label: string; x: number; y: number; icon?: IconName; here?: boolean; locked?: boolean } & ButtonOptions)[] }): string;
+  /** A timeline, top to bottom. */
+  timeline(items: { title: string; sub?: string; time?: string; done?: boolean; current?: boolean }[]): string;
+  /** A card that flips over when tapped; front and back are HTML. */
+  flip(o: { front: string; back: string; label?: string; flipped?: boolean }): string;
+}
+
+type ButtonOptions = { send?: string; payload?: any; text?: string; now?: boolean; open?: string };
+
+/** Effects. Each takes an element of your screen, animates only transform and opacity, and holds still when the player wants less motion. */
+interface Fx {
+  /** Whether to cut motion for this screen: the player's Motion setting, else the device's. */
+  reduced(el?: Element): boolean;
+  /** Particles over an element until stopped. */
+  particles(el: Element, kind: "rain" | "snow" | "embers" | "petals" | "dust", o?: { count?: number; color?: string; speed?: number }): () => void;
+  /** Particles for a weather word ("light rain", "Snow", "storm"); nothing for clear skies. */
+  weather(el: Element, text: string, o?: { color?: string; speed?: number }): () => void;
+  shake(el: Element, o?: { strength?: number; ms?: number }): Promise<void>;
+  flash(el: Element, o?: { color?: string; strength?: number; ms?: number }): Promise<void>;
+  /** A breathing glow until stopped. */
+  glow(el: Element, o?: { color?: string }): () => void;
+  /** A gentle repeating pulse until stopped. */
+  pulse(el: Element): () => void;
+  /** Types text in; a tap shows the rest. */
+  typewriter(el: Element, text: string, o?: { speed?: number }): { done: Promise<void>; skip(): void };
+  countUp(el: Element, to: number, o?: { from?: number; ms?: number; format?: (n: number) => string }): Promise<void>;
+  /** Swaps the content with a transition. */
+  transition(el: Element, html: string, o?: "fade" | "left" | "right" | "up" | { type?: "fade" | "left" | "right" | "up"; ms?: number }): Promise<void>;
+  /** Layers with data-depth="0.2" to "1" drift with the pointer or the phone's tilt, until stopped. */
+  parallax(el: Element, o?: { reach?: number }): () => void;
 }
 
 type IconName = "heart" | "star" | "coin" | "clock" | "sun" | "moon" | "cloud" | "rain" | "snow" | "fog" | "storm" | "gear" | "back" | "close" | "phone" | "bag" | "map" | "chat" | "user" | "chart" | "calendar" | "news" | "wallet" | "camera" | "note" | "spark" | "home" | "send" | "people" | "lock" | "check" | "plus" | "book" | "gift" | "sword" | "shield" | "flask" | "skull" | "fire" | "scroll" | "compass" | "bolt" | "rocket" | "eye" | "search" | "chip";
@@ -237,8 +280,32 @@ Every builder returns an HTML string; put several together and set `root.innerHT
 - `CF.ui.tabs([{ id: "bag", label: "Bag", html: "…" }, { id: "quests", label: "Quests", html: "…" }], "bag")`: tab switching works by itself.
 - `CF.ui.appBar("Inventory", { back: true })`: the title bar of an app screen.
 - `CF.ui.icon("coin")`: an inline SVG icon from the set: heart, star, coin, clock, sun, moon, cloud, rain, snow, fog, storm, gear, back, close, phone, bag, map, chat, user, chart, calendar, news, wallet, camera, note, spark, home, send, people, lock, check, plus, book, gift, sword, shield, flask, skull, fire, scroll, compass, bolt, rocket, eye, search, chip.
-- `app.toast("Saved")`: a short message at the top.
-- `app.modal('<h2>Sure?</h2><button class="cf-btn" data-cf-close>Close</button>')`: a dialog; `data-cf-close` inside it closes it.
+- `CF.ui.ring({ value: 7, max: 10, label: "Energy" })`: a round progress ring.
+- `CF.ui.carousel(["<h3>Harbor</h3>…", "<h3>Market</h3>…"], { label: "Places" })`: swipeable slides with arrows and dots.
+- `CF.ui.dialogue({ name: "Mina", text: "You came back.", portrait: CF.assets.portrait("Mina", { emotion: "happy" }), choices: [{ label: "Of course", send: "talk", payload: { say: "Of course" } }] })`: a visual-novel box; pair it with `CF.fx.typewriter` on its `.cf-vn-text`.
+- `CF.ui.map({ image: CF.assets.scene("map"), pins: [{ label: "Harbor", x: 30, y: 60, here: true }, { label: "Tower", x: 70, y: 25, send: "travel", payload: { to: "Tower" } }] })`: a map with tappable pins; without an image it draws a plain dotted ground.
+- `CF.ui.timeline([{ title: "Met Mina", time: "Day 1", done: true }, { title: "The festival", time: "Day 4", current: true }])`: events down a line.
+- `CF.ui.flip({ front: "<b>?</b>", back: "<b>The Tower</b>", label: "Tarot card" })`: a card that flips when tapped.
+- `app.toast("Saved", { kind: "good", icon: "check" })`: a short message at the top.
+- `app.modal('<p>Sure?</p><button class="cf-btn" data-cf-close>Close</button>', { title: "Leave town" })`: a dialog; `data-cf-close` inside it, Escape and the backdrop close it.
+- `app.drawer(CF.ui.list(items), { side: "right", title: "Bag" })`: a side panel (or `"bottom"` sheet) that closes the same way.
+
+## Effects (CF.fx)
+
+One call each, on an element of your screen. They animate only transform and opacity, so they stay smooth on phones, and they stop with the screen. When the player wants less motion (the settings app's Motion choice, else the device's setting) particles, shakes, flashes and parallax don't run, typed text and count-ups show their end at once, and transitions swap instantly; the kit's own CSS animations hold still too.
+
+- `var stop = CF.fx.weather(root, app.state("Time.Weather"))`: rain, snow, embers, petals or dust that fit the weather word; nothing for clear skies. `CF.fx.particles(root, "embers", { count: 30 })` picks the kind yourself. Call `stop()` before drawing them again.
+- `CF.fx.shake(card)` and `CF.fx.flash(root, { color: "#fff" })`: a hit, a jolt, lightning. Use them on a change (a delta), not on every render.
+- `var off = CF.fx.glow(button)` and `CF.fx.pulse(badge)`: draw the eye until `off()`.
+- `CF.fx.typewriter(root.querySelector(".cf-vn-text"), line).done.then(showChoices)`: types the line; a tap shows the rest.
+- `CF.fx.countUp(goldEl, gold, { from: gold - change })`: money and scores rolling to their new value.
+- `CF.fx.transition(body, html, "left")`: page and tab changes ("fade", "left", "right", "up"). Kit tabs fade between panels by themselves.
+- `CF.fx.parallax(scene)`: children with `data-depth="0.2"` (far) to `"1"` (near) drift with the pointer or the phone's tilt.
+- `CF.fx.reduced(root)`: true when motion should be cut; check it before animating anything yourself (`el.animate`, `requestAnimationFrame`).
+
+Keep effects few and meaningful: one weather layer, a shake when something hits, a count-up when money changes. The lint warns when a module animates layout (width, height, top, left, margin) or animates from script without checking `CF.fx.reduced`.
+
+Examples: `read_example("vn-scene")` (a dialogue box with a typed line, weather and a shake) and `read_example("journey-app")` (a map with pins, a carousel, flip cards, a timeline, a ring, a drawer, a toast, a count-up and page transitions).
 
 Kit classes for your own markup: `cf-card`, `cf-stack` (vertical gap), `cf-row` (horizontal gap), `cf-spread` (space between), `cf-muted`, `cf-small`, `cf-label`, `cf-btn` (`primary`, `ghost`), `cf-input`, `cf-chip`, `cf-grid`/`cf-stat`, `cf-list`/`cf-item`, `cf-app`/`cf-appbar`/`cf-appbody` (app shell), `cf-bubbles`/`cf-bubble`.
 
