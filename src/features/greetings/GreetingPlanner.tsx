@@ -1,7 +1,9 @@
 import { readEngine } from "../../engine/sheet";
 import { useEffect, useRef, useState } from "react";
 import { readGreetingTags, SORT_GREETINGS } from "../../ai/interviewTools";
-import { greetingFillRequest, greetingSortRequest, systemPrompt } from "../../ai/prompts";
+import { GREETING_BATCH_ASK, greetingFillRequest, greetingSortRequest, greetingSpec, systemPrompt } from "../../ai/prompts";
+import { toast } from "../../components/toast";
+import { MAX_COUNT, runBatch } from "../../cowriter/batch";
 import { Button, Dialog, TextInput } from "../../components/ui";
 import { FromLibrary, SaveToLibrary } from "../library/LibraryButtons";
 import { askCowriter } from "../../cowriter/ask";
@@ -73,6 +75,20 @@ export function GreetingPlanner({ onClose }: { onClose: () => void }) {
     onClose();
     const engine = !!readEngine(useEditor.getState().record!.card.data);
     void askCowriter({ send: greetingFillRequest(cells, engine) });
+  }
+
+  /** Every open cell, written in the background and landing in the inbox. */
+  function fillAll(cells: { mood: string; stage: string; place?: string }[]) {
+    const n = cells.length;
+    void runBatch(record.id, data.name, {
+      kind: "greetings",
+      ask: GREETING_BATCH_ASK,
+      count: n,
+      specs: cells.map(greetingSpec),
+      label: `${n} ${n === 1 ? "greeting" : "greetings"} for the planner's gaps`,
+    });
+    toast(`Writing ${n} ${n === 1 ? "greeting" : "greetings"} in the background. They land in the inbox.`);
+    onClose();
   }
 
   /** Spreads the picks over the grid instead of taking one row. */
@@ -197,9 +213,14 @@ export function GreetingPlanner({ onClose }: { onClose: () => void }) {
           1st is the first message, #2 the second alternate greeting. Tap + to write the missing opening.
         </p>
         {open.length > 0 && (
-          <Button className="self-start" onClick={() => fill(spread(open, FILL_AT_ONCE))}>
-            ✦ Fill {Math.min(open.length, FILL_AT_ONCE)} gaps
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => fill(spread(open, FILL_AT_ONCE))}>✦ Fill {Math.min(open.length, FILL_AT_ONCE)} gaps</Button>
+            {open.length > FILL_AT_ONCE && (
+              <Button onClick={() => fillAll(spread(open, MAX_COUNT))}>
+                {open.length > MAX_COUNT ? `Fill ${MAX_COUNT} gaps in the background` : `Fill all ${open.length} gaps in the background`}
+              </Button>
+            )}
+          </div>
         )}
         <details className="rounded-xl border border-border p-3">
           <summary className="cursor-pointer text-sm font-medium">Edit moods, stages and places</summary>

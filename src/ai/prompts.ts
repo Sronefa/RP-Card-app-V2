@@ -619,6 +619,30 @@ export function greetingFillRequest(cells: { mood: string; stage: string; place?
     .join("\n");
 }
 
+/** The spec of one greeting cell, for a background batch. */
+export const greetingSpec = (c: { mood: string; stage: string; place?: string }) =>
+  `mood: ${c.mood}; relationship stage: ${c.stage}; place: ${c.place ?? "a place no other greeting uses"}`;
+
+/** What a background batch asks for, besides its count: the greeting planner's version. */
+export const GREETING_BATCH_ASK =
+  "Write alternate greetings for openings the card doesn't have yet. Each greeting sets up its own situation with a hook, matches the first message in voice and length, and leaves {{user}}'s words and actions to the user. The relationship stage is where {{char}} and {{user}} stand when the scene opens.";
+
+/**
+ * One round of a background batch: `n` more of what the user asked for, one tool call each. The
+ * round sees what earlier rounds wrote, so the batch doesn't repeat itself.
+ */
+export function batchRequest(opts: { ask: string; tool: string; n: number; count: number; specs?: string[]; written: string[] }): string {
+  const { ask, tool, n, count, specs, written } = opts;
+  return [
+    `A background job for the user: ${ask.trim()}`,
+    specs?.length
+      ? `Write these ${specs.length === 1 ? "one" : specs.length} now, one ${tool} call each:\n${specs.map((s) => `- ${s}`).join("\n")}`
+      : `Write ${n} now, one ${tool} call each.`,
+    `This is part of a batch of ${count}. ${written.length ? `Already written in this batch: ${written.join("; ")}. ` : ""}Don't repeat those or anything the card already has; make each one distinct.`,
+    "Don't ask questions or explain: the user reviews every one in the inbox. Only make the tool calls.",
+  ].join("\n\n");
+}
+
 export const REMIXES = {
   au: { label: "Alternate universe", ask: "Which universe?", placeholder: "e.g. modern-day college, space station, 1920s noir" },
   darker: { label: "Darker", ask: "Anything specific?", placeholder: "e.g. she made the deal with the demon" },

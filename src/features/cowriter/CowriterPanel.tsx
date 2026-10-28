@@ -4,6 +4,7 @@ import { resolveModel, useAiSettings } from "../../ai/settings";
 import { Button } from "../../components/ui";
 import { useCowriter } from "../../cowriter/store";
 import { useEditor } from "../../editor/store";
+import { BigJobDialog } from "./BigJobDialog";
 import { ChatView } from "./ChatView";
 import { InterviewPanel } from "./InterviewPanel";
 import { ModelSwitcher } from "./ModelSwitcher";
@@ -28,6 +29,7 @@ export function CowriterPanel() {
   const { settings, load: loadSettings } = useAiSettings();
   const { setSection, cowriterTab: tab, setCowriterTab: setTab } = useUi();
   const [styling, setStyling] = useState(false);
+  const [bigJob, setBigJob] = useState(false);
 
   useEffect(() => void loadSettings(), [loadSettings]);
 
@@ -67,6 +69,9 @@ export function CowriterPanel() {
               <Button variant="ghost" disabled={busy} onClick={() => void critique()}>
                 Critic
               </Button>
+              <Button variant="ghost" onClick={() => setBigJob(true)}>
+                Big job
+              </Button>
               <Button variant="ghost" disabled={busy || messageCount === 0} onClick={() => void clear()}>
                 Clear
               </Button>
@@ -104,6 +109,7 @@ export function CowriterPanel() {
         <InterviewPanel />
       )}
       <ProjectStyleDialog projectId={record.projectId} open={styling} onClose={() => setStyling(false)} />
+      <BigJobDialog open={bigJob} onClose={() => setBigJob(false)} />
     </Shell>
   );
 }

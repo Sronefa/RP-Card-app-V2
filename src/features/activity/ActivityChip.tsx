@@ -76,22 +76,25 @@ export function ActivityDialog({ open, onClose }: { open: boolean; onClose: () =
   async function go(item: ActivityItem) {
     if (useEditor.getState().record?.id !== item.cardId) await useEditor.getState().open(item.cardId);
     if (item.kind === "engineer") useUi.getState().goTo("engine", "engineer");
+    else useUi.getState().goTo("cowriter");
     onClose();
   }
 
   return (
     <Dialog open={open} title="Background work" onClose={onClose}>
       <div className="flex flex-col gap-4 text-sm">
-        {!items.length && <p className="text-ink-muted">Nothing is running. Long jobs, like the UI engineer's, run here while you keep working.</p>}
+        {!items.length && <p className="text-ink-muted">Nothing is running. Long jobs, like the UI engineer's and the co-writer's batches, run here while you keep working.</p>}
         {running && (
           <section className="flex flex-col gap-2" aria-label="Running">
             <h3 className="font-medium">Running on {running.cardName || "an unnamed card"}</h3>
             <p className="text-ink-muted">{first(running.label, 140)}</p>
             {line && <p className="text-xs text-ink-muted">{line}</p>}
-            {worker ? <WorkerLive worker={worker} /> : streaming && <p className="text-xs whitespace-pre-wrap text-ink-muted">{streaming}</p>}
+            {running.kind === "engineer" &&
+              (worker ? <WorkerLive worker={worker} /> : streaming && <p className="text-xs whitespace-pre-wrap text-ink-muted">{streaming}</p>)}
+            {running.kind === "cowriter" && <p className="text-xs text-ink-muted">What it writes lands in the card's inbox as it comes, to accept or reject item by item.</p>}
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void go(running)}>Open</Button>
-              <Button variant="ghost" onClick={stop}>
+              <Button variant="ghost" onClick={() => (running.kind === "engineer" ? stop() : useActivity.getState().stop(running.id))}>
                 Stop
               </Button>
             </div>
