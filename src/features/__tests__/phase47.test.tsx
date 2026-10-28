@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ToolCall } from "../../ai/types";
 import { newCard } from "../../card";
@@ -13,7 +13,9 @@ import { phoneModule, phoneSettings } from "../../engine/modules/phone";
 import { inventoryModule } from "../../engine/modules/inventory";
 import type { EngineModule } from "../../engine/modules/types";
 import { newEngine, type EngineConfig } from "../../engine/sheet";
+import { loadKits } from "../engine/kitLibrary";
 import { ModulesPage } from "../engine/ModulesPage";
+import { loadModuleLibrary } from "../engine/moduleLibrary";
 
 const withPhone = (settings: Record<string, unknown> = {}, more: EngineModule[] = []): EngineConfig => ({
   ...newEngine(),
@@ -146,11 +148,11 @@ describe("the engineer's fork_module tool", () => {
 });
 
 describe("the Modules tab", () => {
-  it("forks a built-in, says so, and brings the original back", () => {
+  it("forks a built-in, says so, and brings the original back", async () => {
     useEditor.setState({ record: { card: newCard("Mina") } as never });
     let config = withPhone();
     const save = vi.fn((c: EngineConfig) => (config = c));
-    const { rerender } = render(<ModulesPage config={config} save={save} />);
+    const { rerender, unmount } = render(<ModulesPage config={config} save={save} />);
     fireEvent.click(screen.getByRole("button", { name: /^Phone/ }));
     fireEvent.change(screen.getByLabelText("Phone app to fork"), { target: { value: "news" } });
     fireEvent.click(screen.getByRole("button", { name: "Fork only this app" }));
@@ -164,5 +166,10 @@ describe("the Modules tab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use CardForge's version again" }));
     expect(byId(config, "phone").core).toBe("phone");
     expect(codeHash(byId(config, "phone"))).toBe(codeHash(phoneModule()));
+    // Let the parts browser's library and kits finish loading before the page goes away.
+    await act(async () => {
+      await Promise.all([loadModuleLibrary(), loadKits()]);
+    });
+    unmount();
   });
 });
