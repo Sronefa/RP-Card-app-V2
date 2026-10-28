@@ -31,9 +31,28 @@ Keep the rule keyed on the action's app name (`keys: ["app=\"shop\""]`) or const
 
 ## Depth
 
-- Rules for values go with the update rules, which the engine places at depth 1.
+- The engine puts the game state and the format reminder at depth 0, as system messages: the last thing the model reads, so they don't drift out of its attention in a long chat. The update rules sit after the character.
 - Behaviour rules for a module (how the phone's texts read, what the shop sells) work best at depth 2 to 4, or with the character description for always-true facts.
-- Never use depth 0: it's for the player's own message.
+- Don't put a module's own entries at depth 0: it's kept for the state and the reminder.
+
+## Getting the update written every time
+
+- The update block from earlier replies is hidden from the model on purpose (it saves tokens and keeps the prose clean). The format text says so, because a model that never sees its own blocks otherwise stops writing them. Keep that sentence if you rewrite the rules.
+- The analysis step is capped at 80 words: time passed, then each value checked against its rule, using only the latest reply. A longer analysis eats the reply's length and gets cut off.
+- Give each value a check list in its rule: the trigger, the size of the change, when not to change it, and caps. "Check each variable" only works when each has something to check.
+- Thresholds belong in code, not in the model's judgment: a tier that follows a number, an event that fires at 0 trust, a counter that rolls over. Do these in an `afterUpdate` hook or with tiers; the model only reports what happened.
+- Randomness in hooks uses `info.random()`, which is seeded from the message: re-reading a message (a swipe back, an edit, a replay after a delete) gives the same roll. `Math.random()` and the clock don't.
+
+## When the update goes wrong
+
+The engine already catches the common failures: a reply with no update block, or one cut off at the length limit, gets a side call for its update instead; an update the schema turns away is skipped and the player sees a notice; edits, deletes and deleted swipes rebuild the state from the chat; the player's own edits are kept on the message and survive a re-read. If values still go wrong, check in this order:
+
+1. Is the value in `<game_state>` at all? A hidden (`$`) value is never shown to the model, so it can't update it.
+2. Does its rule say when it changes and by how much? Vague rules give no updates or wild ones.
+3. Does the model write the block? Read a raw reply. If it stops after a few turns, check the reminder is on and the "hidden on purpose" line is in the format.
+4. Does the schema reject the change? The notice names the change. Widen the range, coerce the type, or fix the path the rule names.
+5. Is a hook overwriting it? A hook runs after every update and wins.
+6. Does the model struggle with the format at all? Switch the card to the side call, or let players switch (leave the update mode unlocked).
 
 ## Don't fight the model
 

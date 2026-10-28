@@ -98,6 +98,11 @@ export interface EngineConfig {
    * side call after each reply, which keeps the reply pure prose.
    */
   updateMode?: UpdateMode;
+  /**
+   * Players can't switch who writes the updates in the settings app. Unlocked, a player can move a
+   * card to the side call (or back) when their model handles one way better.
+   */
+  lockUpdateMode?: boolean;
 }
 
 export type UpdateMode = "reply" | "side";
@@ -312,7 +317,7 @@ export function rulesText(config: EngineConfig): string {
     "End every reply, after the story, with this block:",
     "<UpdateVariable>",
     "<Analysis>",
-    "One short line per value that changed, and why.",
+    "At most 80 words: how much time passed, then each value checked against its rule, using only this reply. One short line per value that changed, and why.",
     "</Analysis>",
     "<JSONPatch>",
     "[",
@@ -322,6 +327,7 @@ export function rulesText(config: EngineConfig): string {
     "</UpdateVariable>",
     OPS_HELP,
     "If nothing changed, write an empty list: [].",
+    "The blocks from earlier replies are hidden from you on purpose, to save space; they were written and applied. Still end every reply with a new block.",
     "</variable_format>",
   ].join("\n");
 }
@@ -412,7 +418,11 @@ export function settingsSource(config: EngineConfig, charName = "", assets: Mani
     modules: moduleRuntime(config),
     charName,
     assets,
-    side: config.updateMode === "side" ? { prompt: sideCallPrompt(full), schema: SIDE_CALL_SCHEMA, tokens: sideCallTokens(config) } : null,
+    updateMode: config.updateMode === "side" ? "side" : "reply",
+    lockMode: !!config.lockUpdateMode,
+    // Always there: it writes the update after each reply in side mode, and stands in for a
+    // reply's own update when that is missing or cut off.
+    side: { prompt: sideCallPrompt(full), schema: SIDE_CALL_SCHEMA, tokens: sideCallTokens(config) },
   };
   return `var CF_CONFIG = ${scriptJson(settings)};\n${schemaSource(full)}`;
 }
@@ -541,21 +551,23 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
         extensions: mark,
       }),
     );
-    // With side calls the rules go to the side call instead, and the reply stays pure prose.
-    if (saved.updateMode !== "side")
-      add(
-        withStPosition(
-          newEntry(draft, {
-            comment: "[mvu_update] Update rules",
-            constant: true,
-            insertion_order: 900,
-            content: rulesText(full),
-            extensions: mark,
-          }),
-          1,
-        ),
-      );
-    add(atDepth(newEntry(draft, { comment: "Game state", constant: true, insertion_order: 950, content: STATE_TEXT, extensions: mark }), 1));
+    // With side calls the engine keeps these out of the story's prompt (they go to the side call
+    // instead, so the reply stays pure prose); they're on the card so players can switch modes.
+    add(
+      withStPosition(
+        newEntry(draft, {
+          comment: "[mvu_update] Update rules",
+          constant: true,
+          insertion_order: 900,
+          content: rulesText(full),
+          extensions: mark,
+        }),
+        1,
+      ),
+    );
+    // The state and the format reminder sit at depth 0, the last thing the model reads, so they
+    // don't drift out of its attention in a long chat.
+    add(atDepth(newEntry(draft, { comment: "Game state", constant: true, insertion_order: 950, content: STATE_TEXT, extensions: mark }), 0));
     for (const m of enabledModules(saved))
       for (const rule of m.rules) {
         const entry = newEntry(draft, {
@@ -568,11 +580,11 @@ export function applyEngine(data: CardDataV3, config: EngineConfig | undefined):
         });
         add(rule.depth === undefined ? withStPosition(entry, 1) : atDepth(entry, rule.depth));
       }
-    if (saved.reminder && saved.updateMode !== "side")
+    if (saved.reminder)
       add(
         atDepth(
           newEntry(draft, { comment: "[mvu_update] Format reminder", constant: true, insertion_order: 960, content: REMINDER_TEXT, extensions: mark }),
-          1,
+          0,
         ),
       );
   }

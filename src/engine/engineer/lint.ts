@@ -203,6 +203,13 @@ export function lintConfig(config: EngineConfig): Finding[] {
       if (/\bMath\.random\(/.test(m.js)) game("warn", "uses Math.random; use g.rand, g.int, g.pick or g.shuffle, which follow the game's seed.");
       if (/\bset(?:Timeout|Interval)\(/.test(m.js)) game("warn", "uses setTimeout or setInterval; use g.after or g.every, which keep game time and pause with the game.");
     }
+    // Update hooks run again whenever a message is re-read: their rolls must come out the same.
+    if (/afterUpdate/.test(m.script) && /\bMath\.random\(|\bDate\.now\(|new Date\(\)/.test(m.script))
+      out.push({
+        level: "warn",
+        check: "values",
+        message: `${m.id}: its update hook uses Math.random or the clock, so re-reading a message (a swipe back, an edit, a replay) gives different values. Use info.random(), which is seeded from the message.`,
+      });
     // A fork's untouched files are CardForge's code: only what the card changed is checked.
     const pristine = m.fork ? originalOf(m.fork.core, m.fork.settings) : undefined;
     const where = (f: string) => `${m.id}/${f}`;

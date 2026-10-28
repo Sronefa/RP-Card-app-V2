@@ -8,7 +8,7 @@ Decide what the story has to remember before writing any prose. About six core n
 
 ## Numbers live in variables, not prose
 
-The description and greetings never state a value ("her trust in you is 40"): the state block at depth 1 already says it, and two sources drift apart. Tier behaviour goes in rules or keyed lorebook entries, not in the description, so the description stays true at every value.
+The description and greetings never state a value ("her trust in you is 40"): the state block at depth 0 already says it, and two sources drift apart. Tier behaviour goes in rules or keyed lorebook entries, not in the description, so the description stays true at every value.
 
 ## Names and shapes
 
@@ -19,11 +19,11 @@ The description and greetings never state a value ("her trust in you is 40"): th
 
 ## Worldbook layout
 
-World facts and rules come first and are always on, before the character. Character and NPC entries are keyed and come after. The current variable list sits at depth 0 or 1, near the end of the prompt. Every entry has its own order number, so nothing ties.
+World facts and rules come first and are always on, before the character. Character and NPC entries are keyed and come after. The current variable list and the format reminder sit at depth 0 as system messages, the last thing the model reads. Every entry has its own order number, so nothing ties.
 
 ## Update rules
 
-Each rule names the trigger, the size of the change ("+3 to +6", not "goes up"), when not to change it, when to remove an entry, and caps on lists ("at most 5 items; drop the oldest"). Read-only values get no rule. Ask for a short analysis step before the patch: the model thinks about what happened, then writes the change.
+Each rule names the trigger, the size of the change ("+3 to +6", not "goes up"), when not to change it, when to remove an entry, and caps on lists ("at most 5 items; drop the oldest"). Read-only values get no rule. Write the rule as a check list the analysis can walk through. Ask for a short analysis step before the patch, capped (80 words): how much time passed, then each value checked against its rule using only the latest reply, then the change. Tell the model that the blocks from earlier replies are hidden from it on purpose, so it keeps writing new ones. Anything that follows from a number (a tier, a threshold event, a cap) is done in code, not left to the model.
 
 ## Greetings carry their starting state
 

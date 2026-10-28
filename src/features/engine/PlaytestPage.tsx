@@ -130,6 +130,8 @@ export function PlaytestPage({ onFlag }: { onFlag: (text: string) => void }) {
   const counter = useRef(0);
   const chatRef = useRef<SandboxMessage[]>([]);
   const injectedRef = useRef<InjectedPrompt[]>([]);
+  /** Who writes the updates, when the player switched it in the card's settings app. */
+  const modeRef = useRef<"reply" | "side">(undefined);
   const controller = useRef<AbortController>(undefined);
   const waiting = useRef(new Map<number, () => void>());
   const pendingSnapshot = useRef<Snapshot>(undefined);
@@ -155,7 +157,13 @@ export function PlaytestPage({ onFlag }: { onFlag: (text: string) => void }) {
     setLog((l) => [{ n: ++counter.current, source, action, detail }, ...l].slice(0, 300));
   const addProblem = (message: string) => setProblems((p) => [...p, { n: ++counter.current, level: "error" as const, source: "playtest", message }].slice(-100));
 
-  const input = (chatNow = chatRef.current) => ({ data: startedRef.current, chat: chatNow, injected: injectedRef.current, persona: personaRef.current });
+  const input = (chatNow = chatRef.current) => ({
+    data: startedRef.current,
+    chat: chatNow,
+    injected: injectedRef.current,
+    persona: personaRef.current,
+    updateMode: modeRef.current,
+  });
 
   /** Writes the next reply with the roleplay model, streaming it into the chat. */
   const writeReply = useCallback(
@@ -241,6 +249,7 @@ export function PlaytestPage({ onFlag }: { onFlag: (text: string) => void }) {
           setChat(report.chat);
           chatRef.current = report.chat;
           injectedRef.current = report.injected ?? [];
+          modeRef.current = playerUpdateMode(report.chatVariables);
           // A saved game state goes onto the greeting once the engine has given it its own.
           const snap = pendingSnapshot.current;
           const first = report.chat[0]?.variables as { stat_data?: unknown } | undefined;
@@ -592,4 +601,10 @@ export function PlaytestPage({ onFlag }: { onFlag: (text: string) => void }) {
       </Dialog>
     </div>
   );
+}
+
+/** The update mode the player picked in the card's settings app (the prompt ignores it when the card locks it). */
+function playerUpdateMode(vars: Record<string, unknown> | undefined): "reply" | "side" | undefined {
+  const mode = (vars?.cardforge as { settings?: { updateMode?: unknown } } | undefined)?.settings?.updateMode;
+  return mode === "reply" || mode === "side" ? mode : undefined;
 }

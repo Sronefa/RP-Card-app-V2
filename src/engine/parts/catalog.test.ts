@@ -101,8 +101,8 @@ describe("the shared parts in a chat", () => {
     const turn = async (text: string) => {
       tavern.messages.push({ role: "user", message: "…" }, { role: "assistant", message: text });
       tavern.vars.push({}, {});
-      await tavern.api.eventEmit("message_sent", tavern.messages.length - 2);
-      await tavern.api.eventEmit("message_received", tavern.messages.length - 1);
+      await tavern.api.eventEmit("user_message_rendered", tavern.messages.length - 2);
+      await tavern.api.eventEmit("character_message_rendered", tavern.messages.length - 1);
       return tavern.vars.at(-1) as { stat_data: Record<string, any> };
     };
     const block = (ops: unknown[]) => `\n<UpdateVariable><JSONPatch>${JSON.stringify(ops)}</JSONPatch></UpdateVariable>`;

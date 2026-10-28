@@ -24,6 +24,7 @@ interface Settings {
   motion: "auto" | "full" | "reduce"; // "auto" follows the device's reduced-motion setting
   minigames: "play" | "skip";  // "skip" ends every CF.game at once with its skip result
   liveOff: string[];     // living-screen feeds the player turned off (CF.live)
+  updateMode: "card" | "reply" | "side"; // who writes the state updates; "card" = the card's choice
 }
 
 interface CardForge {
@@ -49,8 +50,10 @@ interface CardForge {
   /** A card image by file name: /user/images/<character>/<file>. */
   asset(file: string): string;
   settings(): Settings;
-  /** Set when the card keeps the state with a side call: about how many tokens a turn it costs. */
+  /** Set when the state is kept with a side call after each reply: about how many tokens a turn it costs. */
   sideCall(): { tokens: number } | null;
+  /** Who writes the state updates now, the card's own choice, whether the card locks it, and a side call's cost. */
+  updateMode(): { mode: "reply" | "side"; card: "reply" | "side"; locked: boolean; tokens: number };
   setSettings(patch: Partial<Settings>): Promise<Settings>;
   /** The theme as a :root { --cf-… } rule, for the current settings. */
   themeCss(settings?: Settings): string;
@@ -425,6 +428,8 @@ Draw from the state every time, and redraw on `app.onState`. Don't keep your own
 
 `CF.state.reset()` puts every value back to the start, as the settings app's "Back to the start" does.
 
+These edits are kept on the message as operations (`cf_edits` in its variables), not only in the state: whenever the message is read again (the player edits it, a delete earlier in the chat moves it up, a swipe comes back), the engine rebuilds its state from the reply's update and applies the edits again, so they stick. The messages after it are rebuilt from the result.
+
 ## Sending actions
 
 `app.send("shop", { buy: "rope", price: 5 }, "I buy the rope.")` writes this into the input box:
@@ -659,7 +664,7 @@ Use these in your CSS instead of fixed colours, so the screen follows the card t
 
 A module's `script` file runs once when the chat opens, inside the card's Tavern Helper script, as the body of `function (CF, settings, hooks) { … }`. Tavern Helper's functions are globals there (`getVariables`, `injectPrompts`, `eventOn`, `generate`…).
 
-`hooks.afterUpdate(function (stat, before, info) { … return stat; })` runs after every update the model writes, and on the starting values (with `before` null). `info.messageId` is the message being updated, `info.role` is "user" or "assistant" (the player's own messages get a state too, so count turns on the assistant's), and `info.latest` is true when it is the newest one: only then show banners or start side calls, since older messages are updated again on a swipe or an edit. Change `stat` and return it to keep derived values consistent: roll a counter over, clamp a total, work out a label from a number. The in-game time module does its day roll, weekday and timers this way. Keep hooks quick and never throw: a failing hook is logged and skipped.
+`hooks.afterUpdate(function (stat, before, info) { … return stat; })` runs after every update the model writes, and on the starting values (with `before` null). `info.messageId` is the message being updated, `info.role` is "user" or "assistant" (the player's own messages get a state too, so count turns on the assistant's), and `info.latest` is true when it is the newest one: only then show banners or start side calls, since older messages are updated again on a swipe or an edit. Change `stat` and return it to keep derived values consistent: roll a counter over, clamp a total, work out a label from a number. The in-game time module does its day roll, weekday and timers this way. Keep hooks quick and never throw: a failing hook is logged and skipped. A hook runs again whenever its message is re-read, so it must give the same result each time: for any roll use `info.random()` (a number from 0 to 1, seeded from the time the message was written, and from the module, so each hook rolls its own), never `Math.random()` or the clock. `info.seed` is the seed itself, for your own generator. The lint warns about `Math.random` in a hook.
 
 ## Card images
 

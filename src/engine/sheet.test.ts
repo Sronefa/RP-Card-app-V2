@@ -111,20 +111,20 @@ describe("the engine script in a chat", () => {
 
     tavern.messages.push({ role: "user", message: "I buy a drink." });
     tavern.vars.push({});
-    await tavern.api.eventEmit("message_sent", 1);
+    await tavern.api.eventEmit("user_message_rendered", 1);
     tavern.messages.push({
       role: "assistant",
       message: 'You pay.\n<UpdateVariable><JSONPatch>[{ "op": "delta", "path": "/Player/Gold", "value": -2 }]</JSONPatch></UpdateVariable>',
     });
     tavern.vars.push({});
-    await tavern.api.eventEmit("message_received", 2);
+    await tavern.api.eventEmit("character_message_rendered", 2);
     expect(tavern.vars[2]).toMatchObject({ stat_data: { Player: { Gold: 10 } }, delta_data: { "Player.Gold": [12, 10] } });
     expect(tavern.messages[2].message).toMatch(/<StatusPlaceHolderImpl\/>$/);
 
     // A swipe is a new reply from the same state, so it starts again from 12.
     tavern.messages[2].message = '<UpdateVariable><JSONPatch>[{ "op": "delta", "path": "/Player/Gold", "value": -5 }]</JSONPatch></UpdateVariable>';
     tavern.vars[2] = {};
-    await tavern.api.eventEmit("message_received", 2);
+    await tavern.api.eventEmit("character_message_rendered", 2);
     expect(tavern.vars[2]).toMatchObject({ stat_data: { Player: { Gold: 7 } } });
 
     const mvu = tavern.globals.Mvu as { getMvuData: (o: object) => { stat_data: unknown } };
@@ -147,14 +147,14 @@ describe("the engine script in a chat", () => {
 
     tavern.messages.push({ role: "user", message: "We talk all night." });
     tavern.vars.push({});
-    await tavern.api.eventEmit("message_sent", 1);
+    await tavern.api.eventEmit("user_message_rendered", 1);
     tavern.messages.push({
       role: "assistant",
       message:
         'Dawn comes.\n<UpdateVariable><JSONPatch>[{ "op": "replace", "path": "/Time/Clock", "value": "01:30" }, { "op": "insert", "path": "/Time/Timers/-", "value": "Meet Mina @ Day 1 20:00" }, { "op": "insert", "path": "/Time/Timers/-", "value": "Market @ Day 3 09:00" }]</JSONPatch></UpdateVariable>',
     });
     tavern.vars.push({});
-    await tavern.api.eventEmit("message_received", 2);
+    await tavern.api.eventEmit("character_message_rendered", 2);
     // The clock went back, so the night passed: day 2, a Tuesday, and the evening meeting ran out.
     expect(tavern.vars[2]).toMatchObject({
       stat_data: { Time: { Day: 2, Clock: "01:30", _Weekday: "Tuesday", _PartOfDay: "Night", Timers: ["Market @ Day 3 09:00"], _Expired: ["Meet Mina"] } },
@@ -167,16 +167,17 @@ describe("the engine script in a chat", () => {
 describe("side calls", () => {
   const side = (): EngineConfig => ({ ...config(), updateMode: "side" });
 
-  it("leaves the update rules out of the reply and gives the side call its own prompt and cost", () => {
+  it("keeps the update rules on the card for players who switch, and gives the side call its own prompt and cost", () => {
     const data = applyEngine(newCard().data, side());
-    expect(data.character_book!.entries.map((e) => e.comment)).toEqual(["[initvar] Starting values", "Game state"]);
+    // The engine keeps the [mvu_update] entries out of the story's prompt in side mode (see phase 57).
+    expect(data.character_book!.entries.map((e) => e.comment)).toEqual(["[initvar] Starting values", "[mvu_update] Update rules", "Game state", "[mvu_update] Format reminder"]);
     const prompt = sideCallPrompt(side());
     expect(prompt).toContain("- Player.Health (number, 0 to 100): Drops when hurt.");
     expect(prompt).not.toContain("Secret");
     expect(prompt).toContain("Answer with JSON only");
     expect(sideCallTokens(side())).toBeGreaterThan(600);
     expect(tavernHelperScript(side()).content).toContain('"game_state_update"');
-    expect(tavernHelperScript(config()).content).toContain('"side":null');
+    expect(tavernHelperScript(config()).content).toContain('"updateMode":"reply","lockMode":false,"side":{"prompt"');
   });
 
   it("asks a silent generation for the update after each reply and keeps its answer", async () => {
@@ -190,10 +191,10 @@ describe("side calls", () => {
     await runScript(tavernHelperScript(side()).content, tavern);
     tavern.messages.push({ role: "user", message: "I buy a drink." });
     tavern.vars.push({});
-    await tavern.api.eventEmit("message_sent", 1);
+    await tavern.api.eventEmit("user_message_rendered", 1);
     tavern.messages.push({ role: "assistant", message: "You pay for the ale." });
     tavern.vars.push({});
-    await tavern.api.eventEmit("message_received", 2);
+    await tavern.api.eventEmit("character_message_rendered", 2);
     expect(tavern.vars[2]).toMatchObject({ stat_data: { Player: { Gold: 10 } } });
     expect(calls).toHaveLength(1);
     expect(calls[0].ordered_prompts[1].content).toMatch(/Gold: 12[\s\S]*I buy a drink\.[\s\S]*You pay for the ale\./);

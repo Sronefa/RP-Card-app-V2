@@ -29,7 +29,8 @@ describe("side calls in the editor", () => {
     fireEvent.click(screen.getByRole("radio", { name: /A side call after each reply/ }));
     expect(readEngine(data())!.updateMode).toBe("side");
     expect(screen.getByText(/extra tokens a turn/)).toBeTruthy();
-    expect(data().character_book!.entries.some((e) => e.comment === "[mvu_update] Update rules")).toBe(false);
+    // Still on the card, for players who switch back; the engine leaves it out of the story's prompt.
+    expect(data().character_book!.entries.some((e) => e.comment === "[mvu_update] Update rules")).toBe(true);
     fireEvent.click(screen.getByRole("radio", { name: /The roleplay model, at the end of each reply/ }));
     expect(readEngine(data())!.updateMode).toBe("reply");
     expect(data().character_book!.entries.some((e) => e.comment === "[mvu_update] Update rules")).toBe(true);

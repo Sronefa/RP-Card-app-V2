@@ -2,7 +2,7 @@
 import { z } from "zod";
 
 /** A stand-in for Tavern Helper: a chat whose messages keep variables per message, and the events. */
-export function fakeTavern(messages: { role: string; message: string }[]) {
+export function fakeTavern(messages: { role: string; message: string; swipe_id?: number }[]) {
   const vars: Record<string, unknown>[] = messages.map(() => ({}));
   const listeners: Record<string, ((...args: unknown[]) => unknown)[]> = {};
   const globals: Record<string, unknown> = {};
@@ -35,6 +35,10 @@ export function fakeTavern(messages: { role: string; message: string }[]) {
       MESSAGE_SENT: "message_sent",
       MESSAGE_EDITED: "message_edited",
       MESSAGE_SWIPED: "message_swiped",
+      MESSAGE_DELETED: "message_deleted",
+      CHARACTER_MESSAGE_RENDERED: "character_message_rendered",
+      USER_MESSAGE_RENDERED: "user_message_rendered",
+      WORLDINFO_ENTRIES_LOADED: "worldinfo_entries_loaded",
       CHAT_CHANGED: "chat_id_changed",
     },
     initializeGlobal: (name: string, value: unknown) => (globals[name] = value),

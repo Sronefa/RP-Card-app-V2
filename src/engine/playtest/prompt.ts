@@ -13,6 +13,7 @@ import type { CardDataV3, LorebookEntry } from "../../card";
 import type { SillyTavernRegex } from "../../editor/trackers";
 import { estimateTokens } from "../../lib/tokens";
 import { runtime } from "../runtime";
+import { readEngine } from "../sheet";
 import type { GenerateOptions, InjectedPrompt, SandboxMessage } from "../sandbox/sandbox";
 
 export interface Persona {
@@ -27,6 +28,8 @@ export interface PromptInput {
   persona: Persona;
   /** The user's active jailbreak, sent last. */
   jailbreak?: string;
+  /** Who writes the game-state updates in this chat, when the player switched it in the settings app. */
+  updateMode?: "reply" | "side";
 }
 
 export interface BuiltPrompt {
@@ -212,7 +215,11 @@ function cardParts(input: PromptInput): Parts {
     ...scanMessages.map((c) => macros(c.message, data, persona, chat)),
     ...(input.injected ?? []).filter((p) => p.should_scan).map((p) => p.content),
   ].join("\n");
-  const active = activeLore(book?.entries ?? [], scanText);
+  // With the side call writing the updates, the engine keeps its update rules out of the story's
+  // prompt (as the card script does in SillyTavern).
+  const engine = readEngine(data);
+  const side = ((engine?.lockUpdateMode ? undefined : input.updateMode) ?? engine?.updateMode) === "side";
+  const active = activeLore(book?.entries ?? [], scanText).filter((e) => !side || !/^\[mvu_update\]/i.test(e.comment ?? ""));
   const lore = (pos: number[]) =>
     active
       .filter((e) => pos.includes(position(e)))
