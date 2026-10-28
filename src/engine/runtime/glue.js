@@ -150,6 +150,8 @@ async function cfHandleNow(messageId) {
   if (result.skipped.length) cfLog("Skipped updates", result.skipped);
   // Modules keep derived values (the clock, routines) in step with what the model changed.
   data.stat_data = cfRunHooks(result.stat_data, before.stat_data, messageId);
+  // Living screens' items for this reply that go into list values (the phone's texts) stay in.
+  data.stat_data = cfLiveMerge(messageId, data.stat_data, cfPlain(message.message));
   data.delta_data = cfDelta(before.stat_data, data.stat_data);
   await eventEmit(CF_EVENTS.VARIABLE_UPDATE_ENDED, data, before);
   await cfWrite(messageId, data);
@@ -161,6 +163,7 @@ async function cfHandleNow(messageId) {
     await setChatMessages([{ message_id: messageId }], { refresh: "affected" });
   }
   await eventEmit("cf:state", messageId);
+  if (message.role === "assistant" && messageId >= getLastMessageId()) cfLiveAfter(messageId, before.stat_data, data.stat_data);
 }
 
 // ---------------------------------------------------------------- side calls

@@ -632,4 +632,140 @@ app.onState(draw);`,
   script: "",
 };
 
-export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart, prologue, chapterCard, companionCard, dangerMeter, ...MINIGAME_TEMPLATES];
+
+const npcTexts: EngineModule = {
+  ...base(),
+  id: "npc-texts",
+  name: "Mina's texts",
+  description:
+    "A hub screen that the story writes: Mina texts {{user}} between scenes through a living-screen feed (off until the user turns it on), with a typing dot while she writes. The player texts back through the input box.",
+  slot: "overlay",
+  button: "💬 Mina",
+  vars: [],
+  rules: [
+    {
+      comment: "Texting Mina",
+      content: '<action app="texts">{"to":"Mina","text":"…"}</action> means {{user}} texted Mina those words just now. She reads it soon; let her answer in the scene or later, in her own texting voice.',
+      constant: false,
+      keys: ['app="texts"'],
+      depth: 2,
+      order: 100,
+    },
+  ],
+  regex: [],
+  html: "",
+  css: ".tx-body { display: flex; flex-direction: column; gap: 8px; } .tx-compose { display: flex; gap: 8px; margin-top: 8px; } .tx-compose .cf-input { flex: 1; min-width: 0; } .tx-old { opacity: 0.75; }",
+  js: `var who = "Mina";
+var shown = -1;
+function draw() {
+  // Oldest first, read at this screen's message: a swipe brings its own texts.
+  var texts = app.live("texts");
+  // Only texts that arrived while the screen was open ease in.
+  var fresh = shown < 0 ? 0 : Math.max(0, texts.length - shown);
+  shown = texts.length;
+  root.innerHTML = '<div class="cf-app">' + CF.ui.appBar(who) + '<div class="cf-appbody"><div class="tx-body">' +
+    (texts.length
+      ? texts.map(function (t, i) {
+          var cls = i >= texts.length - fresh ? "cf-live-new" : t.fallback ? "tx-old" : "";
+          return '<div class="' + cls + '">' + CF.ui.bubble(t.text) + "</div>";
+        }).join("")
+      : '<p class="cf-muted">No texts yet.</p>') +
+    (CF.live.pending("texts") ? CF.ui.typing(who + " is typing") : "") +
+    '</div><form class="tx-compose"><input class="cf-input" name="text" placeholder="Text ' + who + '" aria-label="Text ' + who + '" autocomplete="off"><button type="submit" class="cf-btn primary">Send</button></form></div></div>';
+}
+root.addEventListener("submit", function (e) {
+  e.preventDefault();
+  var input = e.target.querySelector("[name=text]");
+  var text = input.value.trim();
+  if (!text) return;
+  app.send("texts", { to: who, text: text }, "📱 texted " + who + ": " + text);
+  input.value = "";
+  app.toast("In the input box: send it with your next message");
+});
+draw();
+app.on("live", draw);
+app.onState(draw);`,
+  script: "",
+  live: [
+    {
+      id: "texts",
+      name: "Mina's texts",
+      enabled: false,
+      pack: {
+        voice: "Mina texting {{user}}: lowercase, quick, teasing; an emoji only when she's flustered",
+        tone: "Warm, curious about what {{user}} is up to, a little jealous when other girls come up",
+        format: "A text message from Mina to {{user}}, reacting to what just happened or picking up a thread from earlier",
+        length: "One or two short lines",
+      },
+      from: "Mina",
+      count: 1,
+      every: 2,
+      on: [],
+      history: 6,
+      keep: 40,
+      into: "",
+      fallback: ["Mina: you up?", "Mina: still thinking about earlier lol", "Mina: text me when ur free"],
+    },
+  ],
+};
+
+const townNews: EngineModule = {
+  ...base(),
+  id: "town-news",
+  name: "Town news",
+  description:
+    "A hub screen of headlines that react to the story: a living-screen feed (off until the user turns it on) writes one every four replies or when the danger changes, into the Town.News list so the story knows the news too.",
+  slot: "overlay",
+  button: "📰 News",
+  vars: [
+    newVar({ id: "ex-news", group: "Town", name: "News", type: "list", start: "", rule: "The town's headlines, oldest first. The Gazette writes these; don't add to the list yourself, but people in the story may have read them." }),
+    newVar({ id: "ex-town-danger", group: "Town", name: "Danger", type: "number", start: "10", min: 0, max: 100, rule: "+10 when a threat to the town grows; −10 when it's beaten back." }),
+  ],
+  rules: [],
+  regex: [],
+  html: "",
+  css: ".nw-item h3 { margin: 0; font-size: 1em; } .nw-item p { margin: 4px 0 0; color: var(--cf-muted); }",
+  js: `function split(text) {
+  var m = /^(.*?)\\s+[—–-]\\s+([\\s\\S]*)$/.exec(text);
+  return m ? { head: m[1], body: m[2] } : { head: text, body: "" };
+}
+function draw() {
+  var news = app.live("news").slice().reverse();
+  root.innerHTML = '<div class="cf-app">' + CF.ui.appBar("The Gazette") + '<div class="cf-appbody cf-stack">' +
+    (CF.live.pending("news") ? '<div class="cf-row">' + CF.ui.typing("New headline") + '<span class="cf-small cf-muted">Hot off the press…</span></div>' : "") +
+    (news.length
+      ? news.map(function (n, i) {
+          var p = split(n.text);
+          return '<article class="cf-card nw-item' + (i === 0 ? " cf-live-new" : "") + '"><h3>' + CF.ui.esc(p.head) + "</h3>" + (p.body ? "<p>" + CF.ui.esc(p.body) + "</p>" : "") + "</article>";
+        }).join("")
+      : '<p class="cf-muted">No news yet. The Gazette prints when something happens.</p>') +
+    "</div></div>";
+}
+draw();
+app.on("live", draw);
+app.onState(draw);`,
+  script: "",
+  live: [
+    {
+      id: "news",
+      name: "The Gazette",
+      enabled: false,
+      pack: {
+        voice: "The town's one newspaper: a dry, slightly sensational editor who loves a rumour",
+        tone: "Brisk; grim when the danger is high, gossipy when it's low",
+        format: "A headline, a dash, then one sentence of story about what the town heard happened",
+        length: "Under thirty words",
+      },
+      from: "",
+      count: 1,
+      every: 4,
+      on: ["Town.Danger"],
+      history: 8,
+      keep: 20,
+      into: "Town.News",
+      fallback: ["Quiet Night in the Harbour — Fishermen report calm waters and an empty tavern.", "Market Prices Hold — Traders shrug off the week's rumours."],
+    },
+  ],
+};
+
+export const EXAMPLES: EngineModule[] = [relationshipPanel, inventoryApp, letterBlock, vnScene, journeyApp, heroSheet, worldMap, statChart, prologue, chapterCard, companionCard, dangerMeter, npcTexts, townNews, ...MINIGAME_TEMPLATES];

@@ -181,6 +181,7 @@ export function readExample(id: string): string | undefined {
     m.css ? `<file name="css">\n${m.css}\n</file>` : "",
     m.js ? `<file name="js">\n${m.js.trim()}\n</file>` : "",
     m.script ? `<file name="script">\n${m.script.trim()}\n</file>` : "",
+    m.live?.length ? `<file name="live.json" about="its living-screen feeds: make them with set_live_feed">\n${JSON.stringify(m.live, null, 2)}\n</file>` : "",
   ]
     .filter(Boolean)
     .join("\n\n");

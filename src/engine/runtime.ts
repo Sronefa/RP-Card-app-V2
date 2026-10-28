@@ -9,6 +9,7 @@ import coreSource from "./runtime/core.js?raw";
 import fxSource from "./runtime/fx.js?raw";
 import gameSource from "./runtime/game.js?raw";
 import glueSource from "./runtime/glue.js?raw";
+import liveSource from "./runtime/live.js?raw";
 import moodSource from "./runtime/mood.js?raw";
 import sceneSource from "./runtime/scene.js?raw";
 import updaterSource from "./runtime/updater.js?raw";
@@ -55,5 +56,5 @@ export const sceneCheck = new Function(`${sceneSource}\nreturn cfSceneCheck;`)()
 
 /** The whole Tavern Helper script: the card's settings, the updater, the effects and art kits, the scene director, moods and portraits, the minigame toolkit, and the engine core, then the glue that starts it. */
 export function scriptSource(settings: string): string {
-  return `(function () {\n"use strict";\n${settings}\n${updaterSource}\n${fxSource}\n${artSource}\n${sceneSource}\n${moodSource}\n${gameSource}\n${coreSource}\n${glueSource}\n})();\n`;
+  return `(function () {\n"use strict";\n${settings}\n${updaterSource}\n${fxSource}\n${artSource}\n${sceneSource}\n${moodSource}\n${gameSource}\n${liveSource}\n${coreSource}\n${glueSource}\n})();\n`;
 }

@@ -84,6 +84,8 @@ var raw = await generateRaw({ ordered_prompts: [{ role: "system", content: "…"
 
 These calls cost the player tokens. Only make them when `CF.settings().sideCalls` is true, and give the screen something sensible to show when they're off. In the CardForge sandbox, `generate` returns a placeholder line; Playtest runs it for real.
 
+For a screen whose content the model writes during play (texts, a feed, news), use a living screen (`set_live_feed`, read with `app.live(id)`; see the core API's "Living screens" section) instead of calling these yourself: it runs `generateRaw` with `should_silence`, `ordered_prompts` (the content pack, `"chat_history"`, the ask), `max_chat_history` and a `json_schema`, keeps the items per swipe, and has the player's switches built in. The answer can be a non-string when reasoning or tools are returned, so check `typeof result === "string"` in your own calls.
+
 ## Other functions
 
 - `getChatMessages(range)`, `setChatMessages(changes)`, `getLastMessageId()` and `getCurrentMessageId()` (in a message iframe: the message it is in).

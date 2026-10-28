@@ -93,6 +93,50 @@ export interface EngineModule {
   script: string;
   /** Options the module's code reads. */
   settings: Record<string, unknown>;
+  /** Living screens: content the model writes during play, in the background (see live.ts). */
+  live?: LiveFeed[];
+}
+
+/** How a living screen's content is written: the co-writer's notes for the background model. */
+export interface LivePack {
+  /** Whose voice: "Mina texting: lowercase, quick, teasing, emoji only when flustered". */
+  voice: string;
+  /** The mood and attitude: "warm, a little jealous of {{user}}'s friends". */
+  tone: string;
+  /** The shape of one item: "a text message", "a headline, a dash, one sentence". */
+  format: string;
+  /** How long one item is: "one to two short lines". */
+  length: string;
+}
+
+/**
+ * A living screen: after a reply, a silent background generation writes a few new items (texts,
+ * posts, headlines) in the pack's voice. Items are kept on the reply's message variables, per swipe,
+ * so a reroll gets its own and going back to a swipe brings its items back.
+ */
+export interface LiveFeed {
+  /** Unique within the card; screens read it with app.live(id). */
+  id: string;
+  name: string;
+  /** Off by default: each run costs tokens on the player's API. */
+  enabled: boolean;
+  pack: LivePack;
+  /** Who usually writes the items ("Mina"); empty when nobody does (news). */
+  from: string;
+  /** Items one run writes, 1 to 5. */
+  count: number;
+  /** Runs after every Nth reply (1 = each reply); 0 runs only when an `on` value changes. */
+  every: number;
+  /** Values whose change makes it run, like "Mina.Affection". */
+  on: string[];
+  /** Chat messages the background call reads, 2 to 30. */
+  history: number;
+  /** Items the screens see, newest last, 1 to 100. */
+  keep: number;
+  /** A list value the items are also added to as "From: text" lines (Phone.Texts), so the story and the built-in phone see them. */
+  into: string;
+  /** Lines used when the generation fails, so the screen still moves. */
+  fallback: string[];
 }
 
 /** The built-in a module is, or is a whole fork of (a forked phone app is a module of its own). */

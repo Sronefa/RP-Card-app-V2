@@ -6,6 +6,7 @@
 import { estimateTokens } from "../../lib/tokens";
 import { originalOf, originalUpdated } from "../modules/fork";
 import { effectiveConfig, modulesOf } from "../modules/compile";
+import { liveCadence, liveFeedsOf, liveTokens } from "../modules/live";
 import type { EngineModule } from "../modules/types";
 import { runtime, sceneCheck, scriptSource } from "../runtime";
 import { rulesText, settingsSource, themeOf, varPath, type EngineConfig } from "../sheet";
@@ -33,6 +34,7 @@ export interface Finding {
     | "motion"
     | "scene"
     | "game"
+    | "live"
     | "module";
   message: string;
 }
@@ -131,6 +133,53 @@ function readFindings(m: EngineModule, known: { path: string; open: boolean }[],
   return out;
 }
 
+/** Feeds a screen or script reads with app.live, CF.live.items, CF.live.run or CF.live.pending. */
+export function liveReads(code: string): string[] {
+  const out = new Set<string>();
+  const re = /\b(?:app\.live|(?:CF|CardForge)\.live\.(?:items|run|pending))\(\s*(["'])([^"'\n]+)\1/g;
+  for (let m = re.exec(code); m; m = re.exec(code)) out.add(m[2]);
+  return [...out];
+}
+
+/** Living screens: they have a pack and a cadence, follow values that exist, and a screen reads them. */
+function liveFindings(config: EngineConfig, modules: EngineModule[], known: { path: string; open: boolean }[]): Finding[] {
+  const out: Finding[] = [];
+  const say = (level: Finding["level"], message: string) => out.push({ level, check: "live", message });
+  const feeds = liveFeedsOf(modules);
+  const added = new Set<string>();
+  for (const m of modules) for (const x of m.script.matchAll(/\b(?:CF|CardForge)\.live\.feed\(\s*(["'])([^"'\n]+)\1/g)) added.add(x[2]);
+  const reads = new Map<string, string[]>();
+  for (const m of modules) if (!m.core) for (const id of liveReads(m.html + "\n" + m.js + "\n" + m.script)) reads.set(id, [...(reads.get(id) ?? []), m.id]);
+  const lists = new Set(effectiveConfig(config).vars.filter((v) => v.type === "list").map((v) => varPath(v).join(".")));
+  const seen = new Set<string>();
+  for (const { module: m, feed: f } of feeds) {
+    const where = `${m.id}'s ${f.id} feed`;
+    if (seen.has(f.id)) say("error", `${where} has the same id as another module's feed; screens couldn't tell them apart.`);
+    seen.add(f.id);
+    if (!f.pack.voice.trim() && !f.pack.format.trim()) say("warn", `${where} has no content pack: give it a voice and a format with set_live_feed, or the background call writes generic text.`);
+    if (!f.every && !f.on.length) say("warn", `${where} never runs: give it every (replies) or on (values to follow).`);
+    if (!f.fallback.some((l) => l.trim())) say("info", `${where} has no fallback lines, so the screen doesn't move when the background call fails.`);
+    for (const path of f.on)
+      if (!pathKnown(path, known)) out.push({ level: "error", check: "values", message: `${where} follows "${path}", but the sheet and modules have no such value. Add it with set_value, or fix the path.` });
+    if (f.into && !lists.has(f.into))
+      out.push({
+        level: "error",
+        check: "values",
+        message: `${where} adds its items to "${f.into}", which ${pathKnown(f.into, known) ? "isn't a list value" : "doesn't exist"}. Use a list value (like Phone.Texts) or none.`,
+      });
+    if (f.enabled && !reads.has(f.id) && !f.into)
+      say("warn", `${where} is on, but no screen reads it (app.live("${f.id}")) and it goes into no list value, so its tokens are spent for nothing.`);
+    if (f.enabled) say("info", `${where} costs about ${liveTokens(f)} tokens each run, ${liveCadence(f)}. Players can turn it off in the settings app.`);
+  }
+  for (const [id, by] of reads) {
+    const declared = feeds.filter((x) => x.feed.id === id);
+    if (!declared.length && !added.has(id)) say("warn", `${by.join(", ")} reads the "${id}" feed, but no module has it. Add it with set_live_feed, or fix the id.`);
+    else if (declared.length && !added.has(id) && !declared.some((x) => x.feed.enabled))
+      say("info", `${by.join(", ")} reads the "${id}" feed, which is off, so the screen shows only what it shows when empty until the user turns it on (Modules, Living screen).`);
+  }
+  return out;
+}
+
 /** Checks that need no page: code, values, actions, size and token cost. */
 export function lintConfig(config: EngineConfig): Finding[] {
   const out: Finding[] = [];
@@ -217,6 +266,8 @@ export function lintConfig(config: EngineConfig): Finding[] {
         message: `${m.id} is a fork of CardForge's ${m.fork!.core}, which has been updated since. The fork keeps its own code; tell the user if they want the original's changes.`,
       });
   }
+
+  out.push(...liveFindings(config, modules, known));
 
   // Moods and portraits that follow the state must follow values that exist.
   const theme = themeOf(config);

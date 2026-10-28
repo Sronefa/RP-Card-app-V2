@@ -373,6 +373,32 @@ export const WRITE_TOOLS: ToolDef[] = [
     ),
   ),
   tool(
+    "set_live_feed",
+    "Add or change a living screen on a module (by id): after a reply, a silent background call writes a few new items (texts, posts, headlines) in the voice of its content pack, and the module's screen shows them with app.live(id). Feeds are off by default because every run costs tokens on the player's API: leave enabled false unless the user asked for it on, and tell them the cost (read_module shows it). into adds the items to a list value as 'From: text' lines too, so the story and the built-in phone see them. { remove: true } deletes it. Read the core API's living screens section first.",
+    obj(
+      {
+        module: moduleId,
+        id: str("The feed's id, like texts or town-news"),
+        name: str("What the player sees in the settings app: Mina's texts"),
+        enabled: bool("On (costs tokens every run). Default off"),
+        pack: {
+          type: "object",
+          description: "The content pack: { voice, tone, format, length }. voice: who writes and how; tone: the mood; format: the shape of one item; length: how long one item is",
+        },
+        from: str("Who usually writes the items (Mina); empty when nobody does (news)"),
+        count: int("Items per run, 1 to 5 (default 1)"),
+        every: int("Runs after every Nth reply, 0 to 20 (0: only when an `on` value changes; default 2)"),
+        on: { type: "array", items: { type: "string" }, description: "Values whose change makes it run, like Mina.Mood" },
+        history: int("Chat messages the call reads, 2 to 30 (default 6): the main cost"),
+        keep: int("Items the screen keeps, 1 to 100 (default 30)"),
+        into: str("A list value the items also go into, like Phone.Texts; empty for the screen only"),
+        fallback: { type: "array", items: { type: "string" }, description: "Lines used when the call fails, like 'Mina: you up?'" },
+        remove: bool("Delete this feed"),
+      },
+      ["module", "id"],
+    ),
+  ),
+  tool(
     "set_panel",
     "Turn the status panel under each reply on or off, or rename it.",
     obj({ enabled: bool("On or off"), title: str("Its title") }),

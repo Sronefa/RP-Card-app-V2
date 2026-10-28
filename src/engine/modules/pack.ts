@@ -5,6 +5,7 @@
 import { newId } from "../../lib/id";
 import { VAR_TYPES, type EngineVar, type VarType } from "../sheet";
 import { resolveModule } from "./compile";
+import { cleanLiveFeeds } from "./live";
 import { CORE_KINDS, PACK_FORMAT, SLOTS, type CoreKind, type EngineModule, type ModuleFork, type ModulePack, type ModuleRegex, type ModuleRule, type Slot } from "./types";
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -96,6 +97,7 @@ export function cleanModule(raw: unknown): EngineModule | null {
     js: str(raw.js),
     script: str(raw.script),
     settings: isObject(raw.settings) ? structuredClone(raw.settings) : {},
+    ...(Array.isArray(raw.live) && raw.live.length ? { live: cleanLiveFeeds(raw.live) } : {}),
   };
   // A core module's code comes from this app, never from the file.
   return core ? resolveModule(m) : m;

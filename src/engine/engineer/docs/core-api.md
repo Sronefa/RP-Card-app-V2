@@ -23,6 +23,7 @@ interface Settings {
   ambience: number;      // 0 to 100
   motion: "auto" | "full" | "reduce"; // "auto" follows the device's reduced-motion setting
   minigames: "play" | "skip";  // "skip" ends every CF.game at once with its skip result
+  liveOff: string[];     // living-screen feeds the player turned off (CF.live)
 }
 
 interface CardForge {
@@ -33,6 +34,7 @@ interface CardForge {
   scene: Scene;
   mood: Mood;
   game: GameKit;
+  live: Live;
   /** Sets a screen up in a window: theme, kit, delegated controls, and an App bound to its message. */
   frame(win: Window, options?: { messageId?: number | "latest" }): App;
   /** Mounts a module's screen into an element (default: the page's #cf-root). */
@@ -108,6 +110,8 @@ interface App {
   game(el: Element, o?: GameOptions): Game;
   /** A character's portrait at this screen's state: see UiKit.portrait. */
   portrait(name: string, o?: PortraitOptions): string;
+  /** A living screen's items up to this screen's message, oldest first: see Live.items. */
+  live(id: string, o?: { max?: number }): LiveItem[];
   /** The state at this screen's message (the latest for hub screens), or one value by path. */
   state(path?: string): any;
   /** What changed in this screen's message. */
@@ -150,6 +154,8 @@ interface UiKit {
   avatar(src: string | null, name?: string): string;
   /** A character's portrait that follows the state (the latest; app.portrait for the screen's message), crossfading when it changes. */
   portrait(name: string, o?: PortraitOptions): string;
+  /** Three bouncing dots, for a living-screen feed that's writing (CF.live.pending). */
+  typing(label?: string): string;
   list(items: { title: string; sub?: string; right?: any; avatar?: string | null }[]): string;
   bubble(text: string, me?: boolean): string;
   button(label: string, o?: { primary?: boolean; ghost?: boolean; icon?: IconName; send?: string; payload?: any; text?: string; now?: boolean; open?: string; close?: boolean; back?: boolean }): string;
@@ -235,6 +241,30 @@ interface Mood {
   list(): { id: string; name: string; path: string }[];
   /** The emotion and outfit a character's portrait shows. */
   look(name: string, messageId?: number | "latest"): { emotion: string; outfit: string };
+}
+
+/** One item a living screen's feed wrote. fallback: one of the feed's fallback lines, because the call failed. */
+interface LiveItem {
+  from: string;
+  text: string;
+  messageId: number;
+  fallback: boolean;
+}
+
+/** Living screens: feeds the model writes in the background after replies (set on a module with set_live_feed). */
+interface Live {
+  /** The feeds that are on in this card. on: the player hasn't turned it off (and background generations are on). */
+  feeds(): { id: string; name: string; module: string; on: boolean; tokens: number; every: number }[];
+  /** A feed's items up to a message (the latest by default), oldest first; max defaults to the feed's keep. */
+  items(id: string, o?: { messageId?: number | "latest"; max?: number }): LiveItem[];
+  /** Whether a feed is writing now. */
+  pending(id: string): boolean;
+  /** Writes new items for the latest reply now (a refresh the player asked for). Costs a call. */
+  run(id: string): Promise<{ from: string; text: string }[]>;
+  /** Adds a feed from a module's card script: CF.live.feed("rumours", { name, pack, every, on, count, history, keep, into, fallback }). */
+  feed(id: string, spec: Record<string, any>): void;
+  /** fn({ feed, messageId, pending, items }) when a feed starts and finishes writing; returns a function that stops it. */
+  on(fn: (e: { feed: string; messageId: number; pending: boolean; items?: { from: string; text: string }[] }) => void): () => void;
 }
 
 /** 0 (easy) to 1 (hard): a number, or a value ({ path, min = 0, max = 100, invert, fallback }). invert: more of the value is easier. */
@@ -416,7 +446,7 @@ A button can send without any script: `CF.ui.button("Buy", { send: "shop", paylo
 
 ## Settings
 
-`app.settings()` gives the player's choices for this chat (see the Settings type). Respect them: `compact` for panels, `sideCalls` before any background generation, `music` and `ambience` for sound. The theme already follows `mode`, `accent` and `textScale`.
+`app.settings()` gives the player's choices for this chat (see the Settings type). Respect them: `compact` for panels, `sideCalls` before any background generation (living screens do this for you), `music` and `ambience` for sound. The theme already follows `mode`, `accent` and `textScale`.
 
 ## Hub screens and routing
 
@@ -536,6 +566,38 @@ g.start();
 - **Difficulty from the story:** `difficulty` reads a value (a skill, a stat, danger) into 0 (easy) to 1 (hard); `invert: true` when more of the value makes it easier. `g.tune(easy, hard)` turns it into numbers: pins, time limits, speeds, sizes.
 - **Result into the story:** `g.end({ outcome, score, line, set })`. `outcomes` in the options fill in each outcome's `line` and `set` (keep the words in the module's settings so the user and the co-writer can change them). `set` writes values with the line as the change's note; the line goes into the input box as `<action app="minigame">{"game","outcome","score"}</action>` and the line, for the player to send (`report: "now"` sends it at once). Add the rule that tells the model what the action means (every template has it). A result card shows the outcome; with `close: true` its button closes the hub screen.
 - **The player can always skip:** the Skip button ends the game as `outcome: "skip"`, and the settings app's "Minigames: Skip them" ends every game at once the same way. The skip line says the story decides; `auto(g)` gives your own skip result.
+
+## Living screens (CF.live)
+
+Screens whose content the model writes during play: an NPC texts {{user}}, the town's news reacts to what just happened, a social feed fills up. After a reply, a silent background call (Tavern Helper's `generateRaw`) reads the last few chat messages and writes a few new items in the voice of the feed's **content pack**. Read the living-screens skill for the method.
+
+```text
+set_live_feed { module: "mina-texts", id: "texts", name: "Mina's texts", from: "Mina",
+  pack: { voice: "Mina texting: lowercase, quick, teasing; an emoji only when flustered", tone: "warm, a little jealous",
+          format: "a text message to {{user}}", length: "one or two short lines" },
+  every: 2, on: ["Mina.Affection"], history: 6, count: 1, into: "Phone.Texts", fallback: ["Mina: you up?"] }
+```
+
+```js
+function draw() {
+  var items = app.live("texts");                       // oldest first, at this screen's message
+  root.innerHTML = items.map(function (t) { return CF.ui.bubble(t.text); }).join("") +
+    (CF.live.pending("texts") ? CF.ui.typing("Mina is typing") : "");
+}
+draw();
+app.on("live", draw);    // a feed started or finished writing
+app.onState(draw);       // swipes and new replies
+```
+
+- **Off by default, and the player decides.** Every run costs tokens on the player's API, so a feed is off until the user turns it on (Modules, Living screen) and the settings app lists the feeds that are on, each with its cost and its own switch (`liveOff`). With background generations off (`sideCalls`), no feed runs. Tell the user the cost when you add one: `read_module` shows `tokens_per_run`, and the lint says it too.
+- **When it runs:** after every `every`th reply (1 = each reply), or when a value in `on` changes, and only for the latest reply. `history` (2 to 30 messages) is the main cost; 4 to 8 is plenty for texts and news.
+- **Kept per swipe:** items live in the reply's message variables (`cf_live`), keyed by the reply's text. A reroll gets its own items, swiping back brings the old ones back, and an edit elsewhere or a reload doesn't pay again. `app.live(id)` reads from the screen's message back, so an old panel shows what was there then.
+- **into:** with a list value (`Phone.Texts`, `Town.News`), the items also go into it as "From: text" lines, on the same reply. The story model sees them in the state, and screens that read the list (the built-in phone's Messages, Social and News apps) show them with no code. Without `into`, the items are the screen's only: the story doesn't know them.
+- **Fallback:** when the call fails or answers nothing usable, one of the feed's `fallback` lines is used (with `from` when it has none of its own), and the item has `fallback: true`.
+- **No screen code needed for the call.** Don't call `generate` or `generateRaw` from a screen for this: a feed already respects the settings, keeps items per swipe, and never races the state update.
+- A module's card script can add a feed of its own with `CF.live.feed(id, spec)` (same fields); it's on whenever the module is, so only do that when the user asked for it.
+
+Examples: `read_example("npc-texts")` (a texting screen with a typing dot) and `read_example("town-news")` (a news feed that reacts to the story, into a list value).
 
 ## Moods and portraits (CF.mood, CF.ui.portrait)
 

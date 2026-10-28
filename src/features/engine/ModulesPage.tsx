@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { AutoTextarea, Button, Dialog, TextInput } from "../../components/ui";
 import { toast } from "../../components/toast";
-import { coreModules, moduleConflicts, resolveModule, modulePaths, modulesOf, newModule } from "../../engine/modules/compile";
+import { coreModules, effectiveConfig, moduleConflicts, resolveModule, modulePaths, modulesOf, newModule } from "../../engine/modules/compile";
 import { creatorModule, creatorSettings } from "../../engine/modules/creator";
 import { eventsModule, eventsSettings } from "../../engine/modules/events";
 import { choicesModule, choicesSettings } from "../../engine/modules/choices";
@@ -32,11 +32,12 @@ import { shipSettings } from "../../engine/modules/ship";
 import { SEASONS, timeModule, timeSettings, WEEKDAYS, type Routine, type TimeSettings } from "../../engine/modules/time";
 import { kindOf, SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../../engine/modules/types";
 import { scriptSource } from "../../engine/runtime";
-import { newVar, settingsSource, type EngineConfig, type EngineVar } from "../../engine/sheet";
+import { newVar, settingsSource, varPath, type EngineConfig, type EngineVar } from "../../engine/sheet";
 import { pickFiles, safeFileName, saveFile } from "../../lib/files";
 import { loadModuleLibrary, removeFromModuleLibrary, saveModulesToLibrary } from "./moduleLibrary";
 import { ChoicesEditor, LifeEditor, RoutesEditor, SchoolEditor } from "./KitEditors";
 import { EventsEditor, JournalEditor, MenuEditor, NotifyEditor, PeopleEditor, TitleEditor } from "./PartEditors";
+import { LiveFeedsEditor } from "./LiveEditors";
 import { PartsBrowser } from "./PartsBrowser";
 import { CombatEditor, HeroEditor, InventoryEditor, MapEditor, QuestsEditor } from "./RpgEditors";
 import { CreatorEditor, ListInput, PhoneEditor } from "./ScreenEditors";
@@ -64,7 +65,15 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
   const size = scriptSource(settingsSource(config)).length;
 
   const setModules = (next: EngineModule[], key?: string) => save({ ...config, modules: next }, key);
-  const update = (index: number, m: EngineModule, key?: string) => setModules(modules.map((o, i) => (i === index ? m : o)), key && `engine.module.${index}.${key}`);
+  // A built-in rebuilt from its settings keeps the card's living screens.
+  const update = (index: number, m: EngineModule, key?: string) =>
+    setModules(
+      modules.map((o, i) => (i === index ? (m.live === undefined && o.live ? { ...m, live: o.live } : m) : o)),
+      key && `engine.module.${index}.${key}`,
+    );
+  const lists = effectiveConfig(config)
+    .vars.filter((v) => v.type === "list" && v.name.trim())
+    .map((v) => varPath(v).join("."));
   const add = (incoming: EngineModule[]) => {
     const next = addModules(modules, incoming);
     setModules(next);
@@ -184,6 +193,7 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
                   ) : (
                     <CustomEditor m={m} onChange={(next, key) => update(i, next, key)} />
                   )}
+                  {m.slot !== "script" && <LiveFeedsEditor feeds={m.live ?? []} lists={lists} onChange={(live, key) => update(i, { ...m, live }, key)} />}
                   {m.vars.length > 0 && <p className="text-xs text-ink-muted">Adds {modulePaths(m).join(", ")}</p>}
                   {m.core && <ForkControls m={m} onFork={(app) => change((c) => forkModule(c, m.id, app).config, app ? "Forked the app: it's a module of its own now" : `Forked ${m.name}: its code is the card's own now`)} />}
                   {m.fork && (
