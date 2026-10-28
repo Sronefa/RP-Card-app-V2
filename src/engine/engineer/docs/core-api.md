@@ -28,6 +28,7 @@ interface CardForge {
   version: string;
   ui: UiKit;
   fx: Fx;
+  art: Art;
   /** Sets a screen up in a window: theme, kit, delegated controls, and an App bound to its message. */
   frame(win: Window, options?: { messageId?: number | "latest" }): App;
   /** Mounts a module's screen into an element (default: the page's #cf-root). */
@@ -95,6 +96,7 @@ interface App {
   messageId: number | "latest";
   ui: UiKit;
   fx: Fx;
+  art: Art;
   /** The state at this screen's message (the latest for hub screens), or one value by path. */
   state(path?: string): any;
   /** What changed in this screen's message. */
@@ -177,6 +179,37 @@ interface Fx {
   transition(el: Element, html: string, o?: "fade" | "left" | "right" | "up" | { type?: "fade" | "left" | "right" | "up"; ms?: number }): Promise<void>;
   /** Layers with data-depth="0.2" to "1" drift with the pointer or the phone's tilt, until stopped. */
   parallax(el: Element, o?: { reach?: number }): () => void;
+}
+
+type ChartItem = number | { label?: string; value: number; color?: string };
+type Palette = "parchment" | "sea" | "night" | "neon" | "stone";
+
+/** Procedural art: inline pieces are HTML strings in the theme's colours; images are data URLs with their own. */
+interface Art {
+  chart(kind: "bar" | "line" | "spark" | "donut" | "radar", data: ChartItem[], o?: { max?: number; title?: string; center?: string; legend?: boolean; empty?: string }): string;
+  gauge(o: { value: number; min?: number; max?: number; label?: string; unit?: string; text?: string; ticks?: number; danger?: number }): string;
+  frame(html: string, o?: "ornate" | "tech" | "sketch" | { kind?: "ornate" | "tech" | "sketch"; title?: string }): string;
+  divider(kind?: "flourish" | "diamond" | "circuit" | "line"): string;
+  /** An emblem from a name: the same name, the same crest. */
+  sigil(seed: string, o?: { size?: number; color?: string; label?: string }): string;
+  /** A map picture (data URL) to give CF.ui.map as its image; places in % so pins line up. */
+  mapImage(o?: { kind?: "island" | "dungeon" | "city"; seed?: string | number; places?: { x?: number; y?: number }[]; roads?: boolean; palette?: Palette; colors?: Partial<Record<"sea" | "land" | "high" | "line" | "mark" | "paper", string>> }): string;
+  /** CSS backgrounds: a repeating pattern, SVG noise, a sky for a time of day. */
+  pattern(kind: "dots" | "grid" | "stripes" | "checks" | "diamonds" | "waves" | "crosshatch" | "hex", o?: { color?: string; size?: number; opacity?: number }): string;
+  noiseTexture(o?: { scale?: number; opacity?: number; color?: string; seed?: string | number }): string;
+  sky(time: string): string;
+  /** Coloured noise drawn on a canvas, as a PNG data URL ("" without a canvas). */
+  noiseImage(o?: { seed?: string | number; size?: number; scale?: number; from?: string; to?: string }): string;
+  /** A canvas filling el at the screen's pixel density; draw in CSS pixels. null without a canvas. */
+  canvas(el: Element, o?: { height?: number }): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; width: number; height: number } | null;
+  /** Seeded randomness and smooth noise (0 to 1) for your own drawing. */
+  rng(seed: string | number): () => number;
+  noise(seed: string | number): ((x: number, y?: number) => number) & { fbm(x: number, y?: number, octaves?: number): number };
+  /** An SVG string as a data URL, or as a CSS url('…'). */
+  dataUrl(svg: string): string;
+  url(svg: string): string;
+  /** A theme colour ("accent", "text"…) as el's screen sees it, for pictures that can't read the theme. */
+  themeColor(name: string, el?: Element): string;
 }
 
 type IconName = "heart" | "star" | "coin" | "clock" | "sun" | "moon" | "cloud" | "rain" | "snow" | "fog" | "storm" | "gear" | "back" | "close" | "phone" | "bag" | "map" | "chat" | "user" | "chart" | "calendar" | "news" | "wallet" | "camera" | "note" | "spark" | "home" | "send" | "people" | "lock" | "check" | "plus" | "book" | "gift" | "sword" | "shield" | "flask" | "skull" | "fire" | "scroll" | "compass" | "bolt" | "rocket" | "eye" | "search" | "chip";
@@ -308,6 +341,28 @@ Keep effects few and meaningful: one weather layer, a shake when something hits,
 Examples: `read_example("vn-scene")` (a dialogue box with a typed line, weather and a shake) and `read_example("journey-app")` (a map with pins, a carousel, flip cards, a timeline, a ring, a drawer, a toast, a count-up and page transitions).
 
 Kit classes for your own markup: `cf-card`, `cf-stack` (vertical gap), `cf-row` (horizontal gap), `cf-spread` (space between), `cf-muted`, `cf-small`, `cf-label`, `cf-btn` (`primary`, `ghost`), `cf-input`, `cf-chip`, `cf-grid`/`cf-stat`, `cf-list`/`cf-item`, `cf-app`/`cf-appbar`/`cf-appbody` (app shell), `cf-bubbles`/`cf-bubble`.
+
+## Procedural art (CF.art)
+
+Pictures drawn in code, for screens that need no image or until the art exists. The same seed always draws the same picture, so a place's map or a house's crest stays the same every reply. Nothing moves, so there is nothing to cut for less motion.
+
+Inline pieces are HTML strings, like `CF.ui`, drawn with the theme's colours and the kit's classes:
+- `CF.art.chart("bar", [{ label: "Strength", value: 14 }, …], { max: 20 })`: one row per item, so long labels fit a phone. `"line"` for a value over time, `"spark"` for a tiny trend inside a line of text, `"donut"` with a legend and `{ center: "28" }`, `"radar"` for a character's stats (five to eight axes). Numbers work as data too. Each has an `aria-label` that reads the values.
+- `CF.art.gauge({ value: 12, max: 100, label: "Fuel", unit: "%", danger: 0.25 })`: a dial with ticks and a needle; below the danger fraction it turns `--cf-bad`.
+- `CF.art.frame(html, { kind: "ornate", title: "Chapter I" })`: a card with drawn corners: `"ornate"` (fantasy), `"tech"` (clipped corners, a HUD), `"sketch"` (hand-drawn).
+- `CF.art.divider("flourish")`: an ornamental rule between sections (`"diamond"`, `"circuit"`, `"line"`).
+- `CF.art.sigil("House Varn", { size: 48 })`: an emblem from a name, for factions, houses and guilds, or as a portrait's fallback.
+
+Images are data URLs or CSS `url('…')` values with their own colours (a picture can't read the theme: pass `color` or a `palette`, or read one with `CF.art.themeColor("accent", root)`). They have no double quotes, so they fit in a `style="…"` attribute:
+- `CF.ui.map({ image: CF.art.mapImage({ kind: "island", seed: "Saltreach", places: PLACES, palette: "parchment" }), pins: PLACES.map(…) })`: a whole map with coast, hills, trees, roads between the places and a compass. `"dungeon"` draws a room at each place joined by halls; `"city"` draws blocks, a river and a plaza at each place. Give the same `{ x, y }` in % to the map and the pins, so they line up. Palettes: parchment, sea, night, neon, stone.
+- `background: CF.art.pattern("hex", { color: "rgba(46,242,255,.15)", size: 20 })`: dots, grid, stripes, checks, diamonds, waves, crosshatch or hex.
+- `background: CF.art.noiseTexture({ scale: 0.8, opacity: 0.12 })`: film grain (high scale) to fog and clouds (scale 0.02).
+- `background: CF.art.sky(app.state("Time.PartOfDay"))`: dawn, day, dusk or a starry night, from a word or a clock time: the fallback under `CF.assets.background`.
+- `CF.art.noiseImage({ seed: "nebula", from: "#101828", to: "#8fa6d6" })`: coloured clouds drawn on a canvas, as a PNG.
+
+For your own drawing: `CF.art.canvas(el, { height: 160 })` gives a canvas sized for the phone's pixel density, `CF.art.rng(seed)` seeded randomness, `CF.art.noise(seed)` smooth noise, and `CF.art.dataUrl(svg)` / `CF.art.url(svg)` turn your own SVG into an image or a background.
+
+Examples: `read_example("world-map")` (a procedural island with pins, crests and a sky) and `read_example("stat-chart")` (a panel section with a radar of stats, a gauge and a trend line).
 
 ## Theme variables
 
