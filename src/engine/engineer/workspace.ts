@@ -6,6 +6,7 @@
 import { ToolInputError } from "../../ai/toolError";
 import type { ToolCall } from "../../ai/types";
 import { BUILT_IN_SCREENS, coreModules, modulesOf, newModule } from "../modules/compile";
+import { forkModule } from "../modules/fork";
 import { addModules, cleanModule } from "../modules/pack";
 import { SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../modules/types";
 import { newVar, themeOf, VAR_TYPES, type EngineConfig, type EngineVar, type VarType } from "../sheet";
@@ -68,7 +69,7 @@ function editable(config: EngineConfig, id: unknown) {
   const found = findModule(config, id);
   if (found.module.core)
     throw new ToolInputError(
-      `"${found.module.id}" is a core module: CardForge writes its code. Change its options with set_module_settings, or build a module of your own.`,
+      `"${found.module.id}" is a core module: CardForge writes its code. Change its options with set_module_settings, or fork_module it to change its code.`,
     );
   return found;
 }
@@ -172,6 +173,20 @@ export function applyOp(config: EngineConfig, call: ToolCall): { config: EngineC
       const extra = input.settings && typeof input.settings === "object" && !Array.isArray(input.settings) ? (input.settings as Input) : {};
       const module = cleanModule({ ...base, settings: { ...base.settings, ...extra } }) ?? base;
       return { config: { ...config, modules: [...modulesIn(config), module] }, summary: `Add the built-in ${module.name.toLowerCase()}` };
+    }
+    case "fork_module": {
+      const id = str(input, "module").trim();
+      const app = str(input, "app", true)?.trim();
+      let out;
+      try {
+        out = forkModule(config, id, app || undefined);
+      } catch (e) {
+        throw new ToolInputError((e as Error).message);
+      }
+      return {
+        config: out.config,
+        summary: app ? `Fork the phone's ${out.module.name} app into the module "${out.module.id}"` : `Fork the ${out.module.name} module to change its code`,
+      };
     }
     case "delete_module": {
       const { index, module } = findModule(config, input.module);

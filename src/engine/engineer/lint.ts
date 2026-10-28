@@ -4,6 +4,7 @@
  * the preview page and are turned into findings here.
  */
 import { estimateTokens } from "../../lib/tokens";
+import { originalOf, originalUpdated } from "../modules/fork";
 import { effectiveConfig, modulesOf } from "../modules/compile";
 import type { EngineModule } from "../modules/types";
 import { runtime, scriptSource } from "../runtime";
@@ -95,6 +96,27 @@ function syntaxError(m: EngineModule, file: "js" | "script"): string | undefined
   }
 }
 
+/** Values a module reads that don't exist, and actions it sends that no rule explains. */
+function readFindings(m: EngineModule, known: { path: string; open: boolean }[], ruleText: string): Finding[] {
+  const out: Finding[] = [];
+  const code = m.html + "\n" + m.js + "\n" + m.script;
+  for (const path of statePaths(code))
+    if (!pathKnown(path, known))
+      out.push({
+        level: "error",
+        check: "values",
+        message: `${m.id} reads "${path}", but the sheet and modules have no such value. Add it with set_value, or fix the path.`,
+      });
+  for (const name of actionNames(code))
+    if (!ruleText.includes(`app="${name}"`))
+      out.push({
+        level: "warn",
+        check: "actions",
+        message: `${m.id} sends <action app="${name}"> but no rule tells the model what it means. Add one with add_rule.`,
+      });
+  return out;
+}
+
 /** Checks that need no page: code, values, actions, size and token cost. */
 export function lintConfig(config: EngineConfig): Finding[] {
   const out: Finding[] = [];
@@ -104,10 +126,12 @@ export function lintConfig(config: EngineConfig): Finding[] {
 
   for (const m of modules) {
     if (m.core) continue;
+    // A fork's untouched files are CardForge's code: only what the card changed is checked.
+    const pristine = m.fork ? originalOf(m.fork.core, m.fork.settings) : undefined;
     const where = (f: string) => `${m.id}/${f}`;
     for (const f of CODE_FILES) {
       const code = m[f];
-      if (!code) continue;
+      if (!code || (pristine && pristine[f] === code)) continue;
       for (const [re, what] of NETWORK)
         if (re.test(code))
           out.push({
@@ -132,21 +156,9 @@ export function lintConfig(config: EngineConfig): Finding[] {
       const error = syntaxError(m, f);
       if (error) out.push({ level: "error", check: "syntax", message: `${where(f)} doesn't parse: ${error}` });
     }
-    const code = m.html + "\n" + m.js + "\n" + m.script;
-    for (const path of statePaths(code))
-      if (!pathKnown(path, known))
-        out.push({
-          level: "error",
-          check: "values",
-          message: `${m.id} reads "${path}", but the sheet and modules have no such value. Add it with set_value, or fix the path.`,
-        });
-    for (const name of actionNames(code))
-      if (!ruleText.includes(`app="${name}"`))
-        out.push({
-          level: "warn",
-          check: "actions",
-          message: `${m.id} sends <action app="${name}"> but no rule tells the model what it means. Add one with add_rule.`,
-        });
+    // What CardForge's own code already does isn't the fork's to fix.
+    const inherited = new Set(pristine ? readFindings({ ...m, html: pristine.html, js: pristine.js, script: pristine.script }, known, ruleText).map((f) => f.message) : []);
+    out.push(...readFindings(m, known, ruleText).filter((f) => !inherited.has(f.message)));
     if (m.slot === "overlay" && !m.button?.trim())
       out.push({ level: "warn", check: "module", message: `${m.id} is a hub screen without a button, so the player can't open it.` });
     if (m.slot !== "script" && !m.html.trim() && !m.js.trim())
@@ -158,6 +170,12 @@ export function lintConfig(config: EngineConfig): Finding[] {
           check: "module",
           message: `${m.id}'s rule "${r.comment}" is at depth 0, which is the player's message.`,
         });
+    if (pristine && originalUpdated(m))
+      out.push({
+        level: "info",
+        check: "module",
+        message: `${m.id} is a fork of CardForge's ${m.fork!.core}, which has been updated since. The fork keeps its own code; tell the user if they want the original's changes.`,
+      });
   }
 
   const size = scriptSource(settingsSource(config)).length;

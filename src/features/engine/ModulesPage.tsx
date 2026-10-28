@@ -24,12 +24,13 @@ import { menuModule, menuSettings } from "../../engine/modules/menu";
 import { notifyModule, notifySettings } from "../../engine/modules/notify";
 import { peopleSettings } from "../../engine/modules/people";
 import { titleModule, titleSettings } from "../../engine/modules/title";
+import { forkablePieces, forkModule, originalUpdated, unforkModule } from "../../engine/modules/fork";
 import { addModules, modulePack, readPack } from "../../engine/modules/pack";
 import { phoneModule, phoneSettings } from "../../engine/modules/phone";
 import { settingsAppModule, settingsAppSettings, type SettingsAppSettings } from "../../engine/modules/settingsApp";
 import { shipSettings } from "../../engine/modules/ship";
 import { SEASONS, timeModule, timeSettings, WEEKDAYS, type Routine, type TimeSettings } from "../../engine/modules/time";
-import { SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../../engine/modules/types";
+import { kindOf, SLOTS, type EngineModule, type ModuleRegex, type ModuleRule, type Slot } from "../../engine/modules/types";
 import { scriptSource } from "../../engine/runtime";
 import { newVar, settingsSource, type EngineConfig, type EngineVar } from "../../engine/sheet";
 import { pickFiles, safeFileName, saveFile } from "../../lib/files";
@@ -84,7 +85,15 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
       toast((e as Error).message);
     }
   };
-  const missingCore = coreModules().filter((c) => !modules.some((m) => m.core === c.core));
+  const missingCore = coreModules().filter((c) => !modules.some((m) => kindOf(m) === c.core));
+  const change = (fn: (c: EngineConfig) => EngineConfig, done: string) => {
+    try {
+      save(fn({ ...config, modules }));
+      toast(done);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -119,7 +128,9 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
                   <span className="font-medium">{m.name || m.id}</span>{" "}
                   <span className="text-ink-muted">· {SLOTS[m.slot].label}</span>
                   {m.core && <span className="ml-2 rounded-full bg-accent/15 px-2 text-xs text-accent">{m.tags.includes("built-in") ? "Built-in" : "Core"}</span>}
+                  {m.fork && <span className="ml-2 rounded-full bg-surface px-2 text-xs text-ink-muted">Fork</span>}
                   {m.description && <span className="block truncate text-xs text-ink-muted">{m.description}</span>}
+                  {originalUpdated(m) && <span className="block text-xs text-amber-300">CardForge has updated the original since this was forked.</span>}
                 </button>
                 <label className="flex min-h-10 items-center gap-2 text-sm">
                   <input type="checkbox" className="size-4" checked={m.enabled} onChange={(e) => update(i, { ...m, enabled: e.target.checked })} />
@@ -174,6 +185,20 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
                     <CustomEditor m={m} onChange={(next, key) => update(i, next, key)} />
                   )}
                   {m.vars.length > 0 && <p className="text-xs text-ink-muted">Adds {modulePaths(m).join(", ")}</p>}
+                  {m.core && <ForkControls m={m} onFork={(app) => change((c) => forkModule(c, m.id, app).config, app ? "Forked the app: it's a module of its own now" : `Forked ${m.name}: its code is the card's own now`)} />}
+                  {m.fork && (
+                    <div className="flex flex-col gap-1 text-xs text-ink-muted">
+                      <p>
+                        {m.fork.piece ? "Forked from CardForge's phone" : `Forked from CardForge's ${m.fork.core}`} on {new Date(m.fork.at).toLocaleDateString()}. Its code is the card's own: CardForge's fixes to the original don't reach it.
+                      </p>
+                      <Button
+                        className="self-start"
+                        onClick={() => change((c) => unforkModule(c, m.id), m.fork?.piece ? "The app is back in the phone" : `${m.name} is CardForge's again`)}
+                      >
+                        {m.fork.piece ? "Put it back in the phone" : "Use CardForge's version again"}
+                      </Button>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <Button onClick={() => void saveModulesToLibrary([m]).then(() => toast(`Saved ${m.name} to your library`))}>Save to my library</Button>
                     <Button onClick={() => void exportPack([m], m.name)}>Save as a file</Button>
@@ -221,6 +246,36 @@ export function ModulesPage({ config, save }: { config: EngineConfig; save: Save
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** Forking a built-in, whole or one phone app, to change its code. */
+function ForkControls({ m, onFork }: { m: EngineModule; onFork: (app?: string) => void }) {
+  const pieces = forkablePieces(m);
+  const [app, setApp] = useState<string>(pieces[0]?.id ?? "");
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-2 text-sm">
+      <p className="text-xs text-ink-muted">
+        CardForge writes this module's code from its settings. Fork it to change the code itself: it becomes the card's own module, with the same values, slot and button, and stops getting CardForge's fixes.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => onFork()}>Fork {m.name}</Button>
+        {pieces.length > 0 && (
+          <>
+            <select aria-label="Phone app to fork" className={selectClass} value={app} onChange={(e) => setApp(e.target.value)}>
+              {pieces.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <Button disabled={!app} onClick={() => onFork(app)}>
+              Fork only this app
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

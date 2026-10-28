@@ -13,7 +13,7 @@ A module is one package the engine merges into the card. It can have values, lor
 - **js**: the screen's script. It runs as `function (CF, app, root, settings)`.
 - **script**: the card-script part. It runs once per chat as `function (CF, settings, hooks)`.
 
-Core modules (`time`, `settings`) are written by CardForge. You can read them as examples and change their options with `set_module_settings`, but not their files.
+Core modules (`time`, `settings`) are written by CardForge. You can read them as examples and change their options with `set_module_settings`, but not their files, unless you fork them (see "Forking a built-in").
 
 Built-in screens work the same way, but a card only has them once added (`add_built_in`, or the Modules tab):
 - **creator**: the character creator, an inline block for the first message (`<cf-module id="creator"/>`). Its settings list the choices, stats and point budget, starting items and routes. Begin writes the character with `setMany` and sends the route's opening message.
@@ -78,9 +78,19 @@ Screens send structured actions through `app.send(app, payload, text)`: `<action
 
 The whole engine script is shown on the Modules tab. Keep a module's code to a few kilobytes: a panel section is built again for every reply it shows under, and phones are slow.
 
+## Forking a built-in
+
+When settings can't do what the card needs, `fork_module` copies a built-in module (the phone, the creator, the title screen, any installed part) into the card as its own module: its files, values, rules and regex. It keeps the same id, slot and hub button, so `CF.open`, `<cf-module id="…"/>` tags and the other parts' links keep working, and the original stops running. Then `read_module` and `patch_file` it like your own. Load the `fork-and-tailor` skill first.
+
+- **One phone app**: `fork_module` with `module: "phone"` and `app` ("messages", "shop", "map"…) forks only that app. It becomes the module `phone-<app>`, tagged `phone-app` and opening inside the phone, with the app's values and its lines of the phone's action rule; the rest of the phone stays CardForge's and keeps getting its fixes. Its code is the phone's script with `settings.piece` set to the app, which shows only that app; patch the parts for that app's screens (`screens.<app>`).
+- **Settings**: a built-in's code reads `settings.live || settings`. A fork keeps them as one flat object, so `set_module_settings` on the fork still changes what its code reads (contacts, places, labels).
+- **What it remembers**: the fork records the built-in it came from (`fork.core`), when, and a fingerprint of CardForge's code then. The Modules tab and the lint say when CardForge has updated the original since; the fork keeps its own code. The user can go back to CardForge's version from the Modules tab (a forked phone app goes back into the phone).
+- **Lint**: the files you haven't changed are CardForge's, so the lint checks only the files you changed, and leaves out what the original already did.
+- A fork can be saved to the module library like any module of the user's own.
+
 ## Parts and kits
 
-Parts are finished modules you can install instead of building from scratch: `list_parts` finds them (by words or a tag), `read_part` shows one with its settings already filled from this card, and `install_part` adds it with the parts it needs. CardForge's own parts are built-in modules: change them only through `set_module_settings`. The user's saved modules are parts too; those you can patch like your own.
+Parts are finished modules you can install instead of building from scratch: `list_parts` finds them (by words or a tag), `read_part` shows one with its settings already filled from this card, and `install_part` adds it with the parts it needs. CardForge's own parts are built-in modules: change them through `set_module_settings`, or fork them to change their code. The user's saved modules are parts too; those you can patch like your own.
 
 The shared parts every kit starts from:
 
