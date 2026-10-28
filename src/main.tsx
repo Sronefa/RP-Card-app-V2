@@ -4,8 +4,10 @@ import App from "./app/App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./index.css";
 import { installSaveOnExit } from "./editor/store";
+import { startKeepAlive } from "./app/keepAlive";
 
 installSaveOnExit();
+startKeepAlive();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

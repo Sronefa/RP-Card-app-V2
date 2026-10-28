@@ -1,0 +1,16 @@
+[package]
+name = "tauri-plugin-keepalive"
+version = "0.1.0"
+description = "Keeps CardForge's background work running on Android with a foreground service"
+authors = ["Sronefa"]
+edition = "2024"
+# Lets the app's build find this plugin's Android project.
+links = "tauri-plugin-keepalive"
+
+[dependencies]
+tauri = { version = "2", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
